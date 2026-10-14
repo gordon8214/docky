@@ -68,6 +68,10 @@ struct ThemeLayout: Codable, Equatable {
 }
 
 struct ThemeLayoutInsertion: Codable, Equatable {
+    func tileID(at index: Int) -> String {
+        "theme:insert:\(index):\(kind)"
+    }
+
     /// Tile content to inject. Structural primitives: `"spacer"`,
     /// `"flexibleSpacer"`, `"divider"`. Widget kinds also accepted ,
     /// any raw value of `WidgetKind` (e.g. `"search"`, `"calendar"`,

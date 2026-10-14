@@ -9,6 +9,7 @@
             let started = ContinuousClock.now
             await checkSettings()
             checkWidgets()
+            await checkThemeWidgetRemoval()
             checkMediaTimeline()
             checkDragCancellation()
             checkLaunchpadEditing()

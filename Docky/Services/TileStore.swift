@@ -2259,13 +2259,19 @@ final class TileStore: ObservableObject {
     /// merge that re-builds the trailing section from
     /// `previewTrailingSectionTiles` (anything in `tiles` past
     /// `divider:trailing` would otherwise be dropped).
-    static func applyingThemeLayoutInsertions(to tiles: [Tile]) -> [Tile] {
-        guard let insertions = ThemeManager.shared.activeManifest?.layout?.insertions,
+    static func applyingThemeLayoutInsertions(
+        to tiles: [Tile], themeManager: ThemeManager = .shared
+    ) -> [Tile] {
+        guard let themeID = themeManager.activeThemeID,
+              let insertions = themeManager.activeManifest?.layout?.insertions,
               !insertions.isEmpty else {
             return tiles
         }
+        let removedIDs = Set(themeManager.removedLayoutInsertionIDsByTheme[themeID] ?? [])
         var result = tiles
         for (index, insertion) in insertions.enumerated() {
+            let tileID = insertion.tileID(at: index)
+            guard !removedIDs.contains(tileID) else { continue }
             guard let content = themeInsertionContent(insertion) else { continue }
             let anchorAfter = insertion.after
             let anchorBefore = insertion.before
@@ -2273,7 +2279,7 @@ final class TileStore: ObservableObject {
             guard let anchorIdx = themeInsertionAnchorIndex(in: result, anchor: anchor) else { continue }
             let insertAt = anchorAfter != nil ? anchorIdx + 1 : anchorIdx
             let tile = Tile(
-                id: "theme:insert:\(index):\(insertion.kind)",
+                id: tileID,
                 content: content
             )
             result.insert(tile, at: insertAt)

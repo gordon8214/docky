@@ -78,6 +78,11 @@ extension DockTileInteraction {
     }
 
     func widgetRemovalAction(for widget: WidgetTile, nonDockyTitle: String = "Remove Widget") -> ContextAction {
+        if tile.id.hasPrefix("theme:insert:"), let themeID = themeManager.activeThemeID {
+            return .action(nonDockyTitle) {
+                themeManager.removeLayoutInsertion(tileID: tile.id, themeID: themeID)
+            }
+        }
         if isDockyPinnedTile || isDockyTrailingTile {
             return .action(String(localized: "Remove from Dock")) {
                 removeDockyTile()

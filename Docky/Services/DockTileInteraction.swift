@@ -34,6 +34,7 @@ struct DockTileInteraction {
     let dockSettings = DockSettingsService.shared
     var layout = DockLayoutService.shared
     var preferences = DockyPreferences.shared
+    var themeManager = ThemeManager.shared
     var workspace = WorkspaceService.shared
     var mediaPlayback = MediaPlaybackService.shared
     var editMode = DockEditModeService.shared

@@ -37,6 +37,7 @@ final class DockCanvasView: NSView {
         observeChanges { [weak self] in
             guard let self else { return }
             _ = self.controller.preferences.effectiveTileSpacing
+            _ = ThemeManager.shared.removedLayoutInsertionIDsByTheme
             _ = self.controller.preferences.effectiveTileVerticalPadding
             _ = self.controller.preferences.windowPosition
             _ = self.controller.preferences.showsGroupedOpenedAppsBackdrop

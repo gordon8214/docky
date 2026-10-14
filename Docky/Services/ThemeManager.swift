@@ -43,17 +43,23 @@ import Observation
     /// relaunch.
     private(set) var activeThemeID: String?
 
+    /// Removed layout tiles are scoped to their theme and survive relaunch.
+    private(set) var removedLayoutInsertionIDsByTheme: [String: [String]]
+
     private let defaults: UserDefaults
     private let decoder = JSONDecoder()
     private let fileManager = FileManager.default
 
     private enum Keys {
         static let activeThemeID = "docky.activeThemeID"
+        static let removedLayoutInsertionIDsByTheme = "docky.removedThemeLayoutInsertionIDs"
     }
 
-    private init() {
-        self.defaults = .standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.activeThemeID = defaults.string(forKey: Keys.activeThemeID)
+        self.removedLayoutInsertionIDsByTheme =
+            defaults.dictionary(forKey: Keys.removedLayoutInsertionIDsByTheme) as? [String: [String]] ?? [:]
         ensureThemesDirectoryExists()
         refreshInstalled()
     }
@@ -152,6 +158,18 @@ import Observation
     }
 
     // MARK: - Mutation
+
+    func removeLayoutInsertion(tileID: String, themeID: String) {
+        guard let insertions = installedThemes[themeID]?.manifest.layout?.insertions,
+              insertions.enumerated().contains(where: { $0.element.tileID(at: $0.offset) == tileID }) else {
+            return
+        }
+        var removedIDs = removedLayoutInsertionIDsByTheme[themeID] ?? []
+        guard !removedIDs.contains(tileID) else { return }
+        removedIDs.append(tileID)
+        removedLayoutInsertionIDsByTheme[themeID] = removedIDs
+        defaults.set(removedLayoutInsertionIDsByTheme, forKey: Keys.removedLayoutInsertionIDsByTheme)
+    }
 
     /// Activate an installed theme by id. No-op (logs) when the id
     /// isn't installed. Does not modify the user's preference values.
