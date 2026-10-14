@@ -69,7 +69,7 @@ enum Permission: String, CaseIterable, Identifiable {
         case .systemEventsAutomation:
             return "Docky uses System Events automation for curated menuClick actions. Requesting it here lets Docky click supported app menus without waiting for the first action to trigger a macOS prompt. Menu-click actions still require Accessibility too."
         case .screenCapture:
-            return "Grant Screen Recording so Docky can show thumbnail previews for minimized windows. Docky only captures the minimized window itself for its dock tile, and nothing leaves your Mac. macOS may require quitting and reopening Docky after you allow this."
+            return "Grant Screen Recording so Docky can show window previews and the real menu-extra icons in the Windows taskbar. Menu-extra capture is limited to the menu bar strip. Nothing leaves your Mac. macOS may require quitting and reopening Docky after you allow this."
         case .location:
             return "Grant location access so Docky can show local weather in the Weather widget. Your location is used on-device to fetch the forecast and is not stored by Docky."
         case .calendar:

@@ -10,14 +10,19 @@ final class WindowsTaskbarStatusView: NSView {
     private let volume = WindowsStatusButton(glyph: "volume", label: "Volume")
     private let battery = WindowsStatusButton(glyph: "battery", label: "Battery")
     private let clock = WindowsStatusButton(glyph: "clock", label: "Date and time")
+    private let menuExtras = WindowsMenuExtrasView()
     private let ownerID = UUID()
     private var subscriptions = Set<AnyCancellable>()
     private var popup: WindowsTaskbarPopup?
     override var isFlipped: Bool { true }
-    var preferredWidth: CGFloat { (extraTiles.isEmpty ? 0 : 32) + 64 + (battery.isHidden ? 0 : 28) + 98 + 12 }
+    var preferredWidth: CGFloat {
+        (extraTiles.isEmpty ? 0 : 32) + menuExtras.preferredWidth + (network.isHidden ? 0 : 32)
+            + (volume.isHidden ? 0 : 32) + (battery.isHidden ? 0 : 28) + 98 + 12
+    }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         for button in [overflow, network, volume, battery, clock] { addSubview(button) }
+        addSubview(menuExtras)
         overflow.onActivate = { [weak self] in self?.showExtras() }
         network.onActivate = {
             WindowsTaskbarStatusService.openSettings("com.apple.Network-Settings.extension")
@@ -50,6 +55,7 @@ final class WindowsTaskbarStatusView: NSView {
             _ = WindowsTaskbarStatusService.shared.audioVolume
             _ = WindowsTaskbarStatusService.shared.audioMuted
             _ = WindowsTaskbarStatusService.shared.now
+            _ = MenuExtrasService.shared.items
             self?.refresh()
         }.store(in: &subscriptions)
         BatteriesService.shared.objectWillChange.sink { [weak self] in
@@ -59,12 +65,18 @@ final class WindowsTaskbarStatusView: NSView {
     }
     func refresh() {
         let status = WindowsTaskbarStatusService.shared
+        let native = MenuExtrasService.shared.items.filter {
+            $0.snapshot.displayID == (window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+                as? NSNumber)?.uint32Value
+        }
+        network.isHidden = native.contains { $0.id.contains("com.apple.menuextra.wifi") }
+        volume.isHidden = native.contains { $0.id.contains("com.apple.menuextra.sound") }
         network.glyph = status.networkSymbol
         network.setAccessibilityLabel(status.networkDescription)
         volume.glyph = status.audioMuted || status.audioVolume == 0 ? "volume-muted" : "volume"
         volume.setAccessibilityLabel(status.audioDescription)
         let mac = BatteriesService.shared.snapshot?.devices.first { $0.kind == .mac }
-        battery.isHidden = mac == nil
+        battery.isHidden = mac == nil || native.contains { $0.id.contains("com.apple.menuextra.battery") }
         battery.glyph = mac?.isCharging == true ? "battery-charging" : "battery"
         battery.level = CGFloat(mac?.levels.first?.percentage ?? 0) / 100
         let batteryLabel =
@@ -83,8 +95,13 @@ final class WindowsTaskbarStatusView: NSView {
     }
     override func layout() {
         super.layout()
-        var offset: CGFloat = 0
-        for button in [overflow, network, volume, battery, clock] where !button.isHidden {
+        var offset: CGFloat = overflow.isHidden ? 0 : 32
+        overflow.frame = CGRect(x: 0, y: 4, width: 32, height: 40)
+        let extrasWidth = min(menuExtras.preferredWidth,
+                              max(0, bounds.width - preferredWidth + menuExtras.preferredWidth))
+        menuExtras.frame = CGRect(x: offset, y: 4, width: extrasWidth, height: 40)
+        offset += extrasWidth
+        for button in [network, volume, battery, clock] where !button.isHidden {
             let width: CGFloat = button === clock ? 98 : button === battery ? 28 : 32
             button.frame = CGRect(x: offset, y: 4, width: width, height: 40)
             offset += width

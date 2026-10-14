@@ -27,6 +27,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     #if DEBUG
     private func runDebugRegressionIfRequested() -> Bool {
+        if ProcessInfo.processInfo.arguments.contains("--menu-extras-probe") {
+            window?.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            Task { await MenuExtrasProbe.run() }
+            return true
+        }
         if ProcessInfo.processInfo.arguments.contains("--dock-bridge-crash-fixture") {
             window?.orderOut(nil)
             Task { await DockBridgeRegression.runCrashFixture() }

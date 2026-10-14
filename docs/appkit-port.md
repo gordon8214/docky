@@ -75,6 +75,9 @@ hosting adapters, and inspect the main app and its app-owned helper binaries wit
 
 ## Windows 11 taskbar
 
+The right-side tray includes a prototype for actual macOS menu extras. See
+[menu-extra behavior, validation, and native popup findings](menu-extras-prototype.md).
+
 The bundled `windows` theme uses the optional `behavior.taskbarStyle: "windows11"`
 preset. It resolves a bottom, full-width 48-point bar with 40-point buttons,
 24-point icons, and 44-point pitch without rewriting saved placement, size,
