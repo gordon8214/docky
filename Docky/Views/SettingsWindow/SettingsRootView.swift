@@ -250,8 +250,8 @@ struct SettingsRootView: View {
             }
         }
         .onAppear { consumePendingPane() }
-        .onChange(of: navigator.pendingPaneID) { _ in consumePendingPane() }
-        .onChange(of: selection) { newPane in recordHistory(newPane) }
+        .onChange(of: navigator.pendingPaneID) { consumePendingPane() }
+        .onChange(of: selection) { _, newPane in recordHistory(newPane) }
     }
 
     private var canGoBack: Bool { historyIndex > 0 }

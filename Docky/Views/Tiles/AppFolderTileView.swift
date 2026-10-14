@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import Synchronization
 import UniformTypeIdentifiers
 
 struct AppFolderTileView: View {
@@ -151,7 +152,6 @@ struct AppFolderTileView: View {
     private func inlineExpandedPlaceholder(in size: CGSize) -> some View {
         let minSide = min(size.width, size.height)
         let chevronSize = min(minSide * 0.32, 20)
-        let inset = min(minSide * 0.1, 6)
 
         return ZStack {
             preview(in: size)
@@ -446,10 +446,10 @@ struct AppFolderPopoverView: View {
         .onAppear {
             onPopoverSizeChange(popoverSize)
         }
-        .onChange(of: tile.apps.count) { _ in
+        .onChange(of: tile.apps.count) {
             onPopoverSizeChange(popoverSize)
         }
-        .onChange(of: isPresented) { presented in
+        .onChange(of: isPresented) { _, presented in
             // Reset reorder mode when the popover closes so re-opening
             // always starts in the standard launch-on-tap state.
             if !presented, isReorderMode {
@@ -646,7 +646,7 @@ struct AppFolderPopoverView: View {
                 .focused($isTitleFieldFocused)
                 .onSubmit { commitTitleEdit() }
                 .onExitCommand { cancelTitleEdit() }
-                .onChange(of: isTitleFieldFocused) { focused in
+                .onChange(of: isTitleFieldFocused) { _, focused in
                     if !focused, isEditingTitle {
                         commitTitleEdit()
                     }
@@ -778,8 +778,7 @@ struct AppFolderPopoverView: View {
 
         let typeID = UTType.fileURL.identifier
         let group = DispatchGroup()
-        var collected: [URL] = []
-        let queue = DispatchQueue(label: "docky.appfolder.drop")
+        let collected = Mutex<[URL]>([])
 
         for provider in providers {
             guard provider.hasItemConformingToTypeIdentifier(typeID) else { continue }
@@ -787,17 +786,18 @@ struct AppFolderPopoverView: View {
             provider.loadDataRepresentation(forTypeIdentifier: typeID) { data, _ in
                 defer { group.leave() }
                 guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                queue.sync { collected.append(url) }
+                collected.withLock { $0.append(url) }
             }
         }
 
         group.notify(queue: .main) {
-            guard !collected.isEmpty else {
+            let fileURLs = collected.withLock { $0 }
+            guard !fileURLs.isEmpty else {
                 DockDragService.shared.clear()
                 return
             }
             WorkspaceService.shared.open(
-                fileURLs: collected,
+                fileURLs: fileURLs,
                 withApplicationBundleIdentifier: app.bundleIdentifier
             )
             isPresented = false

@@ -40,21 +40,21 @@ struct TileContainerView: View {
             overflowWrappedContent(in: proxy)
             .onPreferenceChange(TileFramePreferenceKey.self) { tileFrames = $0 }
             .onAppear { layout.setTileCanvasFrame(proxy.frame(in: .global)) }
-            .onChange(of: proxy.frame(in: .global)) { frame in
+            .onChange(of: proxy.frame(in: .global)) { _, frame in
                 layout.setTileCanvasFrame(frame)
             }
-            .onChange(of: dockDrag.cursorLocation) { location in
+            .onChange(of: dockDrag.cursorLocation) { _, location in
                 updateExternalDragDestinationIndex(at: location)
                 updatePaletteDropDestinationFromCursor(at: location)
             }
-            .onChange(of: dockDrag.kind) { kind in
+            .onChange(of: dockDrag.kind) { _, kind in
                 if kind == nil {
                     dockDrag.destinationIndex = nil
                 } else {
                     updateExternalDragDestinationIndex(at: dockDrag.cursorLocation)
                 }
             }
-            .onChange(of: editMode.paletteDrag) { paletteDrag in
+            .onChange(of: editMode.paletteDrag) { _, paletteDrag in
                 if paletteDrag == nil {
                     editMode.paletteDropDestination = nil
                 } else {
@@ -203,7 +203,7 @@ struct TileContainerView: View {
             .onAppear {
                 scrollSectionToEnd(section, using: scrollProxy)
             }
-            .onChange(of: section.tiles.map(\.id)) { _ in
+            .onChange(of: section.tiles.map(\.id)) {
                 scrollSectionToEnd(section, using: scrollProxy)
             }
         }

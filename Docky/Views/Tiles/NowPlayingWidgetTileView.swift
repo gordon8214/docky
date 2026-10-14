@@ -305,7 +305,7 @@ struct NowPlayingWidgetTileView: View {
             }
             .padding(layout.contentPadding)
         }
-        .onChange(of: trackChangeKey) { _ in
+        .onChange(of: trackChangeKey) {
             mediaPlayback.requestLyrics(for: effectiveBundleIdentifier)
         }
     }
@@ -656,7 +656,7 @@ private struct KaraokeLyricsView: View {
                     Color.clear.frame(height: layout.controlButtonSize)
                 }
             }
-            .onChange(of: activeIndex) { newIndex in
+            .onChange(of: activeIndex) { _, newIndex in
                 withAnimation(.easeInOut(duration: 0.35)) {
                     proxy.scrollTo(newIndex, anchor: .center)
                 }

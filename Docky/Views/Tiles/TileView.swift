@@ -572,7 +572,7 @@ struct TileView: View {
             } action: { newFrame in
                 globalTileFrame = newFrame
             }
-            .onChange(of: isHovering) { isHovering in
+            .onChange(of: isHovering) { _, isHovering in
                 TilePressService.shared.registerHover(tileID: tile.id, isHovering: isHovering)
                 updateWidgetExpansionPresentation(isHovering: isHovering, sourceFrame: globalTileFrame)
             }
@@ -592,27 +592,27 @@ struct TileView: View {
                 WindowPreviewWindowController.shared.dismiss(sourceTileID: tile.id)
                 TilePressService.shared.clearHover(tileID: tile.id)
             }
-            .onChange(of: isFolderPopoverPresented) { isPresented in
+            .onChange(of: isFolderPopoverPresented) { _, isPresented in
                 updateTooltipPresentation()
                 guard !isPresented else { return }
                 lastFolderPopoverDismissedAt = Date.timeIntervalSinceReferenceDate
             }
-            .onChange(of: isFolderListMenuPresented) { _ in
+            .onChange(of: isFolderListMenuPresented) {
                 updateTooltipPresentation()
             }
-            .onChange(of: isAppFolderListMenuPresented) { _ in
+            .onChange(of: isAppFolderListMenuPresented) {
                 updateTooltipPresentation()
             }
-            .onChange(of: editMode.isActive) { isActive in
+            .onChange(of: editMode.isActive) { _, isActive in
                 guard isActive else { return }
                 widgetExpansionTask?.cancel()
                 widgetExpansionTask = nil
                 WidgetExpansionWindowController.shared.dismiss(sourceTileID: tile.id)
             }
-            .onChange(of: windowPreview.activeSourceTileID) { _ in
+            .onChange(of: windowPreview.activeSourceTileID) {
                 updateTooltipPresentation()
             }
-            .onChange(of: dockDrag.springLoadedTileID) { springLoaded in
+            .onChange(of: dockDrag.springLoadedTileID) { _, springLoaded in
                 guard springLoaded == tile.id else { return }
                 switch tile.content {
                 case .appFolder:
@@ -3052,6 +3052,7 @@ private func folderNavigationContextActions(for folderURL: URL) -> [ContextActio
     return actions
 }
 
+@MainActor
 func fileContextActions(for url: URL) -> [ContextAction] {
     [
         .customView(FilePreviewMenuItemView(url: url)),
@@ -3071,9 +3072,7 @@ func fileContextActions(for url: URL) -> [ContextAction] {
             pasteboard.clearContents()
             pasteboard.writeObjects([url as NSURL])
         },
-        .lazySubmenu(String(localized: "Share"), image: contextMenuSymbol("square.and.arrow.up")) {
-            shareApplicationActions(for: url)
-        },
+        .share(url),
         .divider,
         .action(
             "Move to Trash",
@@ -3190,19 +3189,6 @@ private func openWithApplicationActions(for url: URL) -> [ContextAction] {
                 configuration: configuration,
                 completionHandler: nil
             )
-        }
-    }
-}
-
-private func shareApplicationActions(for url: URL) -> [ContextAction] {
-    let services = NSSharingService.sharingServices(forItems: [url])
-    guard !services.isEmpty else {
-        return [.action(String(localized: "No Sharing Options")) {}]
-    }
-
-    return services.map { service in
-        .action(service.title, image: service.image) {
-            service.perform(withItems: [url])
         }
     }
 }

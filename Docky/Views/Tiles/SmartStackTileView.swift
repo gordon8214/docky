@@ -30,7 +30,7 @@ struct SmartStackTileView: View {
             handleScroll(deltaX: deltaX, deltaY: deltaY)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onChange(of: tile.widgets.map(\.identifier)) { newIdentifiers in
+        .onChange(of: tile.widgets.map(\.identifier)) { _, newIdentifiers in
             let oldIdentifiers = previousWidgetIdentifiers
             previousWidgetIdentifiers = newIdentifiers
             if let newWidgetIdentifier = newIdentifiers.first(where: { !oldIdentifiers.contains($0) }),

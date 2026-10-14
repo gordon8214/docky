@@ -312,7 +312,7 @@ private struct WindowSwitcherOverlayView: View {
             .background(.primary.opacity(0.18))
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
-            .onChange(of: switcher.selectedWindowIdentifier) { selection in
+            .onChange(of: switcher.selectedWindowIdentifier) { _, selection in
                 guard let selection else { return }
                 withAnimation(.easeInOut(duration: 0.14)) {
                     scrollProxy.scrollTo(selection, anchor: .center)
@@ -404,7 +404,7 @@ private struct WindowSwitcherListView: View {
             .background(.primary.opacity(0.18))
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .onChange(of: switcher.selectedWindowIdentifier) { selection in
+            .onChange(of: switcher.selectedWindowIdentifier) { _, selection in
                 guard let selection else { return }
                 withAnimation(.easeInOut(duration: 0.14)) {
                     scrollProxy.scrollTo(selection, anchor: .center)

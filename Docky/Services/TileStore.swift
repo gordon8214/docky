@@ -277,7 +277,6 @@ final class TileStore: ObservableObject {
             return
         }
 
-        let allItemIDs = preferences.pinnedItems.map { Self.pinnedTileID(for: $0) }
         let idsSet = Set(ids)
         let filteredItems = preferences.pinnedItems.filter { idsSet.contains(Self.pinnedTileID(for: $0)) }
 

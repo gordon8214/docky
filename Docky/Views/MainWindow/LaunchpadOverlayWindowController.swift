@@ -416,14 +416,14 @@ private struct LaunchpadOverlayView: View {
                         .padding(.top, topInset)
                         .padding(.bottom, resolvedBottomInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onChange(of: selectedEntryID) { selection in
+                        .onChange(of: selectedEntryID) { _, selection in
                             guard let selection,
                                   let pageIndex = pageIndex(for: selection, in: pages) else { return }
                             withAnimation(.easeInOut(duration: 0.18)) {
                                 scrollProxy.scrollTo("page-\(pageIndex)", anchor: .leading)
                             }
                         }
-                        .onChange(of: filteredEntries.map(\.id)) { _ in
+                        .onChange(of: filteredEntries.map(\.id)) {
                             synchronizeSelection()
                         }
                     }
@@ -536,7 +536,7 @@ private struct LaunchpadOverlayView: View {
                 isSearchFocused = true
                 synchronizeSelection()
             }
-            .onChange(of: overlay.isPresented) { isPresented in
+            .onChange(of: overlay.isPresented) { _, isPresented in
                 if isPresented {
                     searchText = ""
                     isSearchFocused = true
@@ -692,13 +692,13 @@ private struct LaunchpadOverlayView: View {
             .scrollClipDisabled()
             .contentMargins(.top, topInset, for: .scrollContent)
             .contentMargins(.bottom, bottomInset, for: .scrollContent)
-            .onChange(of: selectedEntryID) { selection in
+            .onChange(of: selectedEntryID) { _, selection in
                 guard let selection else { return }
                 withAnimation(.easeInOut(duration: 0.18)) {
                     scrollProxy.scrollTo(selection, anchor: .center)
                 }
             }
-            .onChange(of: filteredEntries.map(\.id)) { _ in
+            .onChange(of: filteredEntries.map(\.id)) {
                 synchronizeSelection()
             }
         }

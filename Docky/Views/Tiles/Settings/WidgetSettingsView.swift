@@ -181,7 +181,7 @@ struct WidgetSettingsNumberField: View {
             TextField("", text: $text)
                 .textFieldStyle(.roundedBorder)
                 .onAppear { text = value.map { formatted($0) } ?? "" }
-                .onChange(of: text) { newValue in
+                .onChange(of: text) { _, newValue in
                     let trimmed = newValue.trimmingCharacters(in: .whitespaces)
                     value = trimmed.isEmpty ? nil : Double(trimmed)
                 }

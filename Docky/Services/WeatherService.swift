@@ -286,31 +286,16 @@ final class WeatherService: NSObject, ObservableObject {
     }
 
     private static func reverseGeocodeLocationName(for location: CLLocation) async -> String {
-        if FeatureGate.shared.isAvailable(.modernReverseGeocoding), #available(macOS 26.0, *) {
-            if let request = MKReverseGeocodingRequest(location: location),
-               let mapItem = try? await request.mapItems.first {
-                if let name = mapItem.addressRepresentations?.cityName, !name.isEmpty {
-                    return name
-                }
-                if let cityWithContext = mapItem.addressRepresentations?.cityWithContext, !cityWithContext.isEmpty {
-                    return cityWithContext
-                }
-                if let shortAddress = mapItem.address?.shortAddress, !shortAddress.isEmpty {
-                    return shortAddress
-                }
-            }
-        } else if let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first {
-            if let locality = placemark.locality, !locality.isEmpty {
-                if let admin = placemark.administrativeArea, !admin.isEmpty, admin != locality {
-                    return "\(locality), \(admin)"
-                }
-                return locality
-            }
-            if let admin = placemark.administrativeArea, !admin.isEmpty {
-                return admin
-            }
-            if let name = placemark.name, !name.isEmpty {
+        if let request = MKReverseGeocodingRequest(location: location),
+           let mapItem = try? await request.mapItems.first {
+            if let name = mapItem.addressRepresentations?.cityName, !name.isEmpty {
                 return name
+            }
+            if let cityWithContext = mapItem.addressRepresentations?.cityWithContext, !cityWithContext.isEmpty {
+                return cityWithContext
+            }
+            if let shortAddress = mapItem.address?.shortAddress, !shortAddress.isEmpty {
+                return shortAddress
             }
         }
 

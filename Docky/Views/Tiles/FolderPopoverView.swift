@@ -81,7 +81,7 @@ struct FolderPopoverView: View {
             .onDisappear {
                 stopWatchingCurrentFolder()
             }
-            .onChange(of: popoverSize) { _ in
+            .onChange(of: popoverSize) {
                 reportPopoverSize()
             }
     }

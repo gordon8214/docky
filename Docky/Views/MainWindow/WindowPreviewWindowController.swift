@@ -413,7 +413,7 @@ private struct WindowPreviewView: View {
             .background(.primary.opacity(0.18))
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
-            .onChange(of: preview.selectedWindowIdentifier) { selection in
+            .onChange(of: preview.selectedWindowIdentifier) { _, selection in
                 guard let selection else { return }
                 withAnimation(.easeInOut(duration: 0.14)) {
                     scrollProxy.scrollTo(selection, anchor: .center)
@@ -632,7 +632,7 @@ private struct WindowPreviewListView: View {
             .background(.primary.opacity(0.18))
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .onChange(of: preview.selectedWindowIdentifier) { selection in
+            .onChange(of: preview.selectedWindowIdentifier) { _, selection in
                 guard let selection else { return }
                 withAnimation(.easeInOut(duration: 0.14)) {
                     scrollProxy.scrollTo(selection, anchor: .center)

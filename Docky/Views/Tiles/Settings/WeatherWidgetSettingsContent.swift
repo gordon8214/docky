@@ -240,19 +240,11 @@ enum WeatherLocationSearch {
         }
 
         return response.mapItems.prefix(8).compactMap { item in
-            let placemark = item.placemark
-            let coordinate = placemark.coordinate
-
-            let name = placemark.locality ?? item.name ?? placemark.name ?? "Location"
-
-            var parts: [String] = []
-            if let admin = placemark.administrativeArea, admin != name {
-                parts.append(admin)
-            }
-            if let country = placemark.country {
-                parts.append(country)
-            }
-            let subtitle = parts.isEmpty ? nil : parts.joined(separator: ", ")
+            let coordinate = item.location.coordinate
+            let addresses = item.addressRepresentations
+            let name = addresses?.cityName ?? item.name ?? item.address?.shortAddress ?? "Location"
+            let context = addresses?.cityWithContext(.full)
+            let subtitle = context == name ? nil : context
 
             return WeatherLocationSearchResult(
                 name: name,

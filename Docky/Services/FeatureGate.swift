@@ -47,9 +47,6 @@ enum DockyFeature: String, CaseIterable, Codable {
     /// FoundationModels-backed smart pinned-dock organizer
     /// (`PinnedDockSmartOrganizerService.organize`).
     case foundationModelsSmartOrganize
-    /// MapKit `MKReverseGeocodingRequest` for higher-quality city names
-    /// in the weather widget.
-    case modernReverseGeocoding
 
     // MARK: macOS 15+
     /// `SCStreamConfiguration.captureMicrophone`.
@@ -66,8 +63,7 @@ enum DockyFeature: String, CaseIterable, Codable {
         switch self {
         case .liquidGlass,
              .foundationModelsFolderNaming,
-             .foundationModelsSmartOrganize,
-             .modernReverseGeocoding:
+             .foundationModelsSmartOrganize:
             return OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
 
         case .streamMicrophoneCapture:

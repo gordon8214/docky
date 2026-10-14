@@ -13,6 +13,7 @@ struct ContextAction: Identifiable {
         case submenu
         case lazySubmenu
         case customView
+        case share(URL)
         case divider
     }
 
@@ -85,6 +86,20 @@ struct ContextAction: Identifiable {
             title: "",
             image: nil,
             customView: view,
+            isDestructive: false,
+            isOn: false,
+            children: [],
+            childrenProvider: nil,
+            handler: {}
+        )
+    }
+
+    static func share(_ url: URL) -> Self {
+        Self(
+            kind: .share(url),
+            title: String(localized: "Share"),
+            image: nil,
+            customView: nil,
             isDestructive: false,
             isOn: false,
             children: [],
@@ -323,6 +338,12 @@ struct ContextActionMenuPresenter: NSViewRepresentable {
                 let item = NSMenuItem()
                 item.view = action.customView
                 menu.addItem(item)
+            case .share(let url):
+                let picker = NSSharingServicePicker(items: [url])
+                let item = picker.standardShareMenuItem
+                // Keep the picker alive for the menu item's action target.
+                objc_setAssociatedObject(item, &sharingPickerKey, picker, .OBJC_ASSOCIATION_RETAIN)
+                menu.addItem(item)
             case .divider:
                 menu.addItem(.separator())
             }
@@ -343,6 +364,7 @@ struct ContextActionMenuPresenter: NSViewRepresentable {
 }
 
 @MainActor private var lazyMenuControllerKey: UInt8 = 0
+@MainActor private var sharingPickerKey: UInt8 = 0
 
 @MainActor
 private final class LazyMenuController: NSObject, NSMenuDelegate {

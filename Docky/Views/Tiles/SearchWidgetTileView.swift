@@ -45,7 +45,7 @@ struct SearchWidgetTileView: View {
             .padding(.horizontal, renderedSpan != .one ? 12 : 0)
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .onChange(of: isFieldFocused) { focused in
+        .onChange(of: isFieldFocused) { _, focused in
             // Flip the panel's key-window eligibility in lockstep with
             // focus so keystrokes reach the field, then ask AppKit to
             // (un)make-key now (`canBecomeKey` alone doesn't change the

@@ -145,7 +145,7 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
         window.ignoresMouseEvents = true
     }
 
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (() -> Void)? = nil) {
+    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor @Sendable () -> Void)? = nil) {
         guard let window else {
             completion?()
             return
@@ -156,7 +156,9 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
-            completion?()
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 
