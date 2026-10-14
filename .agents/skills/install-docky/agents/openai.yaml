@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install Docky"
+  short_description: "Build Release, replace Docky, and launch"
+  default_prompt: "Use $install-docky to build and install this Docky checkout in /Applications, then launch it."
