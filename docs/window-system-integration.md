@@ -67,8 +67,9 @@ usable-frame readback alone must not conceal a missing tiling coordinator.
 
 The loader is adapted from [yabai's MIT-licensed Dock injection
 loader](https://raw.githubusercontent.com/asmvik/yabai/master/src/osax/loader.m).
-Its license and attribution are bundled. The loader and payload contain
-`arm64e` and `x86_64` slices; the main app contains `arm64` and `x86_64` slices.
+Its license and attribution are bundled. The loader and payload contain only
+`arm64e`; the main app and watchdog contain only `arm64`. Docky supports Apple
+silicon Macs. Vendor frameworks retain their supplied architectures.
 Injection requires the system's task-port/debugger authorization and compatible
 SIP configuration. This host already had SIP disabled; validation did not
 change system security settings. The loader carries the debugger entitlement.

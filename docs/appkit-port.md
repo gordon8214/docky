@@ -15,17 +15,28 @@ installation is disabled; see [legacy compatibility](external-widgets.md).
 
 Builds are sequential to avoid Xcode's shared build-database lock. Budget 3–5 minutes
 per configuration, with a 10-minute timeout. Use the `Docky` scheme. For an unsigned
-universal verification build:
+Apple silicon verification build:
 
 ```sh
 gtimeout 600 xcodebuild -project Docky.xcodeproj -scheme Docky \
   -configuration Debug -destination 'platform=macOS' \
-  -derivedDataPath build/AppKitDerivedData ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+  -derivedDataPath build/AppKitDerivedData \
   CODE_SIGNING_ALLOWED=NO SWIFT_EMIT_LOC_STRINGS=NO build
 ```
 
 Repeat with `-configuration Release` after Debug completes. Localization extraction
-is disabled for verification so builds do not rewrite the string catalog.
+is disabled for verification so builds do not rewrite the string catalog. The project
+defaults to `arm64` for Docky and its watchdog; the Dock bridge builds as `arm64e`.
+Vendor frameworks retain their supplied architectures and signatures.
+
+Verify each built app with:
+
+```sh
+scripts/verify_architectures.sh build/AppKitDerivedData/Build/Products/Debug/Docky.app
+```
+
+The release script runs this check on the exported app before notarization and
+packaging. It checks project-owned binaries and excludes vendor frameworks.
 
 ## Regressions
 

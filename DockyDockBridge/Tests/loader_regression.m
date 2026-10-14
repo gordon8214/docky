@@ -23,19 +23,16 @@ static kern_return_t testProtect(vm_map_t task, vm_address_t address, vm_size_t 
     (void)task; (void)address; (void)size; (void)maximum; (void)protection;
     return step() ? KERN_FAILURE : KERN_SUCCESS;
 }
-#ifdef __arm64__
 static kern_return_t testCreate(task_t task, thread_act_t *thread) {
     (void)task;
     if (step()) return KERN_FAILURE;
     *thread = 502; threadPorts++; liveThreads++; return KERN_SUCCESS;
 }
-#endif
 static kern_return_t testRunning(task_t task, thread_state_flavor_t flavor, thread_state_t state,
                                 mach_msg_type_number_t count, thread_act_t *thread) {
     (void)task; (void)flavor; (void)state; (void)count; (void)thread;
     step(); return KERN_FAILURE;
 }
-#ifdef __arm64__
 static kern_return_t testConvert(thread_act_t thread, int direction, thread_state_flavor_t flavor,
                                 thread_state_t in, mach_msg_type_number_t count, thread_state_t out,
                                 mach_msg_type_number_t *outCount) {
@@ -45,7 +42,6 @@ static kern_return_t testConvert(thread_act_t thread, int direction, thread_stat
 static void *testSymbol(void *handle, const char *name) {
     return !strcmp(name, "thread_convert_thread_state") ? (void *)testConvert : dlsym(handle, name);
 }
-#endif
 static kern_return_t testTerminate(thread_act_t thread) { (void)thread; liveThreads--; return KERN_SUCCESS; }
 static kern_return_t testFree(vm_map_t task, mach_vm_address_t address, mach_vm_size_t size) {
     (void)task; (void)address; (void)size; allocations--; return KERN_SUCCESS;
@@ -64,19 +60,13 @@ static kern_return_t testPort(mach_port_t task, mach_port_name_t port) {
 #define thread_terminate testTerminate
 #define mach_vm_deallocate testFree
 #define mach_port_deallocate testPort
-#ifdef __arm64__
 #define dlsym testSymbol
-#endif
 #define main loaderEntry
 #include "../loader.m"
 #undef main
 int main(void) {
     @autoreleasepool {
-#ifdef __arm64__
         const int setupStages = 10;
-#else
-        const int setupStages = 8;
-#endif
         for (failAt = 1; failAt <= setupStages; failAt++) {
             stage = allocations = threadPorts = liveThreads = taskPorts = 0;
             char *arguments[] = {"DockyDockLoader", "/tmp/mock-payload.dylib", NULL};

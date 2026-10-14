@@ -72,6 +72,8 @@ if [[ ! -d "$APP_PATH" ]]; then
     exit 1
 fi
 
+"$PROJECT_ROOT/scripts/verify_architectures.sh" "$APP_PATH"
+
 if [[ -n "$NOTARYTOOL_PROFILE" ]]; then
     xcrun notarytool submit "$APP_PATH" \
         --keychain-profile "$NOTARYTOOL_PROFILE" \

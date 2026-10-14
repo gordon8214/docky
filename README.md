@@ -13,7 +13,7 @@ custom icons, and scripted actions.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/macOS-27%2B-black?logo=apple)](https://getdocky.com)
-[![Universal](https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-Universal-orange)](https://getdocky.com)
+[![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-orange)](https://getdocky.com)
 [![Website](https://img.shields.io/badge/getdocky.com-Download-brightgreen)](https://getdocky.com)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/josejuanqm)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/josejuanqm)
@@ -34,8 +34,7 @@ Docky rebuilds it for focus: it can run alongside, mirror, or fully replace the
 system Dock, and it moves with your workflow instead of getting in the way.
 
 - **Free and open source.** No paid tier, no upsell. Licensed under GPLv3.
-- **Native-feeling.** A universal binary for Apple Silicon and Intel, notarized
-  by Apple.
+- **Native-feeling.** Built for Apple silicon, notarized by Apple.
 - **Yours to shape.** Pin what you reach for, arrange it how you think, and drop
   in widgets and actions that match how you work.
 

@@ -24,7 +24,7 @@ include:
 
 1. Fork and clone the repository.
 2. Open `Docky.xcodeproj` in Xcode 16 or later.
-3. Build and run the `Docky` scheme.
+3. Build and run the `Docky` scheme on an Apple silicon Mac.
 
 The project uses Xcode's file-system-synchronized groups, so new source files
 under `Docky/` are picked up automatically without editing the project file.

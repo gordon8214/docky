@@ -6,10 +6,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#ifdef __arm64__
 #include <ptrauth.h>
 kern_return_t (*_thread_convert_thread_state)(thread_act_t thread, int direction, thread_state_flavor_t flavor, thread_state_t in_state, mach_msg_type_number_t in_stateCnt, thread_state_t out_state, mach_msg_type_number_t *out_stateCnt);
-#endif
 
 static const char *payload_path;
 
@@ -20,36 +18,6 @@ static const char *payload_path;
 //
 
 static char shell_code[8192] =
-#ifdef __x86_64__
-"\x55"                             // push       rbp
-"\x48\x89\xE5"                     // mov        rbp, rsp
-"\x48\x83\xEC\x10"                 // sub        rsp, 0x10
-"\x48\x8D\x7D\xF8"                 // lea        rdi, qword [rbp+var_8]
-"\x31\xC0"                         // xor        eax, eax
-"\x89\xC1"                         // mov        ecx, eax
-"\x48\x8D\x15\x1E\x00\x00\x00"     // lea        rdx, qword ptr [rip+0x1E]
-"\x48\x89\xCE"                     // mov        rsi, rcx
-"\x48\xB8"                         // movabs     rax, pthread_create_from_mach_thread
-"\x00\x00\x00\x00\x00\x00\x00\x00" //
-"\xFF\xD0"                         // call       rax
-"\x48\x83\xC4\x10"                 // add        rsp, 0x10
-"\x5D"                             // pop        rbp
-"\x48\xC7\xC0\x65\x62\x61\x79"     // mov        rax, 0x79616265
-"\xEB\xFE"                         // jmp        0x0
-"\xC3"                             // ret
-"\x55"                             // push       rbp
-"\x48\x89\xE5"                     // mov        rbp, rsp
-"\xBE\x01\x00\x00\x00"             // mov        esi, 0x1
-"\x48\x8D\x3D\x16\x00\x00\x00"     // lea        rdi, qword ptr [rip+0x16]
-"\x48\xB8"                         // movabs     rax, dlopen
-"\x00\x00\x00\x00\x00\x00\x00\x00" //
-"\xFF\xD0"                         // call       rax
-"\x31\xF6"                         // xor        esi, esi
-"\x89\xF7"                         // mov        edi, esi
-"\x48\x89\xF8"                     // mov        rax, rdi
-"\x5D"                             // pop        rbp
-"\xC3"                             // ret
-#elif __arm64__
 "\xFF\xC3\x00\xD1"                 // sub        sp, sp, #0x30
 "\xFD\x7B\x02\xA9"                 // stp        x29, x30, [sp, #0x20]
 "\xFD\x83\x00\x91"                 // add        x29, sp, #0x20
@@ -90,7 +58,6 @@ static char shell_code[8192] =
 "\xFF\xC3\x00\x91"                 // add        sp, sp, #0x30
 "\xFF\x0F\x5F\xD6"                 // retab
 "\x00\x00\x00\x00\x00\x00\x00\x00" //
-#endif
 "\x00\x00\x00\x00\x00\x00\x00\x00" // empty space for payload_path
 "\x00\x00\x00\x00\x00\x00\x00\x00"
 "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -170,21 +137,12 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-#ifdef __x86_64__
-    uint64_t pcfmt_address = (uint64_t) dlsym(RTLD_DEFAULT, "pthread_create_from_mach_thread");
-    uint64_t dlopen_address = (uint64_t) dlsym(RTLD_DEFAULT, "dlopen");
-
-    memcpy(shell_code + 28, &pcfmt_address, sizeof(uint64_t));
-    memcpy(shell_code + 71, &dlopen_address, sizeof(uint64_t));
-    memcpy(shell_code + 90, payload_path, strlen(payload_path));
-#elif __arm64__
     uint64_t pcfmt_address = (uint64_t) ptrauth_strip(dlsym(RTLD_DEFAULT, "pthread_create_from_mach_thread"), ptrauth_key_function_pointer);
     uint64_t dlopen_address = (uint64_t) ptrauth_strip(dlsym(RTLD_DEFAULT, "dlopen"), ptrauth_key_function_pointer);
 
     memcpy(shell_code + 88, &pcfmt_address, sizeof(uint64_t));
     memcpy(shell_code + 160, &dlopen_address, sizeof(uint64_t));
     memcpy(shell_code + 168, payload_path, strlen(payload_path));
-#endif
 
     if (mach_vm_write(task, code, (vm_address_t) shell_code, sizeof(shell_code)) != KERN_SUCCESS) {
         fprintf(stderr, "could not copy shellcode into code segment\n");
@@ -196,20 +154,6 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-#ifdef __x86_64__
-    x86_thread_state64_t thread_state = {};
-    thread_state_flavor_t thread_flavor = x86_THREAD_STATE64;
-    mach_msg_type_number_t thread_flavor_count = x86_THREAD_STATE64_COUNT;
-
-    thread_state.__rip = (uint64_t) code;
-    thread_state.__rsp = (uint64_t) stack + (stack_size / 2);
-
-    kern_return_t error = thread_create_running(task, thread_flavor, (thread_state_t)&thread_state, thread_flavor_count, &thread);
-    if (error != KERN_SUCCESS) {
-        fprintf(stderr, "could not spawn remote thread: %s\n", mach_error_string(error));
-        goto cleanup;
-    }
-#elif __arm64__
     void *handle = dlopen("/usr/lib/system/libsystem_kernel.dylib", RTLD_GLOBAL | RTLD_LAZY);
     if (handle) {
         _thread_convert_thread_state = dlsym(handle, "thread_convert_thread_state");
@@ -264,7 +208,6 @@ int main(int argc, char **argv)
             goto cleanup;
         }
     }
-#endif
 
     bootstrapStarted = YES;
     usleep(10000);
@@ -277,11 +220,7 @@ int main(int argc, char **argv)
             goto cleanup;
         }
 
-#ifdef __x86_64__
-        if (thread_state.__rax == 0x79616265) {
-#elif __arm64__
         if (thread_state.__x[0] == 0x79616265) {
-#endif
             result = 0;
             goto cleanup;
         }
