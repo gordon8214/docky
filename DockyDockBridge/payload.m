@@ -233,7 +233,9 @@ static NSDictionary *acceptRequest(NSDictionary *request, pid_t peerPID) {
         || ![request[@"orientation"] isKindOfClass:NSNumber.class]) return @{@"error": @"Invalid request types"};
     if (![state[@"active"] boolValue] || ![state[@"reservationOwnerActive"] boolValue]
         || [state[@"ownerPID"] intValue] != peerPID
-        || ![state[@"sessionID"] isEqual:newSession] || !isDocky(peerPID)) return @{@"error": @"Invalid owner/session"};
+        || ![state[@"sessionID"] isEqual:newSession]) return @{@"error": @"Invalid owner/session"};
+    if (!isDocky(peerPID)) return @{@"error":
+        @"Docky's code signature is invalid or has the wrong identifier. Sign the app as gt.quintero.Docky, then relaunch it."};
     if (bridgeError) return @{@"error": bridgeError};
     uint64_t nextRevision = [request[@"revision"] unsignedLongLongValue];
     if ([session isEqual:newSession] && nextRevision <= revision) return @{@"error": @"Stale revision"};

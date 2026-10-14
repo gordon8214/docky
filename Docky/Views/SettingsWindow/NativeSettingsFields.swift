@@ -266,23 +266,28 @@ enum NativeSettingsFields {
 extension NativeSettingsFields {
     static func behaviorSystemDockRows() -> [NSView] {
         let status = nativeLabel("")
+        let error = NSTextField(wrappingLabelWithString: "")
+        error.textColor = .secondaryLabelColor
         let retry = NativeActionButton("Retry") { WindowReservationService.shared.retryIntegration() }
         retry.setAccessibilityLabel(String(localized: "Retry system Dock integration"))
         let row = NativeFormRow(title: "System Integration", control: status, accessories: [retry])
-        row.observe { [weak status, weak retry] in
+        row.observe { [weak status, weak retry, weak error] in
             let service = WindowReservationService.shared
             let connected = service.backendStatus.contains("verified")
             status?.stringValue = service.lastError == nil
                 ? (connected ? String(localized: "Connected") : String(localized: "Connecting…"))
                 : String(localized: "Needs attention")
             status?.toolTip = service.lastError ?? service.backendDetails
+            error?.stringValue = service.lastError ?? ""
+            error?.isHidden = service.lastError == nil
             retry?.isHidden = service.lastError == nil
         }
         return [
             NSTextField(wrappingLabelWithString:
                 "Docky replaces the system Dock while running. "
                     + "Your original Dock settings are restored when Docky quits."),
-            row
+            row,
+            error
         ]
     }
 

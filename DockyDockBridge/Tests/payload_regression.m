@@ -23,8 +23,27 @@ static void fakeInfo(id object, SEL selector, uint32_t display, double inset, do
 static void require(BOOL condition, NSString *message) {
     if (!condition) { fprintf(stderr, "%s\n", message.UTF8String); exit(1); }
 }
+static void checkOwnerAuthentication(void) {
+    NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    require([NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:NO
+                                                   attributes:nil error:nil], @"Could not create authentication fixture");
+    statePath = [directory stringByAppendingPathComponent:@"state.plist"];
+    NSDictionary *state = @{@"active": @YES, @"reservationOwnerActive": @YES,
+                            @"ownerPID": @(getpid()), @"sessionID": @"fixture"};
+    require([state writeToFile:statePath atomically:YES], @"Could not write authentication fixture");
+    require(chmod(statePath.fileSystemRepresentation, 0600) == 0, @"Could not protect authentication fixture");
+    NSMutableDictionary *request = [@{@"session": @"wrong-session", @"revision": @1,
+                                     @"display": @1, @"reason": @0, @"orientation": @2} mutableCopy];
+    require([acceptRequest(request, getpid())[@"error"] isEqual:@"Invalid owner/session"],
+            @"Session authentication must precede code signature validation");
+    request[@"session"] = @"fixture";
+    require([acceptRequest(request, getpid())[@"error"] containsString:@"code signature"],
+            @"An unsigned owner must be rejected with a code signature diagnostic");
+    [NSFileManager.defaultManager removeItemAtPath:directory error:nil];
+}
 int main(void) {
     @autoreleasepool {
+        checkOwnerAuthentication();
         calls = [NSMutableArray array];
         appleDisplayInfo = [NSMutableDictionary dictionary];
         originalInfo = fakeInfo; originalSet = fakeSet; originalBroadcast = fakeBroadcast;

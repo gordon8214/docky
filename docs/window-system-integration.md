@@ -106,6 +106,13 @@ scripts/test_appkit_browser.sh
 scripts/test_appkit_compatibility.sh
 ```
 
+Sign local Release builds before launching them too. `CODE_SIGNING_ALLOWED=NO`
+leaves a linker signature with identifier `Docky`, which does not authenticate
+as `gt.quintero.Docky`. The Dock-side publisher rejects that build and releases
+the screen reservation. Settings → Behavior → System Dock displays the error.
+After signing, use Retry or relaunch Docky. Verify the bundle with
+`codesign --verify --deep --strict` before running it.
+
 Quit a running production Docky before live bridge/lifecycle tests. Focused
 regressions should finish within approximately 10 seconds; AppKit/lifecycle
 regressions within approximately 15 seconds. Executables are capped at 30

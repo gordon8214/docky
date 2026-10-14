@@ -29,6 +29,12 @@ is disabled for verification so builds do not rewrite the string catalog. The pr
 defaults to `arm64` for Docky and its watchdog; the Dock bridge builds as `arm64e`.
 Vendor frameworks retain their supplied architectures and signatures.
 
+These verification builds disable code signing. Before launching either build,
+ad-hoc sign the app and verify its signature using the commands in
+[Window system integration](window-system-integration.md#regression-commands).
+The reservation helper rejects Xcode's temporary linker signature, leaving
+windows free to extend under Docky.
+
 Verify each built app with:
 
 ```sh
