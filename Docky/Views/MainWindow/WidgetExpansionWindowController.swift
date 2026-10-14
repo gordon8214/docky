@@ -238,7 +238,7 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
             return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
         }
 
-        let edge = DockyPreferences.shared.windowPosition.resolved(
+        let edge = DockyPreferences.shared.effectiveWindowPosition.resolved(
             systemOrientation: DockSettingsService.shared.orientation)
         return DockPresentationGeometry.origin(
             for: .init(size: size, source: sourceFrame, visible: visibleFrame, edge: edge))
@@ -259,7 +259,7 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
     private var dockEdge: NSRectEdge {
         let prefs = DockyPreferences.shared
         let settings = DockSettingsService.shared
-        switch prefs.windowPosition.resolved(systemOrientation: settings.orientation) {
+        switch prefs.effectiveWindowPosition.resolved(systemOrientation: settings.orientation) {
         case .top: return .minY
         case .bottom: return .maxY
         case .left: return .maxX

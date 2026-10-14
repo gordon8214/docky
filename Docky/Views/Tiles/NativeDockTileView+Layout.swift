@@ -3,6 +3,7 @@ import QuartzCore
 
 extension NativeDockTileView {
     func layoutTile() {
+        if WindowsTaskbarStyle.isActive, canvas != nil { layoutWindowsTile(); return }
         let pad = interaction.appliedTileIconPadding
         let insets = interaction.contentInsets
         var rect = bounds.insetBy(dx: pad + insets.width, dy: pad + insets.height)

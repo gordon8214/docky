@@ -8,6 +8,7 @@ extension NativeDockTileView {
             WindowRegistry.shared.objectWillChange.eraseToAnyPublisher(),
             DockBadgeService.shared.objectWillChange.eraseToAnyPublisher(),
             TilePressService.shared.objectWillChange.eraseToAnyPublisher(),
+            StartMenuService.shared.objectWillChange.eraseToAnyPublisher(),
             TrashService.shared.objectWillChange.eraseToAnyPublisher(),
             WidgetExpansionWindowController.shared.objectWillChange.eraseToAnyPublisher()
         ] {

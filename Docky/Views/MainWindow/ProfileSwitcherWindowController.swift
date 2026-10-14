@@ -36,7 +36,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
-        let position = preferences.windowPosition
+        let position = preferences.effectiveWindowPosition
             .resolved(systemOrientation: dockSettings.orientation)
         let hosting = NativeProfileSwitcherController()
         hosting.configure(
@@ -160,7 +160,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
     private func observePositionChanges() {
         observeChanges { [weak self] in
-            _ = DockyPreferences.shared.windowPosition
+            _ = DockyPreferences.shared.effectiveWindowPosition
             self?.updateRootViewAndFrame()
         }
         .store(in: &cancellables)
@@ -176,7 +176,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
     private func updateRootViewAndFrame() {
         guard let window, let mainWindow else { return }
-        let position = preferences.windowPosition
+        let position = preferences.effectiveWindowPosition
             .resolved(systemOrientation: dockSettings.orientation)
         let mainFrame = mainWindow.frame
         contentController.configure(

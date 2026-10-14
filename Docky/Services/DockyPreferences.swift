@@ -1844,10 +1844,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Theme-aware accessor. Falls through to the active theme's
-    /// `behavior.windowAxisSizing` when the user hasn't picked a value
-    /// of their own; otherwise returns the user's choice.
+    /// The Windows presentation fixes placement without rewriting the stored preference.
+    var effectiveWindowPosition: DockWindowPosition {
+        WindowsTaskbarStyle.isActive ? .bottom : windowPosition
+    }
+
     var effectiveWindowAxisSizing: DockWindowAxisSizing {
+        if WindowsTaskbarStyle.isActive { return .fullAxis }
         let themed = ThemeManager.shared.activeManifest?.behavior?.windowAxisSizing
             .flatMap(DockWindowAxisSizing.init(rawValue:))
         return appearanceOverride(

@@ -5,6 +5,8 @@ final class DockChromeView: NSView {
     private let glass = LiveGlassBackdropView()
     private let nativeGlass = NSGlassEffectView()
     private let tint = CALayer()
+    private let windowsEdge = CALayer()
+    private let windowsMaterial = NSVisualEffectView()
     private let imageLayer = CALayer()
     private let border = CAShapeLayer()
     private let borderGradient = CAGradientLayer()
@@ -15,11 +17,16 @@ final class DockChromeView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+        windowsMaterial.material = .hudWindow
+        windowsMaterial.blendingMode = .behindWindow
+        windowsMaterial.state = .active
+        addSubview(windowsMaterial)
         addSubview(nativeGlass)
         addSubview(glass)
         layer?.addSublayer(tint)
         layer?.addSublayer(imageLayer)
         layer?.addSublayer(border)
+        layer?.addSublayer(windowsEdge)
         border.fillColor = nil
         borderMask.fillColor = nil
         borderMask.strokeColor = NSColor.white.cgColor
@@ -38,7 +45,9 @@ final class DockChromeView: NSView {
     }
     func refresh() {
         let preferences = DockyPreferences.shared
-        let hidesGlass =
+        windowsMaterial.isHidden = !WindowsTaskbarStyle.isActive
+            || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let hidesGlass = WindowsTaskbarStyle.isActive ||
             preferences.effectiveDisablesGlassLook || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         glass.isHidden = hidesGlass || !glass.isAvailable
         nativeGlass.isHidden = hidesGlass || glass.isAvailable
@@ -51,6 +60,33 @@ final class DockChromeView: NSView {
     override func layout() {
         super.layout()
         guard let layer else { return }
+        if WindowsTaskbarStyle.isActive {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.mask = nil
+            windowsMaterial.frame = bounds
+            tint.zPosition = 1
+            windowsEdge.zPosition = 2
+            tint.frame = bounds
+            let color = WindowsTaskbarStyle.background(effectiveAppearance)
+            tint.backgroundColor = color.withAlphaComponent(
+                NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : color.alphaComponent).cgColor
+            tint.isHidden = false
+            imageLayer.isHidden = true
+            border.isHidden = true
+            borderGradient.isHidden = true
+            windowsEdge.isHidden = false
+            windowsEdge.frame = CGRect(
+                x: 0, y: 0, width: bounds.width, height: 1 / (window?.backingScaleFactor ?? 2))
+            let edgeColor = WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.12)
+            windowsEdge.backgroundColor = edgeColor.cgColor
+            CATransaction.commit()
+            return
+        }
+        tint.zPosition = 0
+        windowsEdge.zPosition = 0
+        windowsEdge.isHidden = true
+        imageLayer.isHidden = false
         let preferences = DockyPreferences.shared
         let cap = min(bounds.width, bounds.height) / 2
         let radii = [
@@ -98,7 +134,8 @@ final class DockChromeView: NSView {
         } else {
             imageLayer.contentsCenter = CGRect(x: 0, y: 0, width: 1, height: 1)
         }
-        let position = preferences.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation)
+        let position = preferences.effectiveWindowPosition.resolved(
+            systemOrientation: DockSettingsService.shared.orientation)
         if position.isVertical {
             imageLayer.bounds.size = CGSize(width: bounds.height, height: bounds.width)
             imageLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -106,6 +143,18 @@ final class DockChromeView: NSView {
         } else {
             imageLayer.setAffineTransform(.identity)
         }
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        guard WindowsTaskbarStyle.isActive else { super.rightMouseDown(with: event); return }
+        let actions: [ContextAction] = [
+            .action("Activity Monitor") {
+                let url = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
+                NSWorkspace.shared.openApplication(at: url,
+                                                   configuration: NSWorkspace.OpenConfiguration())
+            },
+            .action("Taskbar Settings") { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) }
+        ]
+        ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)
     }
     static func roundedPath(in rect: CGRect, radii: [CGFloat]) -> CGPath {
         let path = CGMutablePath()

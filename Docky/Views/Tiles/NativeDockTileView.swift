@@ -24,6 +24,7 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
     var watchedFolder: URL?
     let badge = NSTextField(labelWithString: "")
     let indicator = NSImageView()
+    let windowsIndicator = CALayer()
     var content: NSView?
     var contentKey: String?
     var tracking: NSTrackingArea?
@@ -119,7 +120,7 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
     func refresh() {
         let tile = interaction.tile
         let prefs = interaction.preferences
-        toolTip = interaction.tooltipTitle
+        toolTip = WindowsTaskbarStyle.isActive ? nil : interaction.tooltipTitle
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(interaction.tooltipTitle)
@@ -134,9 +135,13 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         indicator.isHidden = !interaction.showsRunningIndicator || prefs.effectiveActiveIndicatorShape == .none
         indicator.image = interaction.runningIndicatorImage
         indicator.wantsLayer = true
+        let windowsLayout = WindowsTaskbarStyle.isActive && canvas != nil
+        windowsIndicator.isHidden = !windowsLayout
+        if !windowsLayout { windowsIndicator.removeAllAnimations() }
         indicator.layer?.backgroundColor = indicator.image == nil ? prefs.effectiveActiveIndicatorColor.cgColor : nil
         indicator.layer?.cornerRadius =
             prefs.effectiveActiveIndicatorShape == .underline ? 0 : max(1, interaction.runningIndicatorThickness / 2)
+        if windowsLayout { updateWindowsIndicator() }
         needsLayout = true
         needsDisplay = true
     }
@@ -146,7 +151,10 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
     }
 
     func updateTileAppearance() {
+        if WindowsTaskbarStyle.isActive { updateWindowsAppearance(); return }
         let prefs = interaction.preferences
+        badge.font = .systemFont(ofSize: 10, weight: .semibold)
+        for view in [hoverBackdrop, activeBackdrop, imageView] { view.layer?.removeAllAnimations() }
         let selected =
             interaction.isAppFolderDropTarget || interaction.isTrashDropTarget || interaction.isDocumentDropTarget
         layer?.backgroundColor = selected ? NSColor.controlAccentColor.withAlphaComponent(0.3).cgColor : nil

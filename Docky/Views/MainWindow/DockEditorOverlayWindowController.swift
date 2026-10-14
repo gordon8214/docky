@@ -87,7 +87,8 @@ final class DockEditorOverlayWindowController: NSWindowController {
         }
 
         let screenFrame = mainWindow?.screen?.frame ?? NSScreen.main?.frame ?? .zero
-        let position = preferences.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation)
+        let position = preferences.effectiveWindowPosition.resolved(
+            systemOrientation: DockSettingsService.shared.orientation)
         let overlayFrame = insetOverlayFrame(screenFrame: screenFrame, position: position)
 
         if let mainWindow {

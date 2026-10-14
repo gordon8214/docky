@@ -155,7 +155,7 @@ final class DockEditorHintWindowController: NSWindowController {
         let frameSize = NSSize(width: max(contentSize.width, 300), height: max(contentSize.height, 44))
         let screenVisibleFrame = mainWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         guard !screenVisibleFrame.isEmpty else { return }
-        let position = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
+        let position = preferences.effectiveWindowPosition.resolved(systemOrientation: dockSettings.orientation)
 
         let origin: CGPoint
         switch position {

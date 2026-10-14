@@ -33,11 +33,15 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     private weak var heldMainWindow: MainWindow?
     private var pendingDismissTask: Task<Void, Never>?
     private var dismissAnimationTask: Task<Void, Never>?
+    private var styleObservation: AnyCancellable?
+    private var presentedWindowsStyle: Bool?
+    private weak var previousKeyWindow: NSWindow?
+    private weak var previousFirstResponder: NSResponder?
 
     private init() {
-        let window = NSWindow(
+        let window = WindowsTaskbarPanel(
             contentRect: .zero,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -46,7 +50,15 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
+        window.acceptsKeys = false
+        window.hidesOnDeactivate = false
         super.init(window: window)
+        styleObservation = observeChanges { [weak self] in
+            let windowsStyle = WindowsTaskbarStyle.isActive
+            guard let self, let previousStyle = self.presentedWindowsStyle,
+                  previousStyle != windowsStyle else { return }
+            self.dismissImmediately()
+        }
     }
 
     @available(*, unavailable)
@@ -92,7 +104,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
 
         // Already showing for this tile — keep it, just refresh the frame in
         // case the dock layout shifted (magnification, edit mode exit, etc.).
-        if currentTileID == sourceTileID, window.isVisible {
+        if currentTileID == sourceTileID, window.isVisible,
+            presentedWindowsStyle == WindowsTaskbarStyle.isActive {
             activeSourceTileID = sourceTileID
             pendingDismissTask?.cancel()
             pendingDismissTask = nil
@@ -108,16 +121,7 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         dismissAnimationTask = nil
         beginDockVisibilityHoldIfNeeded()
 
-        let browser = NativeWindowBrowserController(source: .preview)
-        let count = WindowPreviewService.shared.windows.count
-        let usesList = WindowPreviewService.shared.resolvedLayout == .list
-        let windowSize = CGSize(
-            width: usesList ? 340 : CGFloat(min(max(count, 1), 4)) * 228 + 24,
-            height: usesList ? CGFloat(min(max(count, 1), 8)) * 52 + 24 : 200)
-        browser.view.frame = CGRect(origin: .zero, size: windowSize)
-        (browser.view as? NativeHoverMaterialView)?.onHover = { isHovered in
-            WindowPreviewWindowController.shared.setPreviewHovered(isHovered, sourceTileID: sourceTileID)
-        }
+        let (browser, windowSize) = previewBrowser(sourceTileID: sourceTileID)
         let finalOrigin = frameOrigin(
             for: windowSize,
             sourceFrame: sourceFrame,
@@ -133,7 +137,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         window.orderFront(nil)
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.animationDuration
+            context.duration = WindowsTaskbarStyle.reducesMotion ? 0
+                : WindowsTaskbarStyle.isActive ? WindowsTaskbarStyle.popupDuration : Self.animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().setFrame(finalFrame, display: true)
             window.animator().alphaValue = 1
@@ -141,8 +146,37 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
 
         return true
     }
+    private func previewBrowser(sourceTileID: String) -> (NSViewController, CGSize) {
+        WindowsTaskbarTooltip.shared.dismiss()
+        let windowsStyle = WindowsTaskbarStyle.isActive
+        configurePresenterStyle()
+        let browser: NSViewController = windowsStyle
+            ? WindowsWindowPreviewController() : NativeWindowBrowserController(source: .preview)
+        let count = WindowPreviewService.shared.windows.count
+        let usesList = !windowsStyle && WindowPreviewService.shared.resolvedLayout == .list
+        let size = CGSize(
+            width: usesList ? 340 : CGFloat(min(max(count, 1), 4)) * 228 + 24,
+            height: usesList ? CGFloat(min(max(count, 1), 8)) * 52 + 24 : 200)
+        browser.view.frame = CGRect(origin: .zero, size: size)
+        (browser.view as? NativeHoverMaterialView)?.onHover = { [weak self] isHovered in
+            self?.setPreviewHovered(isHovered, sourceTileID: sourceTileID)
+        }
+        if let windowsBrowser = browser as? WindowsWindowPreviewController {
+            windowsBrowser.onHover = { [weak self] hovered in
+                self?.setPreviewHovered(hovered, sourceTileID: sourceTileID)
+            }
+        }
+        return (browser, size)
+    }
 
+    func updateSourceFrame(_ frame: CGRect, sourceTileID: String) {
+        guard currentTileID == sourceTileID, let window, window.isVisible else { return }
+        let origin = frameOrigin(for: window.frame.size, sourceFrame: frame, preferredEdge: .maxY)
+        if window.frame.origin != origin { window.setFrameOrigin(origin) }
+    }
     func dismissImmediately() {
+        restoreKeyboardFocus()
+        presentedWindowsStyle = nil
         pendingDismissTask?.cancel()
         pendingDismissTask = nil
         dismissAnimationTask?.cancel()
@@ -159,6 +193,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
 
     func dismiss(sourceTileID: String) {
         guard currentTileID == sourceTileID else { return }
+        restoreKeyboardFocus()
+        presentedWindowsStyle = nil
         pendingDismissTask?.cancel()
         pendingDismissTask = nil
         isPreviewHovered = false
@@ -183,7 +219,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 NSAnimationContext.runAnimationGroup(
                     { context in
-                        context.duration = Self.animationDuration
+                        context.duration = WindowsTaskbarStyle.reducesMotion ? 0
+                : WindowsTaskbarStyle.isActive ? WindowsTaskbarStyle.popupDuration : Self.animationDuration
                         context.timingFunction = CAMediaTimingFunction(name: .easeIn)
                         window.animator().alphaValue = 0
                     },
@@ -200,13 +237,14 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
 
     func requestDismiss(sourceTileID: String) {
         guard currentTileID == sourceTileID else { return }
-        guard !isPreviewHovered else { return }
+        guard !isPreviewHovered, !WindowPreviewService.shared.isContextMenuPresented else { return }
 
         pendingDismissTask?.cancel()
         pendingDismissTask = Task { @MainActor in
             try? await Task.sleep(for: Self.dismissGrace)
             guard !Task.isCancelled else { return }
-            guard self.currentTileID == sourceTileID, !self.isPreviewHovered else { return }
+            guard self.currentTileID == sourceTileID, !self.isPreviewHovered,
+                !WindowPreviewService.shared.isContextMenuPresented else { return }
             self.dismiss(sourceTileID: sourceTileID)
         }
     }
@@ -253,6 +291,40 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         heldMainWindow?.endInteraction(interactionToken)
         heldMainWindow = nil
         isHoldingDockVisible = false
+    }
+
+}
+
+extension WindowPreviewWindowController {
+    func focusForKeyboardInteraction() {
+        guard WindowsTaskbarStyle.isActive, let window, window.isVisible else { return }
+        if !window.isKeyWindow {
+            previousKeyWindow = NSApp.keyWindow
+            previousFirstResponder = previousKeyWindow?.firstResponder
+        }
+        window.makeKey()
+        window.makeFirstResponder(window.contentViewController?.view)
+    }
+    func configurePresenterStyle() {
+        let windowsStyle = WindowsTaskbarStyle.isActive
+        presentedWindowsStyle = windowsStyle
+        (window as? WindowsTaskbarPanel)?.acceptsKeys = windowsStyle
+    }
+    private func restoreKeyboardFocus() {
+        if window?.isKeyWindow == true, let previousKeyWindow {
+            previousKeyWindow.makeKey()
+            previousKeyWindow.makeFirstResponder(previousFirstResponder)
+        }
+        previousKeyWindow = nil
+        previousFirstResponder = nil
+    }
+    func contextMenuPresentationChanged(_ presented: Bool, sourceTileID: String) {
+        guard currentTileID == sourceTileID else { return }
+        WindowPreviewService.shared.setContextMenuPresented(presented)
+        if presented {
+            pendingDismissTask?.cancel()
+            pendingDismissTask = nil
+        } else { requestDismiss(sourceTileID: sourceTileID) }
     }
 
     /// Positions the preview window against the inward edge of the dock so

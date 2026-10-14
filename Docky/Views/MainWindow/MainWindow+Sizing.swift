@@ -38,6 +38,13 @@ extension MainWindow {
 
     func resolveContentLayout(bounds layoutBounds: CGRect, position: ResolvedDockWindowPosition,
                               horizontalPadding: CGFloat, verticalPadding: CGFloat) -> ContentLayout {
+        if WindowsTaskbarStyle.isActive {
+            let size = CGSize(width: layoutBounds.width, height: WindowsTaskbarStyle.height)
+            layout.setContentScale(1)
+            layout.setCompactsWidgetsForOverflow(false)
+            layout.setChromeSize(size)
+            return ContentLayout(size: size, scale: 1, availableAxisLength: size.width)
+        }
         let horizontalContentPadding = horizontalPadding
         let verticalContentPadding = verticalPadding
         let baseTileSize = dockSettings.displayTileSize

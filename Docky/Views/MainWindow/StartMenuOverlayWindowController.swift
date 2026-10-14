@@ -143,7 +143,7 @@ final class StartMenuOverlayWindowController: NSWindowController {
             let screen = main.screen ?? NSScreen.main
         else { return }
         let visible = screen.visibleFrame
-        let position = DockyPreferences.shared.windowPosition
+        let position = DockyPreferences.shared.effectiveWindowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
 
         // Anchor against the visible chrome rect when available; fall
@@ -160,7 +160,8 @@ final class StartMenuOverlayWindowController: NSWindowController {
         let origin: CGPoint
         switch position {
         case .bottom:
-            origin = CGPoint(x: anchor.minX, y: anchor.maxY + gap)
+            origin = CGPoint(x: WindowsTaskbarStyle.isActive ? anchor.midX - size.width / 2 : anchor.minX,
+                             y: anchor.maxY + gap)
         case .top:
             origin = CGPoint(x: anchor.minX, y: anchor.minY - size.height - gap)
         case .left:

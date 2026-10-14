@@ -144,7 +144,7 @@ final class MainWindowContainerView: NSView {
     private func cursorIsAtChromeFringe(_ point: CGPoint, canvasSize: CGSize) -> Bool {
         let chromeSize = DockLayoutService.shared.chromeSize
         guard chromeSize.width > 0, chromeSize.height > 0 else { return true }
-        let position = DockyPreferences.shared.windowPosition
+        let position = DockyPreferences.shared.effectiveWindowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
         switch position {
         case .bottom:
@@ -229,7 +229,7 @@ final class MainWindow: NSPanel {
     func chromeScreenFrame() -> CGRect? {
         let chromeSize = DockLayoutService.shared.chromeSize
         guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
-        let position = DockyPreferences.shared.windowPosition
+        let position = DockyPreferences.shared.effectiveWindowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
         return DockSystemGeometry.restingChrome(
             window: frame, size: chromeSize, edge: position, edgeGap: chromeEdgeGap(position))

@@ -55,6 +55,12 @@ final class TilePressService: ObservableObject {
         }
     }
 
+    /// A native tile can identify the actual hit target during an animated layout.
+    func beginPress(tileID: String) {
+        hoveredTileID = tileID
+        pressedTileID = tileID
+    }
+
     func clearHover(tileID: String) {
         if hoveredTileID == tileID {
             hoveredTileID = nil

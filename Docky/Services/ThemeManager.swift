@@ -46,6 +46,7 @@ import Observation
     /// Removed layout tiles are scoped to their theme and survive relaunch.
     private(set) var removedLayoutInsertionIDsByTheme: [String: [String]]
 
+    private let directoryOverride: URL?
     private let defaults: UserDefaults
     private let decoder = JSONDecoder()
     private let fileManager = FileManager.default
@@ -55,7 +56,8 @@ import Observation
         static let removedLayoutInsertionIDsByTheme = "docky.removedThemeLayoutInsertionIDs"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, directoryURL: URL? = nil) {
+        self.directoryOverride = directoryURL
         self.defaults = defaults
         self.activeThemeID = defaults.string(forKey: Keys.activeThemeID)
         self.removedLayoutInsertionIDsByTheme =
@@ -81,7 +83,7 @@ import Observation
     /// On-disk location where installed theme bundles live.
     /// Created lazily; safe to expose to UI / shell.
     var themesDirectoryURL: URL {
-        Self.themesDirectoryURL
+        directoryOverride ?? Self.themesDirectoryURL
     }
 
     /// Manifest of the active theme, if any. Resolved from the
@@ -502,7 +504,10 @@ import Observation
             author: NSFullUserName(),
             version: "1.0.0",
             description: nil,
-            appearance: appearance
+            appearance: appearance,
+            behavior: ThemeManager.shared.activeManifest?.behavior?.taskbarStyle.map {
+                ThemeBehavior(taskbarStyle: $0)
+            }
         )
     }
 

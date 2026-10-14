@@ -348,7 +348,7 @@ extension DockTileInteraction {
     }
 
     var position: ResolvedDockWindowPosition {
-        preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
+        preferences.effectiveWindowPosition.resolved(systemOrientation: dockSettings.orientation)
     }
 
     var inwardPopoverEdge: NSRectEdge {

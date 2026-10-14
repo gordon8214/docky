@@ -11,7 +11,7 @@ extension MainWindow {
         let resolvedScreen = targetScreen() ?? screen ?? NSScreen.main
         let screenBounds = resolvedScreen?.frame ?? .zero
         lastPointerScreenFrame = screenBounds
-        let position = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
+        let position = preferences.effectiveWindowPosition.resolved(systemOrientation: dockSettings.orientation)
         // Use menu-bar clearance without subtracting our own reservation.
         // A top-edge fullscreen reveal also stays below the menu bar.
         let visibleBounds = resolvedScreen.map {
@@ -81,7 +81,7 @@ extension MainWindow {
         // chrome height up to that fixed peak.
         let scaledBaseTileSize = dockSettings.tileSize * contentScale
         let magnificationHeadroom: CGFloat =
-            (dockSettings.magnification && dockSettings.largeSize > scaledBaseTileSize)
+            (!WindowsTaskbarStyle.isActive && dockSettings.magnification && dockSettings.largeSize > scaledBaseTileSize)
             ? dockSettings.largeSize - scaledBaseTileSize
             : 0
         return {
@@ -118,6 +118,7 @@ extension MainWindow {
 
     func applyFrame(_ frame: CGRect, animated: Bool, duration: TimeInterval?) {
         let shouldAnimate = animated && hasResolvedInitialFrame
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         guard shouldAnimate else {
             setFrame(frame, display: true, animate: false)
@@ -127,7 +128,8 @@ extension MainWindow {
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration ?? autohideAnimationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.timingFunction = WindowsTaskbarStyle.isActive
+                ? WindowsTaskbarStyle.timingFunction : CAMediaTimingFunction(name: .easeInEaseOut)
             animator().setFrame(frame, display: true)
         }
     }
@@ -139,7 +141,8 @@ extension MainWindow {
     }
 
     var autohideAnimationDuration: TimeInterval {
-        min(max(0, preferences.autohideAnimationDuration), 1)
+        WindowsTaskbarStyle.isActive ? WindowsTaskbarStyle.layoutDuration
+            : min(max(0, preferences.autohideAnimationDuration), 1)
     }
 
     func overflowContentScale(

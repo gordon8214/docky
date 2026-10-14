@@ -123,6 +123,20 @@ extension DockCanvasController {
     }
 
     func isPointInPinnedDropRegion(_ positionValue: CGFloat) -> Bool {
+        if WindowsTaskbarStyle.isActive {
+            let frames = displayTiles.compactMap { tile -> CGRect? in
+                guard case .app = tile.content else { return nil }
+                return visibleTileFrames[tile.id]
+            }
+            guard let first = frames.map(\.minX).min(), let last = frames.map(\.maxX).max() else {
+                guard let start = visibleTileFrames["windows:start"] ?? displayTiles.first(where: {
+                    if case .startMenu = $0.content { return true }
+                    return false
+                }).flatMap({ visibleTileFrames[$0.id] }) else { return false }
+                return positionValue >= start.minX && positionValue <= start.maxX + 8
+            }
+            return positionValue >= first - 8 && positionValue <= last + 8
+        }
         guard let trailingBoundaryFrame = tileFrames[pinnedTrailingBoundaryTileID],
             let lowerBound = pinnedDropRegionLowerBound
         else {

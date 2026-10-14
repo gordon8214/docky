@@ -31,7 +31,7 @@ extension DockCanvasController {
     /// whatever actually grew (handling edges and non-1×1 widgets
     /// precisely, not via the 5-icon constant approximation).
     func magnificationPass() -> MagnificationPass {
-        guard dockSettings.magnification,
+        guard !WindowsTaskbarStyle.isActive, dockSettings.magnification,
             !editMode.isActive,
             draggedTileID == nil,
             dockSettings.largeSize > dockSettings.tileSize

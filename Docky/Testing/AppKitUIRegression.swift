@@ -10,6 +10,7 @@
             await checkSettings()
             checkWidgets()
             await checkThemeWidgetRemoval()
+            await checkWindowsTaskbar()
             checkMediaTimeline()
             checkDragCancellation()
             checkLaunchpadEditing()

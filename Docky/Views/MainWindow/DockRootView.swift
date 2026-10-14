@@ -16,6 +16,7 @@ final class DockRootView: NSView {
     override var isFlipped: Bool { true }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        WindowsTaskbarMenu.install()
         addSubview(chrome)
         addSubview(canvas)
         registerForDraggedTypes([.fileURL, .string])
@@ -53,7 +54,7 @@ final class DockRootView: NSView {
         super.layout()
         var size = DockLayoutService.shared.chromeSize
         let prefs = DockyPreferences.shared
-        let position = prefs.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation)
+        let position = prefs.effectiveWindowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation)
         let growth = DockChromeMetricsService.shared.alongAxisGrowth
         if prefs.effectiveWindowAxisSizing != .fullAxis {
             if position.isVertical { size.height += growth } else { size.width += growth }
@@ -73,6 +74,13 @@ final class DockRootView: NSView {
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        if WindowsTaskbarStyle.isActive {
+            chrome.rightMouseDown(with: event)
+        } else {
+            super.rightMouseDown(with: event)
+        }
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {

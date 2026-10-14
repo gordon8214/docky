@@ -7,6 +7,11 @@ extension DockCanvasView {
         isLayingOut = true
         defer { isLayingOut = false }
         controller.layout.setTileCanvasFrame(CGRect(origin: .zero, size: bounds.size))
+        if WindowsTaskbarStyle.isActive {
+            layoutWindowsTaskbar()
+            return
+        }
+        if windowsStatus != nil { clearWindowsTaskbar() }
         let pass = DockCanvasLayoutPass(controller: controller, bounds: bounds)
         discardMissingViews(
             tileIDs: Set(controller.displayTiles.map(\.id)), componentIDs: Set(pass.components.map(\.id)))

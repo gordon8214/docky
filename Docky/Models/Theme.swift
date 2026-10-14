@@ -96,6 +96,8 @@ struct ThemeLayoutInsertion: Codable, Equatable {
 }
 
 struct ThemeBehavior: Codable, Equatable {
+    /// Optional presentation preset. Unknown values retain the standard Dock.
+    var taskbarStyle: String?
     /// Raw value of `DockWindowAxisSizing` ("fitContent" or "fullAxis").
     var windowAxisSizing: String?
     /// Resting tile (icon) size in points.

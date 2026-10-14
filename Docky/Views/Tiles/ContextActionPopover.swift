@@ -123,6 +123,7 @@ struct ContextAction: Identifiable {
 }
 
 enum ContextActionMenuPresenter {
+    @MainActor static var customPresenter: (([ContextAction], NSView, @escaping (Bool) -> Void) -> Bool)?
     @MainActor
     final class Coordinator: NSObject {
         private weak var anchorView: NSView?
@@ -200,8 +201,10 @@ enum ContextActionMenuPresenter {
                 return event
             }
 
-            let menu = buildMenu(actions: actions)
-            popUpCartouche(menu: menu, in: view)
+            if ContextActionMenuPresenter.customPresenter?(actions, view, onPresentationChanged) != true {
+                let menu = buildMenu(actions: actions)
+                popUpCartouche(menu: menu, in: view)
+            }
             return nil
         }
 
@@ -361,6 +364,7 @@ extension ContextActionMenuPresenter {
         onPresentationChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         guard !actions.isEmpty else { return }
+        if customPresenter?(actions, anchorView, onPresentationChanged) == true { return }
         let coordinator = Coordinator(
             actionProvider: { _ in actions },
             preferredEdge: preferredEdge,

@@ -72,3 +72,28 @@ motion, and reduced transparency.
 Before finalizing, run `git diff --check`, search app sources for SwiftUI imports and
 hosting adapters, and inspect the main app and its app-owned helper binaries with
 `otool -L` for SwiftUI linkage.
+
+## Windows 11 taskbar
+
+The bundled `windows` theme uses the optional `behavior.taskbarStyle: "windows11"`
+preset. It resolves a bottom, full-width 48-point bar with 40-point buttons,
+24-point icons, and 44-point pitch without rewriting saved placement, size,
+magnification, appearance overrides, or tile order. Additional tiles remain
+available through the tray overflow; battery details are available in the battery
+context menu. Status controls reflect Mac state and open Mac settings.
+
+App insertion and removal use keyframes sampled from `Windows Taskbar Behavior.mov`
+at source timestamps 11.742–12.033 and 14.175–14.408 seconds. The recording has
+variable timestamps (1,090 source frames), so nominal 120-fps frame counts are not
+used for timing. Icon entrance samples at 11.933–12.433 seconds reproduce the
+delayed rise and damped bounce independently of recentering. Windows presentation
+uses AppKit and Core Animation throughout.
+
+The AppKit UI regression entry point includes taskbar geometry, theme round-tripping,
+preserved preferences, cancellation, and popup cleanup. To also write dark/light
+rendering snapshots to `/tmp/docky-windows-snapshots`, add
+`--windows-taskbar-snapshots` alongside `--appkit-ui-regression` when running a
+previously built Debug app (30-second runtime budget). These snapshots do not
+replace a desktop material, live motion, VoiceOver, or Windows VM comparison.
+Segoe UI is used when installed; otherwise text uses the system font, whose glyph
+shapes differ from Windows.

@@ -145,7 +145,8 @@ final class WidgetSettingsPanelController: NSObject {
         }
 
         return DockPresentationGeometry.origin(for: .init(size: size, source: sourceFrame, visible: visibleFrame,
-            edge: DockyPreferences.shared.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation), gap: Self.edgeGap))
+            edge: DockyPreferences.shared.effectiveWindowPosition.resolved(
+                systemOrientation: DockSettingsService.shared.orientation), gap: Self.edgeGap))
     }
 
     private func convertToScreen(_ frame: CGRect) -> CGRect {
@@ -163,7 +164,7 @@ final class WidgetSettingsPanelController: NSObject {
     private var dockEdge: NSRectEdge {
         let prefs = DockyPreferences.shared
         let settings = DockSettingsService.shared
-        switch prefs.windowPosition.resolved(systemOrientation: settings.orientation) {
+        switch prefs.effectiveWindowPosition.resolved(systemOrientation: settings.orientation) {
         case .top: return .minY
         case .bottom: return .maxY
         case .left: return .maxX

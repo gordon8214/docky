@@ -167,7 +167,7 @@ extension DockCanvasController {
     }
 
     var position: ResolvedDockWindowPosition {
-        preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
+        preferences.effectiveWindowPosition.resolved(systemOrientation: dockSettings.orientation)
     }
 
     /// Cross-axis alignment that pushes tiles toward the screen edge the

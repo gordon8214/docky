@@ -12,6 +12,13 @@ extension NativeDockTileView {
     func nativeMouseEntered(with event: NSEvent) { hover(true) }
     func nativeMouseExited(with event: NSEvent) { hover(false) }
     func hover(_ value: Bool) {
+        if WindowsTaskbarStyle.isActive {
+            if value {
+                WindowsTaskbarTooltip.shared.schedule(for: self)
+            } else {
+                WindowsTaskbarTooltip.shared.dismiss(sourceID: interaction.tile.id)
+            }
+        }
         interaction.updateHoverState(isHovering: value)
         TilePressService.shared.registerHover(tileID: interaction.tile.id, isHovering: value)
         interaction.updateWidgetExpansionPresentation(isHovering: value, sourceFrame: interaction.globalTileFrame)
@@ -22,6 +29,9 @@ extension NativeDockTileView {
             rightMouseDown(with: event)
             return
         }
+        if WindowsTaskbarStyle.isActive {
+            TilePressService.shared.beginPress(tileID: interaction.tile.id)
+        }
         mouseDownPoint = canvas?.convert(event.locationInWindow, from: nil)
         wasDragging = false
         canceledMouseSession = false
@@ -30,6 +40,7 @@ extension NativeDockTileView {
         guard let canvas, let start = mouseDownPoint, canvas.controller.isTileDraggable(interaction.tile) else {
             return
         }
+        if WindowsTaskbarStyle.isActive { canvas.refreshFrames(force: true) }
         let location = canvas.convert(event.locationInWindow, from: nil)
         let translation = CGSize(width: location.x - start.x, height: location.y - start.y)
         guard wasDragging || hypot(translation.width, translation.height) >= 4 else { return }
@@ -45,6 +56,7 @@ extension NativeDockTileView {
             for: interaction.tile, value: DockPointerDrag(location: location, translation: translation))
     }
     func nativeMouseUp(with event: NSEvent) {
+        if WindowsTaskbarStyle.isActive { canvas?.refreshFrames(force: true) }
         if canceledMouseSession {
             canceledMouseSession = false
             return
@@ -62,7 +74,7 @@ extension NativeDockTileView {
             dragWindow?.setSearchFocus(false)
             dragWindow?.endInteraction(dragInteractionToken)
             dragWindow = nil
-        } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
+        } else if containsVisualLocation(event.locationInWindow) {
             activate()
         }
     }
@@ -88,6 +100,15 @@ extension NativeDockTileView {
         return true
     }
     func nativeKeyDown(with event: NSEvent) {
+        if WindowsTaskbarStyle.isActive, event.keyCode == 126,
+            case .app(let app) = interaction.tile.content {
+            if WindowPreviewWindowController.shared.present(
+                forBundleIdentifier: app.bundleIdentifier, sourceTileID: interaction.tile.id,
+                sourceFrame: interaction.globalTileFrame, preferredEdge: interaction.inwardPopoverEdge) {
+                WindowPreviewWindowController.shared.focusForKeyboardInteraction()
+            }
+            return
+        }
         if let stack = content as? NativeSmartStackView, [123, 124, 125, 126].contains(event.keyCode) {
             stack.cycle(event.keyCode == 123 || event.keyCode == 126 ? -1 : 1)
             return
@@ -196,7 +217,16 @@ extension NativeDockTileView {
         return false
     }
 
+    func containsVisualLocation(_ point: CGPoint) -> Bool {
+        if WindowsTaskbarStyle.isActive, let canvas {
+            let location = canvas.convert(point, from: nil)
+            return canvas.controller.visibleTileFrames[interaction.tile.id]?.contains(location) == true
+        }
+        return bounds.contains(convert(point, from: nil))
+    }
+
     func cancelDrag() {
+        if WindowsTaskbarStyle.isActive { TilePressService.shared.clearHover(tileID: interaction.tile.id) }
         if mouseDownPoint != nil { canceledMouseSession = true }
         if wasDragging {
             dragWindow?.setSearchFocus(false)
@@ -221,6 +251,7 @@ extension NativeDockTileView {
     folderPreviewTask?.cancel()
     folderPreviewTask = nil
     folderPreviewNeedsRefresh = true
+    WindowsTaskbarTooltip.shared.dismiss(sourceID: interaction.tile.id)
     cancelDrag()
     if holdsFolderInteraction {
         heldFolderWindow?.endInteraction(folderInteractionToken)

@@ -17,6 +17,9 @@ final class DockCanvasView: NSView {
     var dragPreviews: [NativeDockTileView] = []
     var dragPreviewIDs: [String] = []
     var dragTranslation: CGSize = .zero
+    var windowsStatus: WindowsTaskbarStatusView?
+    var windowsTileIDs: [String] = []
+    var windowsAnimationTimer: Timer?
     var groupBackdrops: [String: NSView] = [:]
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -42,8 +45,10 @@ final class DockCanvasView: NSView {
             _ = self.controller.preferences.windowPosition
             _ = self.controller.preferences.showsGroupedOpenedAppsBackdrop
             _ = self.controller.preferences.overflowBehavior
-            _ = self.controller.magnification.pointerLocation
-            _ = self.controller.magnification.strength
+            if !WindowsTaskbarStyle.isActive {
+                _ = self.controller.magnification.pointerLocation
+                _ = self.controller.magnification.strength
+            }
             _ = self.controller.dockSettings.displayTileSize
             self.needsLayout = true
         }.store(in: &subscriptions)
@@ -58,6 +63,7 @@ final class DockCanvasView: NSView {
             self.keyMonitor = nil
         }
         if window == nil {
+            clearWindowsTaskbar()
             cancelDrag()
             for token in scrollObservers.values { NotificationCenter.default.removeObserver(token) }
             scrollObservers.removeAll()
@@ -91,14 +97,24 @@ final class DockCanvasView: NSView {
         controller.tileFrames.removeAll(keepingCapacity: true)
         controller.visibleTileFrames.removeAll(keepingCapacity: true)
         for (id, tile) in tiles {
-            controller.tileFrames[id] = convert(tile.bounds, from: tile)
-            if !tile.isHidden, tile.alphaValue > 0, !tile.visibleRect.isEmpty {
-                controller.visibleTileFrames[id] = convert(tile.visibleRect, from: tile)
+            let visual = WindowsTaskbarStyle.isActive
+                ? convert(tile.layer?.presentation()?.frame ?? tile.frame, from: tile.superview)
+                : convert(tile.bounds, from: tile)
+            controller.tileFrames[id] = visual
+            if !tile.isHidden, tile.alphaValue > 0 {
+                let visible = WindowsTaskbarStyle.isActive
+                    ? visual.intersection(convert(tile.superview?.visibleRect ?? tile.bounds, from: tile.superview))
+                    : convert(tile.visibleRect, from: tile)
+                if !visible.isEmpty { controller.visibleTileFrames[id] = visible }
             }
             if let window, let content = window.contentView {
-                let frame = tile.convert(tile.bounds, to: nil)
+                let frame = WindowsTaskbarStyle.isActive ? convert(visual, to: nil) : tile.convert(tile.bounds, to: nil)
                 tile.interaction.globalTileFrame = CGRect(
                     x: frame.minX, y: content.bounds.height - frame.maxY, width: frame.width, height: frame.height)
+                if WindowsTaskbarStyle.isActive {
+                    WindowPreviewWindowController.shared.updateSourceFrame(
+                        tile.interaction.globalTileFrame, sourceTileID: id)
+                }
             }
         }
         controller.updateExternalDragDestinationIndex(at: controller.dockDrag.cursorLocation)
@@ -175,7 +191,7 @@ final class DockCanvasView: NSView {
         if controller.shouldHideDraggedOriginalTile(tileID: tile.id) { view.alphaValue = 0 }
         if !view.hasAnimatedAppearance, view.window != nil {
             view.hasAnimatedAppearance = true
-            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            if !WindowsTaskbarStyle.isActive, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 let animation = CABasicAnimation(keyPath: "opacity")
                 animation.fromValue = 0
                 animation.toValue = view.alphaValue

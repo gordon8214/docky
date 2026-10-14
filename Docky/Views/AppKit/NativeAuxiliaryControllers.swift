@@ -156,7 +156,7 @@ final class NativeDockEditorController: NSViewController {
         super.viewDidLayout()
         let width = min(1000, max(320, view.bounds.width - 48))
         let height = min(480, max(240, view.bounds.height - 120))
-        let position = DockyPreferences.shared.windowPosition.resolved(
+        let position = DockyPreferences.shared.effectiveWindowPosition.resolved(
             systemOrientation: DockSettingsService.shared.orientation)
         let origin: CGPoint
         switch position {

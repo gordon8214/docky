@@ -23,6 +23,7 @@ extension NativeDockTileView {
                     IconCacheService.shared.image(forImageFileURL: $0)
                 } ?? IconCacheService.shared.icon(forBundleIdentifier: LaunchpadTile.spotlightBundleIdentifier)
         case .startMenu:
+            if WindowsTaskbarStyle.isActive { imageView.image = WindowsTaskbarStyle.startImage(); break }
             imageView.image =
                 prefs.effectiveStartMenuIconOverrideURL.flatMap {
                     IconCacheService.shared.image(forImageFileURL: $0)
@@ -48,7 +49,8 @@ extension NativeDockTileView {
             || (PermissionsService.shared.accessibility == .granted
                 && WindowRegistry.shared.windows(forBundleIdentifier: app.bundleIdentifier).isEmpty)
         imageView.alphaValue =
-            prefs.dimsIdleAppIcons && WorkspaceService.shared.isRunning(bundleIdentifier: app.bundleIdentifier)
+            !WindowsTaskbarStyle.isActive && prefs.dimsIdleAppIcons
+                && WorkspaceService.shared.isRunning(bundleIdentifier: app.bundleIdentifier)
                 && idle ? 0.5 : 1
     }
 
