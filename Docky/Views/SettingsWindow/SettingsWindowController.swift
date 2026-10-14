@@ -4,13 +4,12 @@
 //
 
 import AppKit
-import SwiftUI
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
 
     convenience init() {
-        let rootViewController = NSHostingController(rootView: SettingsRootView())
+        let rootViewController = NativeSettingsController()
         let window = NSWindow(contentViewController: rootViewController)
         window.setContentSize(NSSize(width: 820, height: 540))
         window.minSize = NSSize(width: 720, height: 480)

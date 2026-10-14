@@ -32,7 +32,7 @@ under `Docky/` are picked up automatically without editing the project file.
 ## Pull requests
 
 - Branch off `main` and keep changes focused.
-- Match the surrounding code style; Docky leans on AppKit + SwiftUI and uses
+- Match the surrounding code style; Docky leans on AppKit + Core Animation and uses
   explanatory comments only where the reasoning is non-obvious (for example, the
   private-API usage in `Docky/Private/`).
 - Verify the app builds and runs before opening a PR:

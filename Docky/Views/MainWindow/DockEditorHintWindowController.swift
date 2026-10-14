@@ -5,7 +5,7 @@
 
 import AppKit
 import Combine
-import SwiftUI
+import Observation
 
 final class DockEditorHintWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
@@ -18,19 +18,19 @@ final class DockEditorHintWindowController: NSWindowController {
     private let preferences = DockyPreferences.shared
     private let dockSettings = DockSettingsService.shared
     private let editMode = DockEditModeService.shared
-    private let hostingController: NSHostingController<DockEditorHintChipView>
+    private let contentController: NativeDockHintController
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
-        let hostingController = NSHostingController(rootView: DockEditorHintChipView(onDismiss: {}))
-        self.hostingController = hostingController
+        let contentController = NativeDockHintController()
+        self.contentController = contentController
 
         let chipWindow = DockEditorHintWindow()
-        chipWindow.contentViewController = hostingController
+        chipWindow.contentViewController = contentController
 
         super.init(window: chipWindow)
 
-        self.hostingController.rootView = DockEditorHintChipView { [weak self] in
+        self.contentController.onDismiss = { [weak self] in
             self?.dismissHint()
         }
 
@@ -47,7 +47,8 @@ final class DockEditorHintWindowController: NSWindowController {
 
     private func prepareWindow() {
         guard let window else { return }
-        window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: true)
+        window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(
+            includesFullScreenAuxiliary: true)
         configureHiddenWindowState()
         updateFrame()
     }
@@ -72,7 +73,10 @@ final class DockEditorHintWindowController: NSWindowController {
     private func observeMainWindow() {
         NotificationCenter.default.publisher(for: NSWindow.didMoveNotification, object: mainWindow)
             .merge(with: NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: mainWindow))
-            .merge(with: NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification, object: mainWindow))
+            .merge(
+                with: NotificationCenter.default.publisher(
+                    for: NSWindow.didChangeScreenNotification, object: mainWindow)
+            )
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateFrame()
@@ -138,8 +142,8 @@ final class DockEditorHintWindowController: NSWindowController {
 
     private func updateFrame() {
         guard let window, let mainWindow else { return }
-        hostingController.view.layoutSubtreeIfNeeded()
-        let contentSize = hostingController.view.fittingSize
+        contentController.view.layoutSubtreeIfNeeded()
+        let contentSize = contentController.view.fittingSize
         let frameSize = NSSize(width: max(contentSize.width, 300), height: max(contentSize.height, 44))
         let screenVisibleFrame = mainWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         guard !screenVisibleFrame.isEmpty else { return }
@@ -190,7 +194,7 @@ final class DockEditorHintWindowController: NSWindowController {
         }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = animationDuration
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
@@ -224,38 +228,4 @@ private final class DockEditorHintWindow: NSWindow {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-}
-
-private struct DockEditorHintChipView: View {
-    let onDismiss: () -> Void
-
-    var body: some View {
-        Button(action: onDismiss) {
-            HStack(spacing: 10) {
-                Image(systemName: "cursorarrow.click.2")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                Text("Right-click the dividers to edit your dock and add widgets")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.regularMaterial, in: Capsule())
-            .overlay {
-                Capsule()
-                    .strokeBorder(Color.white.opacity(0.16))
-            }
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        }
-        .buttonStyle(.plain)
-        .fixedSize(horizontal: false, vertical: true)
-    }
 }

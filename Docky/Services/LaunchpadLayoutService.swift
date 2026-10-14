@@ -29,8 +29,8 @@ import Observation
         static let layout = "docky.launchpadLayout"
     }
 
-    private init() {
-        self.defaults = .standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if let data = defaults.data(forKey: Keys.layout),
            let decoded = try? JSONDecoder().decode(LaunchpadLayout.self, from: data) {
             self.layout = decoded

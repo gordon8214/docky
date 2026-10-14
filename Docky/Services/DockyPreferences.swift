@@ -408,6 +408,7 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
 
 enum DockWindowPosition: String, CaseIterable, Identifiable {
     case system
+    case top
     case left
     case right
     case bottom
@@ -417,6 +418,7 @@ enum DockWindowPosition: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .system: String(localized: "System")
+        case .top: String(localized: "Top")
         case .left: String(localized: "Left")
         case .right: String(localized: "Right")
         case .bottom: String(localized: "Bottom")
@@ -431,6 +433,8 @@ enum DockWindowPosition: String, CaseIterable, Identifiable {
             case .left: .left
             case .right: .right
             }
+        case .top:
+            .top
         case .left:
             .left
         case .right:
@@ -567,22 +571,6 @@ enum DockClipShape: String, CaseIterable, Identifiable {
             min(base, maximum)
         case .circle:
             maximum
-        }
-    }
-}
-
-enum ResolvedDockWindowPosition {
-    case top
-    case left
-    case right
-    case bottom
-
-    var isVertical: Bool {
-        switch self {
-        case .left, .right:
-            true
-        case .top, .bottom:
-            false
         }
     }
 }
@@ -4349,7 +4337,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
 
         let orientation: DockSettingsService.Orientation
         switch windowPosition {
-        case .system:
+        case .system, .top:
             return
         case .left:
             orientation = .left

@@ -26,6 +26,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var debugSnapshotCancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--appkit-ui-regression") {
+            window?.orderOut(nil)
+            Task { await AppKitUIRegression.run() }
+            return
+        }
+        #endif
         // Bound every AX call to 1s so a hung app can't stall the main run loop.
         // Must precede any other AX work — applies process-wide.
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
@@ -45,12 +52,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppUpdateService.shared.checkForUpdatesInBackground()
         WindowReservationService.shared.start()
         DockBadgeService.shared.start()
-
-        // Must precede TileStore.syncPreferencesFromSystemDockIfNeeded
-        // below: persisted dock contents may reference external widget
-        // identifiers, and TileStore filters out unknown widgets when
-        // rehydrating.
-        ExternalWidgetLoader.shared.discoverAndLoad()
 
         DockyPreferences.shared.applySystemDockVisibilityPreference()
         DockyPreferences.shared.applyOpenAtLoginPreference()
@@ -121,7 +122,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Routes a `docky://` URL to the matching handler.
     ///
     /// Routing table:
-    ///  - `docky://install-widget?url=<https://...>` — Widget Store install.
     ///  - `docky://launchpad[/show|/hide|/toggle]` — launchpad overlay.
     ///  - `docky://start-menu[/show|/hide|/toggle]` — start menu overlay.
     ///  - `docky://dock[/show|/hide|/toggle]` — flips `autohidesWindow`.
@@ -139,7 +139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         switch action {
         case "install-widget":
-            handleInstallWidgetURL(url)
+            return // Community widgets are unsupported in this fork.
         case "launchpad":
             applyOverlayAction(
                 path: path,
@@ -227,88 +227,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 service.setActiveProfile(id: nameMatch.id)
             }
         }
-    }
-
-    /// `docky://install-widget?url=<downloadURL>`. A widget is native code we
-    /// load in-process, so this path is off by default and confirmed before any
-    /// download, naming the source host. Manual installs stay open.
-    private func handleInstallWidgetURL(_ url: URL) {
-        guard
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            let downloadString = components.queryItems?.first(where: { $0.name == "url" })?.value,
-            let downloadURL = URL(string: downloadString),
-            let scheme = downloadURL.scheme?.lowercased(),
-            scheme == "https"
-        else {
-            presentInstallAlert(title: "Invalid widget install link", message: "The link did not include a valid HTTPS download URL.", style: .warning)
-            return
-        }
-
-        guard DockyPreferences.shared.allowsWidgetLinkInstalls else {
-            presentLinkInstallsDisabledAlert()
-            return
-        }
-
-        guard confirmLinkInstall(host: downloadURL.host ?? downloadString) else { return }
-
-        Task { @MainActor in
-            do {
-                let staged = try await MarketplaceClient.shared.downloadBundle(from: downloadURL)
-                _ = try ExternalWidgetLoader.shared.installBundle(from: staged)
-                try? FileManager.default.removeItem(at: staged.deletingLastPathComponent())
-
-                let alert = NSAlert()
-                alert.messageText = "Widget installed"
-                alert.informativeText = "Restart Docky to start using \(downloadURL.lastPathComponent)."
-                alert.alertStyle = .informational
-                alert.addButton(withTitle: "Restart Docky")
-                alert.addButton(withTitle: "Later")
-                if alert.runModal() == .alertFirstButtonReturn {
-                    NSApp.terminate(nil)
-                }
-            } catch {
-                presentInstallAlert(
-                    title: "Couldn't install widget",
-                    message: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
-                    style: .warning
-                )
-            }
-        }
-    }
-
-    /// Shown when a link install arrives while the feature is off. Sends the
-    /// user to the toggle rather than silently doing nothing.
-    private func presentLinkInstallsDisabledAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Installing widgets from links is off"
-        alert.informativeText = "For safety, Docky won't install a widget from a link until you turn this on in Settings › Widget Store."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
-            SettingsNavigator.shared.requestPane(id: "externalWidgets")
-        }
-    }
-
-    /// Consent gate before any download. Cancel is the default button, so the
-    /// install is always a deliberate choice.
-    private func confirmLinkInstall(host: String) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Install a widget from “\(host)”?"
-        alert.informativeText = "Widgets are native plugins that run inside Docky with the same access Docky has — Accessibility, Automation, files, and more. Docky can't verify what a widget does. Only continue if you trust this source."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Download & Install")
-        return alert.runModal() == .alertSecondButtonReturn
-    }
-
-    private func presentInstallAlert(title: String, message: String, style: NSAlert.Style) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = style
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {

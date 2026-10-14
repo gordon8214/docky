@@ -31,16 +31,6 @@ enum WidgetSettingValue: Codable, Equatable, Hashable {
         return nil
     }
 
-    /// Cocoa primitive so it can cross the @objc boundary into a plugin's `makeView(configuration:)`.
-    var cocoaValue: Any {
-        switch self {
-        case .string(let value): value
-        case .number(let value): value
-        case .bool(let value): value
-        case .stringList(let value): value
-        }
-    }
-
     private enum CodingKeys: String, CodingKey {
         case type
         case value
@@ -89,10 +79,6 @@ enum WidgetSettingValue: Codable, Equatable, Hashable {
 typealias WidgetSettings = [String: WidgetSettingValue]
 
 extension Dictionary where Key == String, Value == WidgetSettingValue {
-    var asCocoaConfiguration: [String: Any] {
-        mapValues(\.cocoaValue)
-    }
-
     func string(_ key: String) -> String? { self[key]?.stringValue }
     func double(_ key: String) -> Double? { self[key]?.doubleValue }
     func bool(_ key: String) -> Bool? { self[key]?.boolValue }

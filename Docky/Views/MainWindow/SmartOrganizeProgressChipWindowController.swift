@@ -5,7 +5,7 @@
 
 import AppKit
 import Combine
-import SwiftUI
+import Observation
 
 final class SmartOrganizeProgressChipWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
@@ -15,13 +15,13 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
     private let chipGap: CGFloat = 10
     private let preferences = DockyPreferences.shared
     private let dockSettings = DockSettingsService.shared
-    private let hostingController = NSHostingController(rootView: SmartOrganizeProgressChipView())
+    private let contentController = NativeProgressChipController()
 
     init(mainWindow: MainWindow) {
         self.mainWindow = mainWindow
 
         let chipWindow = SmartOrganizeProgressChipWindow()
-        chipWindow.contentViewController = hostingController
+        chipWindow.contentViewController = contentController
 
         super.init(window: chipWindow)
 
@@ -38,7 +38,8 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
 
     private func prepareWindow() {
         guard let window else { return }
-        window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: true)
+        window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(
+            includesFullScreenAuxiliary: true)
         configureHiddenWindowState()
         updateFrame()
         window.orderFront(nil)
@@ -68,7 +69,10 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
     private func observeMainWindow() {
         NotificationCenter.default.publisher(for: NSWindow.didMoveNotification, object: mainWindow)
             .merge(with: NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: mainWindow))
-            .merge(with: NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification, object: mainWindow))
+            .merge(
+                with: NotificationCenter.default.publisher(
+                    for: NSWindow.didChangeScreenNotification, object: mainWindow)
+            )
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateFrame()
@@ -100,8 +104,8 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
 
     private func updateFrame() {
         guard let window, let mainWindow else { return }
-        hostingController.view.layoutSubtreeIfNeeded()
-        let contentSize = hostingController.view.fittingSize
+        contentController.view.layoutSubtreeIfNeeded()
+        let contentSize = contentController.view.fittingSize
         let frameSize = NSSize(width: max(contentSize.width, 220), height: max(contentSize.height, 34))
         let screenVisibleFrame = mainWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         guard !screenVisibleFrame.isEmpty else { return }
@@ -152,7 +156,7 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
         }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = animationDuration
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
@@ -186,33 +190,4 @@ private final class SmartOrganizeProgressChipWindow: NSWindow {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-}
-
-private struct SmartOrganizeProgressChipView: View {
-    @ObservedObject private var progress = SmartOrganizeProgressService.shared
-
-    var body: some View {
-        #if DEBUG
-        let _ = Self._printChanges()
-        #endif
-
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-
-            Text(progress.message)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .strokeBorder(Color.white.opacity(0.16))
-        }
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        .fixedSize()
-    }
 }

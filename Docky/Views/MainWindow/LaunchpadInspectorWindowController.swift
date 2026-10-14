@@ -11,11 +11,11 @@
 
 import AppKit
 import Combine
-import SwiftUI
+import Observation
 
 final class LaunchpadInspectorWindowController: NSWindowController, NSWindowDelegate {
     private var cancellables: Set<AnyCancellable> = []
-    private let hostingController: NSHostingController<LaunchpadSettingsView>
+    private let contentController: NativeSettingsPaneController
     /// Whether the user has positioned the panel manually this session.
     /// On first present, we anchor the panel near the top-right of the
     /// active screen; once moved, we leave it alone so re-summons land
@@ -23,10 +23,8 @@ final class LaunchpadInspectorWindowController: NSWindowController, NSWindowDele
     private var hasPositioned = false
 
     init() {
-        let hosting = NSHostingController(
-            rootView: LaunchpadSettingsView(hidesAvailabilitySection: true)
-        )
-        self.hostingController = hosting
+        let hosting = NativeSettingsPaneController(id: "launchpad")
+        self.contentController = hosting
         let panel = LaunchpadInspectorPanel()
         panel.contentViewController = hosting
         super.init(window: panel)

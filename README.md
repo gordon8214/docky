@@ -4,7 +4,7 @@
 
 # Docky
 
-### The same old dock, on steroids. Now free and open source.
+### Native AppKit Dock for macOS 27
 
 Docky is a Dock replacement for macOS that elegantly replaces the system one. It
 brings the Dock back into reach: quieter, smarter, and native-feeling, with a
@@ -12,7 +12,7 @@ configurable layout, widgets, a fullscreen Launchpad, a live window switcher,
 custom icons, and scripted actions.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://getdocky.com)
+[![Platform](https://img.shields.io/badge/macOS-27%2B-black?logo=apple)](https://getdocky.com)
 [![Universal](https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-Universal-orange)](https://getdocky.com)
 [![Website](https://img.shields.io/badge/getdocky.com-Download-brightgreen)](https://getdocky.com)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/josejuanqm)
@@ -67,8 +67,9 @@ layout, and an optional global shortcut.
 
 Built-in widgets (Calendar, Reminders, Batteries, System, Weather, Now Playing,
 and more) live right in the dock. Stack several into a single tile with **Smart
-Stacks** and cycle through them in place. Add community `.dockywidget` bundles
-through the widget store.
+Stacks** and cycle through them in place. This fork supports built-in widgets only.
+Saved community widgets appear as removable unsupported placeholders; their settings
+and placements are preserved, and installed bundles remain on disk.
 
 <div align="center"><img src="docs/images/feature-widgets.jpg" alt="Widgets and Smart Stacks" width="820"></div>
 
@@ -88,7 +89,11 @@ Optionally show running apps inline so a folder doubles as a live workspace.
 - **Themes and profiles:** themeable appearance and switchable configuration
   profiles.
 
-## Download
+## Upstream downloads
+
+The links below distribute upstream Docky. Build this AppKit fork from this checkout
+using the instructions below. Sparkle and its existing update configuration are retained.
+
 
 Get the latest notarized build from [getdocky.com](https://getdocky.com), or grab
 a release from the [Releases page](https://github.com/josejuanqm/docky/releases).
@@ -125,13 +130,13 @@ automatically on first build.
 
 ### Requirements
 
-- macOS 14.0 (Sonoma) or later
-- Xcode 16 or later to build from source
+- macOS 27 or later
+- Xcode with the macOS 27 SDK
 
 ## Documentation
 
-- [External widget bundles](docs/external-widgets.md): the `.dockywidget` bundle
-  contract and how to build community widgets.
+- [AppKit implementation and validation](docs/appkit-port.md)
+- [Legacy community widget compatibility](docs/external-widgets.md)
 
 ## Supporting Docky
 

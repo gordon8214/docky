@@ -1,38 +1,11 @@
-//
-//  LiveGlassBackdrop.swift
-//  Docky
-//
-//  Real-glass NSView backed by a private CABackdropLayer with CAFilter
-//  composition (gaussianBlur + saturation). Unlike SwiftUI's `.glassEffect`,
-//  CABackdropLayer auto-samples its backdrop at compositor time, so the
-//  blur stays live as windows move behind the dock. Used as the chrome
-//  material when materialStyle == .liquidGlass.
-//
-//  Both CABackdropLayer and CAFilter are private QuartzCore classes loaded
-//  by name. Integration is fragile — class signatures or filter type
-//  strings could change between macOS versions — but the visible behavior
-//  is what we want and there is no public alternative that live-tracks.
-//
-
 import AppKit
 import QuartzCore
-import SwiftUI
 
-struct LiveGlassBackdrop: NSViewRepresentable {
-    var cornerRadius: CGFloat
-    var blurRadius: Double = 25
-    var saturation: Double = 1.8
-
-    func makeNSView(context: Context) -> LiveGlassBackdropView {
-        LiveGlassBackdropView()
-    }
-
-    func updateNSView(_ view: LiveGlassBackdropView, context: Context) {
-        view.apply(cornerRadius: cornerRadius, blurRadius: blurRadius, saturation: saturation)
-    }
-}
-
+/// Live custom glass renderer, retained directly without a hosting adapter.
 final class LiveGlassBackdropView: NSView {
+    private var lastBlurRadius: Double?
+    private var lastSaturation: Double?
+    var isAvailable: Bool { NSClassFromString("CABackdropLayer") != nil && NSClassFromString("CAFilter") != nil }
     init() {
         super.init(frame: .zero)
         wantsLayer = true
@@ -58,7 +31,11 @@ final class LiveGlassBackdropView: NSView {
         layer.cornerRadius = cornerRadius
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
-        layer.filters = makeFilters(blurRadius: blurRadius, saturation: saturation)
+        if lastBlurRadius != blurRadius || lastSaturation != saturation {
+            lastBlurRadius = blurRadius
+            lastSaturation = saturation
+            layer.filters = makeFilters(blurRadius: blurRadius, saturation: saturation)
+        }
     }
 
     private func makeFilters(blurRadius: Double, saturation: Double) -> [Any] {

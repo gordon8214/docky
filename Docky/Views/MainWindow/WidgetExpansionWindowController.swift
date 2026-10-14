@@ -5,7 +5,7 @@
 
 import AppKit
 import Combine
-import SwiftUI
+import Observation
 
 final class WidgetExpansionWindowController: NSWindowController, ObservableObject {
     static let shared = WidgetExpansionWindowController()
@@ -13,7 +13,9 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
     @Published private(set) var activeSourceTileID: String?
 
     private static let contentPadding: CGFloat = 8
-    private static let animationDuration: TimeInterval = 0.18
+    private static var animationDuration: TimeInterval {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.18
+    }
     private static let slideOffset: CGFloat = 12
     private static let minimumExpansionBaseTileSize: CGFloat = 80
 
@@ -61,10 +63,12 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         dismissAnimationTask = nil
         beginDockVisibilityHoldIfNeeded()
 
-        let resolvedTileSize = max(1, min(
-            sourceFrame.height,
-            sourceFrame.width / CGFloat(max(renderedSpan.rawValue, 1))
-        ))
+        let resolvedTileSize = max(
+            1,
+            min(
+                sourceFrame.height,
+                sourceFrame.width / CGFloat(max(renderedSpan.rawValue, 1))
+            ))
         let baseTileSize = max(Self.minimumExpansionBaseTileSize, resolvedTileSize)
         let extent = widget.kind.expansionExtent
         let size = CGSize(
@@ -81,27 +85,21 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         // drawing 1-up content inside a 3x3 window. Map the expansion
         // extent's tile width to the equivalent TileSpan instead, clamped
         // to `.four` (the highest case) for the 5-wide nowPlaying preview.
-        let expandedRenderedSpan = TileSpan(
-            rawValue: min(max(extent.widthTiles, 1), TileSpan.four.rawValue)
-        ) ?? .four
+        let expandedRenderedSpan =
+            TileSpan(
+                rawValue: min(max(extent.widthTiles, 1), TileSpan.four.rawValue)
+            ) ?? .four
 
-        let rootView = ZStack {
-            Color.clear
-
-            WidgetTileView(
-                tile: widget,
-                cornerRadius: cornerRadius,
-                renderedSpan: expandedRenderedSpan,
-                isWithinStack: false,
-                isExpanded: true,
-                isExpandedPreviewOpen: true
-            )
-            .frame(width: size.width, height: size.height)
-            .padding(Self.contentPadding)
-        }
-        .frame(width: windowSize.width, height: windowSize.height)
-        .contentShape(Rectangle())
-        .onHover { isHovering in
+        let rootView = NativeHoverMaterialView()
+        rootView.material = .popover
+        let widgetView = NativeWidgetView(
+            tile: widget, cornerRadius: cornerRadius, span: expandedRenderedSpan, expanded: true)
+        widgetView.frame = CGRect(
+            x: Self.contentPadding, y: Self.contentPadding, width: size.width, height: size.height)
+        widgetView.autoresizingMask = [.width, .height]
+        rootView.frame = CGRect(origin: .zero, size: windowSize)
+        rootView.addSubview(widgetView)
+        rootView.onHover = { isHovering in
             WidgetExpansionWindowController.shared.setPreviewHovered(isHovering, sourceTileID: sourceTileID)
         }
 
@@ -111,7 +109,7 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         let finalFrame = CGRect(origin: finalOrigin, size: windowSize)
         let initialFrame = CGRect(origin: initialOrigin, size: windowSize)
 
-        window.contentView = NSHostingView(rootView: rootView)
+        window.contentView = rootView
         window.setFrame(initialFrame, display: false)
         window.alphaValue = 0
         window.orderFront(nil)
@@ -145,19 +143,26 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         dismissAnimationTask?.cancel()
         dismissAnimationTask = Task { @MainActor in
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                NSAnimationContext.runAnimationGroup({ context in
-                    context.duration = Self.animationDuration
-                    context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                    window.animator().setFrame(targetFrame, display: true)
-                    window.animator().alphaValue = 0
-                }, completionHandler: {
-                    continuation.resume()
-                })
+                NSAnimationContext.runAnimationGroup(
+                    { context in
+                        context.duration = Self.animationDuration
+                        context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                        window.animator().setFrame(targetFrame, display: true)
+                        window.animator().alphaValue = 0
+                    },
+                    completionHandler: {
+                        continuation.resume()
+                    })
             }
             if Task.isCancelled { return }
             guard self.currentTileID == nil else { return }
             self.close()
         }
+    }
+
+    override func close() {
+        window?.contentView = nil
+        super.close()
     }
 
     func requestDismiss(sourceTileID: String) {
@@ -209,38 +214,8 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
             return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
         }
 
-        switch dockEdge {
-        case .maxY:
-            let proposedY = sourceFrame.maxY
-            let y = proposedY + size.height <= visibleFrame.maxY
-                ? proposedY
-                : max(visibleFrame.minY, sourceFrame.minY - size.height)
-            let x = clamp(sourceFrame.midX - size.width / 2, lower: visibleFrame.minX, upper: visibleFrame.maxX - size.width)
-            return CGPoint(x: x, y: y)
-        case .minY:
-            let proposedY = sourceFrame.minY - size.height
-            let y = proposedY >= visibleFrame.minY ? proposedY : sourceFrame.maxY
-            let x = clamp(sourceFrame.midX - size.width / 2, lower: visibleFrame.minX, upper: visibleFrame.maxX - size.width)
-            return CGPoint(x: x, y: y)
-        case .maxX:
-            let proposedX = sourceFrame.maxX
-            let x = proposedX + size.width <= visibleFrame.maxX
-                ? proposedX
-                : max(visibleFrame.minX, sourceFrame.minX - size.width)
-            let y = clamp(sourceFrame.midY - size.height / 2, lower: visibleFrame.minY, upper: visibleFrame.maxY - size.height)
-            return CGPoint(x: x, y: y)
-        case .minX:
-            let proposedX = sourceFrame.minX - size.width
-            let x = proposedX >= visibleFrame.minX ? proposedX : sourceFrame.maxX
-            let y = clamp(sourceFrame.midY - size.height / 2, lower: visibleFrame.minY, upper: visibleFrame.maxY - size.height)
-            return CGPoint(x: x, y: y)
-        @unknown default:
-            return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
-        }
-    }
-
-    private func clamp(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
-        min(max(value, lower), upper)
+        return DockPresentationGeometry.origin(for: .init(size: size, source: sourceFrame, visible: visibleFrame,
+            edge: DockyPreferences.shared.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation), gap: 0))
     }
 
     private func convertToScreen(_ frame: CGRect) -> CGRect {

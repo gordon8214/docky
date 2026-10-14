@@ -127,13 +127,19 @@ enum WidgetCatalog {
         photoFrame,
     ]
 
-    /// All available widget registrations, built-ins plus any external
-    /// bundles that ExternalWidgetLoader has registered. Computed (not
-    /// cached) so registrations discovered after first access still show
-    /// up the next time the palette refreshes.
+    /// Supported built-in registrations. Legacy community placements are supplied separately.
     @MainActor
     static var staticRegistrations: [WidgetRegistration] {
-        builtInRegistrations + externalRegistrations()
+        builtInRegistrations
+    }
+
+    @MainActor
+    static func registration(for kind: WidgetKind) -> WidgetRegistration? {
+        if let supported = staticRegistrations.first(where: { $0.kind == kind }) { return supported }
+        guard case .external(let identifier) = kind else { return nil }
+        return WidgetRegistration(
+            kind: kind, ownerBundleIdentifier: identifier, defaultSpan: .three,
+            includesInPalette: false, includesInSmartStack: false)
     }
 
     @MainActor
@@ -143,21 +149,7 @@ enum WidgetCatalog {
 
     @MainActor
     static var smartStackRegistrations: [WidgetRegistration] {
-        staticRegistrations.filter(\.includesInSmartStack)
-    }
-
-    @MainActor
-    private static func externalRegistrations() -> [WidgetRegistration] {
-        ExternalWidgetRegistry.shared.registrations.map { registration in
-            let metadata = registration.metadata
-            return WidgetRegistration(
-                kind: .external(metadata.identifier),
-                ownerBundleIdentifier: metadata.identifier,
-                defaultSpan: metadata.defaultSpan,
-                includesInPalette: metadata.includesInPalette,
-                includesInSmartStack: metadata.includesInSmartStack
-            )
-        }
+        staticRegistrations.filter(\.includesInSmartStack) + LegacyCommunityWidgets.registrations
     }
 
     /// Owner bundle identifiers that are *visible* in a freshly-inserted
@@ -178,6 +170,6 @@ enum WidgetCatalog {
     @MainActor
     static let defaultHiddenSmartStackOwnerBundleIdentifiers: [String] =
         smartStackRegistrations
-            .map(\.ownerBundleIdentifier)
-            .filter { !defaultVisibleSmartStackOwnerBundleIdentifiers.contains($0) }
+        .map(\.ownerBundleIdentifier)
+        .filter { !defaultVisibleSmartStackOwnerBundleIdentifiers.contains($0) }
 }

@@ -7,10 +7,10 @@
 
 import AppKit
 import Combine
-import SwiftUI
+import Observation
 
 final class MainWindowContainerView: NSView {
-    private let contentView = ClickThroughHostingView(rootView: MainWindowView())
+    private let contentView = DockRootView(frame: .zero)
     private var trackingArea: NSTrackingArea?
     private var topConstraint: NSLayoutConstraint!
     private var bottomConstraint: NSLayoutConstraint!
@@ -37,7 +37,7 @@ final class MainWindowContainerView: NSView {
         trailingConstraint = trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
 
         NSLayoutConstraint.activate([
-            topConstraint, bottomConstraint, leadingConstraint, trailingConstraint
+            topConstraint, bottomConstraint, leadingConstraint, trailingConstraint,
         ])
 
         applyContentInsets()
@@ -117,8 +117,8 @@ final class MainWindowContainerView: NSView {
 
     /// Pushes the live pointer position into the magnification service in
     /// the hosting view's top-left origin coordinate space, same as what
-    /// SwiftUI sees via `GeometryProxy.frame(in: .global)`. Caller flips Y
-    /// when the underlying NSHostingView isn't already flipped.
+    /// native tile views report. Caller flips Y
+    /// when the underlying DockRootView isn't already flipped.
     ///
     /// We only forward when the cursor is within the chrome's cross-axis
     /// strip. The window is taller (or wider, for side docks) than the
@@ -127,10 +127,11 @@ final class MainWindowContainerView: NSView {
     /// headroom above the chrome, well before it ever touched a tile.
     private func forwardMagnificationPointer(from event: NSEvent) {
         let inHosting = contentView.convert(event.locationInWindow, from: nil)
-        let topLeft: CGPoint = contentView.isFlipped
+        let topLeft: CGPoint =
+            contentView.isFlipped
             ? inHosting
             : CGPoint(x: inHosting.x, y: contentView.bounds.height - inHosting.y)
-        guard cursorIsAtChromeFringe(topLeft, hostingSize: contentView.bounds.size) else {
+        guard cursorIsAtChromeFringe(topLeft, canvasSize: contentView.bounds.size) else {
             DockMagnificationService.shared.clearPointer()
             return
         }
@@ -140,20 +141,20 @@ final class MainWindowContainerView: NSView {
     /// Cross-axis bounds check against the resting chrome. We don't gate
     /// on the along-axis (proximity to dock edge in that direction is the
     /// whole point of the cosine falloff), only the cross-axis fringe.
-    private func cursorIsAtChromeFringe(_ point: CGPoint, hostingSize: CGSize) -> Bool {
+    private func cursorIsAtChromeFringe(_ point: CGPoint, canvasSize: CGSize) -> Bool {
         let chromeSize = DockLayoutService.shared.chromeSize
         guard chromeSize.width > 0, chromeSize.height > 0 else { return true }
         let position = DockyPreferences.shared.windowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
         switch position {
         case .bottom:
-            return point.y >= hostingSize.height - chromeSize.height
+            return point.y >= canvasSize.height - chromeSize.height
         case .top:
             return point.y <= chromeSize.height
         case .left:
             return point.x <= chromeSize.width
         case .right:
-            return point.x >= hostingSize.width - chromeSize.width
+            return point.x >= canvasSize.width - chromeSize.width
         }
     }
 }
@@ -168,13 +169,16 @@ final class MainWindow: NSPanel {
     /// on the previously-frontmost app staying key). Embedded controls
     /// that need keyboard input, currently only the Search widget's
     /// 2x/3x text field, set `allowsKeyWindow` to `true` while focused
-    /// so SwiftUI can route keystrokes into them, then flip it back off
+    /// so AppKit can route keystrokes into them, then flip it back off
     /// on resign.
     static var allowsKeyWindow: Bool = false
     override var canBecomeKey: Bool { Self.allowsKeyWindow }
     override var canBecomeMain: Bool { false }
 
-    override var level: NSWindow.Level { get { .mainMenu } set {} }
+    override var level: NSWindow.Level {
+        get { .mainMenu }
+        set {}
+    }
 
     private enum VisibilityState {
         case visible
@@ -232,7 +236,7 @@ final class MainWindow: NSPanel {
 
     /// Screen-coordinate rect of the visible chrome (the dock pill itself,
     /// not the magnification headroom around it). Built from `chromeSize`
-    /// rather than crossing the SwiftUI/AppKit coord boundary, since the
+    /// rather than crossing the view/window coordinate boundary, since the
     /// chrome is always centered along-axis within the window (in
     /// full-axis mode it just happens to span edge-to-edge), and pinned
     /// to the inward cross-axis edge with magnification headroom on the
@@ -257,7 +261,10 @@ final class MainWindow: NSPanel {
         }
     }
 
-    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+    override init(
+        contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType,
+        defer flag: Bool
+    ) {
         visibilityState = DockyPreferences.shared.autohidesWindow ? .hidden : .visible
         // Force `.nonactivatingPanel` regardless of what the XIB hands us so
         // tile clicks never bring Docky to the foreground. Other bits stay
@@ -353,7 +360,9 @@ final class MainWindow: NSPanel {
         ]
         Publishers.MergeMany(layoutSignals)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration) }
+            .sink { [weak self] _ in
+                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
+            }
             .store(in: &cancellables)
 
         observeChanges { [weak self] in
@@ -379,7 +388,9 @@ final class MainWindow: NSPanel {
             .removeDuplicates()
             .dropFirst()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration) }
+            .sink { [weak self] _ in
+                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
+            }
             .store(in: &cancellables)
 
         editMode.$isActive
@@ -515,7 +526,9 @@ final class MainWindow: NSPanel {
 
         guard preferences.windowDisplayTarget == .displayContainingPointer else { return }
 
-        let pointerEvents: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
+        let pointerEvents: NSEvent.EventTypeMask = [
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel,
+        ]
         if PermissionsService.shared.accessibility == .granted {
             globalPointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: pointerEvents) { [weak self] _ in
                 self?.handlePointerScreenChangeIfNeeded()
@@ -593,8 +606,8 @@ final class MainWindow: NSPanel {
         fullscreenRevealWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self,
-                  self.isPointerInsideWindow,
-                  self.effectivelyAutohides
+                self.isPointerInsideWindow,
+                self.effectivelyAutohides
             else { return }
             self.setVisibility(.visible, animated: true)
         }
@@ -701,15 +714,19 @@ final class MainWindow: NSPanel {
         // forces them to zero in `MainWindowContainerView` and we
         // mirror that here so the panel sizing stays in sync.
         let fullAxis = preferences.effectiveWindowAxisSizing == .fullAxis
-        let horizontalContentPadding: CGFloat = fullAxis ? 0
+        let horizontalContentPadding: CGFloat =
+            fullAxis
+            ? 0
             : preferences.effectiveWindowContentInsetLeading + preferences.effectiveWindowContentInsetTrailing
-        let verticalContentPadding: CGFloat = fullAxis ? 0
+        let verticalContentPadding: CGFloat =
+            fullAxis
+            ? 0
             : preferences.effectiveWindowContentInsetTop + preferences.effectiveWindowContentInsetBottom
         let position = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
         let baseTileSize = dockSettings.displayTileSize
         let baseTileHeight = baseTileSize + preferences.effectiveTileVerticalPadding * 2
         let externalAppDropPreview: AppTile? = {
-            if case let .app(_, tile) = DockDragService.shared.kind { return tile }
+            if case .app(_, let tile) = DockDragService.shared.kind { return tile }
             return nil
         }()
         let externalFolderDropPreview: FolderTile? = {
@@ -717,21 +734,22 @@ final class MainWindow: NSPanel {
             // trailing drop region with a resolved insertion index. Open-with mode
             // (over an app tile) and idle hovering both leave chrome unchanged.
             guard DockDragService.shared.documentTargetTileID == nil,
-                  DockDragService.shared.destinationSection == .trailing,
-                  DockDragService.shared.destinationIndex != nil,
-                  case let .folder(_, tile) = DockDragService.shared.kind else {
+                DockDragService.shared.destinationSection == .trailing,
+                DockDragService.shared.destinationIndex != nil,
+                case .folder(_, let tile) = DockDragService.shared.kind
+            else {
                 return nil
             }
             return tile
         }()
-        let sizingTiles = TileContainerView.previewedTiles(
+        let sizingTiles = DockTileGeometry.previewedTiles(
             from: tileStore.tiles,
             paletteDrag: editMode.paletteDrag,
             paletteDropDestination: editMode.paletteDropDestination,
             externalAppDropPreview: externalAppDropPreview,
             externalFolderDropPreview: externalFolderDropPreview
         )
-        let naturalContentSize = TileContainerView.contentSize(
+        let naturalContentSize = DockTileGeometry.contentSize(
             tiles: sizingTiles,
             tileSize: baseTileSize,
             tileHeight: baseTileHeight,
@@ -753,7 +771,8 @@ final class MainWindow: NSPanel {
                     position: position
                 ) ? reservedStatusBarLength : 0)
         )
-        let availableAxisLength = preferences.effectiveWindowAxisSizing == .fullAxis
+        let availableAxisLength =
+            preferences.effectiveWindowAxisSizing == .fullAxis
             ? unreservedAvailableAxisLength
             : contentAvailableAxisLength
         let compactsWidgetsForOverflow = shouldCompactWidgetsForOverflow(
@@ -761,7 +780,7 @@ final class MainWindow: NSPanel {
             availableAxisLength: availableAxisLength,
             position: position
         )
-        let baseContentSize = TileContainerView.contentSize(
+        let baseContentSize = DockTileGeometry.contentSize(
             tiles: sizingTiles,
             tileSize: baseTileSize,
             tileHeight: baseTileHeight,
@@ -780,23 +799,25 @@ final class MainWindow: NSPanel {
         let scaledTileSize = baseTileSize * contentScale
         let scaledTileHeight = scaledTileSize + (preferences.effectiveTileVerticalPadding * contentScale * 2)
         let scaledTileSpacing = preferences.effectiveTileSpacing * contentScale
-        let displayedContentSize = TileContainerView.contentSize(
+        let displayedContentSize = DockTileGeometry.contentSize(
             tiles: sizingTiles,
             tileSize: scaledTileSize,
             tileHeight: scaledTileHeight,
             tileSpacing: scaledTileSpacing,
             position: position,
             compactWidgets: compactsWidgetsForOverflow,
-            edgePadding: TileContainerView.edgePadding * contentScale
+            edgePadding: DockTileGeometry.edgePadding * contentScale
         )
-        let displayedChromeAxisLength = preferences.effectiveWindowAxisSizing == .fullAxis
+        let displayedChromeAxisLength =
+            preferences.effectiveWindowAxisSizing == .fullAxis
             ? availableAxisLength
             : min(axisLength(of: displayedContentSize, position: position), availableAxisLength)
-        layout.setChromeSize(displayedChromeSize(
-            for: displayedContentSize,
-            displayedAxisLength: displayedChromeAxisLength,
-            position: position
-        ))
+        layout.setChromeSize(
+            displayedChromeSize(
+                for: displayedContentSize,
+                displayedAxisLength: displayedChromeAxisLength,
+                position: position
+            ))
         // Keep the chrome stretched across the current dock axis even when the
         // tile layout itself remains content-sized.
         let displayedAxisLength = availableAxisLength
@@ -808,9 +829,8 @@ final class MainWindow: NSPanel {
         // the resting tiles, so headroom is measured from the scaled
         // chrome height up to that fixed peak.
         let scaledBaseTileSize = dockSettings.tileSize * contentScale
-        let magnificationHeadroom: CGFloat = (
-            dockSettings.magnification && dockSettings.largeSize > scaledBaseTileSize
-        )
+        let magnificationHeadroom: CGFloat =
+            (dockSettings.magnification && dockSettings.largeSize > scaledBaseTileSize)
             ? dockSettings.largeSize - scaledBaseTileSize
             : 0
         let windowContentSize: CGSize = {
@@ -924,7 +944,8 @@ final class MainWindow: NSPanel {
             return contentSize.width + horizontalContentPadding
         }
 
-        let visibleAxisLength = availableAxisLength > 0
+        let visibleAxisLength =
+            availableAxisLength > 0
             ? min(max(minimumWidth, displayedAxisLength), availableAxisLength)
             : max(minimumWidth, displayedAxisLength)
         return visibleAxisLength + horizontalContentPadding
@@ -1047,7 +1068,7 @@ final class MainWindow: NSPanel {
 
     private func computeContentOverlapStateOnTargetScreen() -> ContentOverlapObservation {
         guard let screen = targetScreen(),
-              let primaryScreenHeight = NSScreen.screens.first?.frame.height
+            let primaryScreenHeight = NSScreen.screens.first?.frame.height
         else {
             return ContentOverlapObservation(isFullscreen: false, isMaximized: false)
         }
@@ -1074,7 +1095,7 @@ final class MainWindow: NSPanel {
             }
 
             guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-                  let cgBounds = CGRect(dictionaryRepresentation: boundsDict)
+                let cgBounds = CGRect(dictionaryRepresentation: boundsDict)
             else { continue }
 
             // CGWindow uses a flipped Y axis with origin at the top-left of the
@@ -1101,7 +1122,8 @@ final class MainWindow: NSPanel {
             }
         }
 
-        let foundFullscreen = fullscreenCandidate
+        let foundFullscreen =
+            fullscreenCandidate
             && registryReportsFullscreenWindow(
                 candidatePIDs: fullscreenCandidatePIDs,
                 matching: frame,
@@ -1168,5 +1190,12 @@ final class MainWindow: NSPanel {
         case .bottom: return flushBottom
         case .top: return flushTop
         }
+    }
+}
+
+extension MainWindow: DockWindowInteractionHolding, DockSearchFocusWindow {
+    func setSearchFocus(_ focused: Bool) {
+        Self.allowsKeyWindow = focused
+        if focused { makeKey() } else { resignKey() }
     }
 }

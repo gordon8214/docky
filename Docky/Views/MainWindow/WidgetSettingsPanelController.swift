@@ -4,7 +4,7 @@
 //
 
 import AppKit
-import SwiftUI
+import Observation
 
 /// Borderless panel that can still become key so its text fields work.
 private final class KeyableSettingsPanel: NSPanel {
@@ -28,7 +28,7 @@ final class WidgetSettingsPanelController: NSObject {
 
     private override init() { super.init() }
 
-    /// `sourceFrame` is the tile's frame in MainWindow coordinates (SwiftUI `.global`).
+    /// `sourceFrame` is the tile's frame in MainWindow coordinates (the flipped Dock canvas).
     func present(widget: WidgetTile, tileID: String, sourceFrame: CGRect) {
         if currentTileID == tileID {
             dismiss()
@@ -36,17 +36,10 @@ final class WidgetSettingsPanelController: NSObject {
         }
         dismiss()
 
-        let rootView = WidgetSettingsView(tileID: tileID, widget: widget) { [weak self] in
-            self?.dismiss()
-        }
-        .frame(width: Self.contentWidth)
-        .fixedSize(horizontal: false, vertical: true)
-
-        let hostingView = NSHostingView(rootView: AnyView(rootView))
-        hostingView.layoutSubtreeIfNeeded()
-        let fitting = hostingView.fittingSize
-        let contentHeight = min(max(fitting.height, 44), Self.maxContentHeight)
-        let windowSize = CGSize(width: Self.contentWidth, height: contentHeight)
+        let controller = NativeWidgetSettingsController(tileID: tileID, widget: widget)
+        controller.onDone = { [weak self] in self?.dismiss() }
+        let windowSize = CGSize(width: 380, height: 440)
+        controller.view.frame = CGRect(origin: .zero, size: windowSize)
 
         let panel = KeyableSettingsPanel(
             contentRect: CGRect(origin: .zero, size: windowSize),
@@ -60,7 +53,7 @@ final class WidgetSettingsPanelController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.contentView = hostingView
+        panel.contentViewController = controller
         panel.delegate = self
 
         let origin = frameOrigin(for: windowSize, sourceFrame: sourceFrame)
@@ -83,6 +76,8 @@ final class WidgetSettingsPanelController: NSObject {
         if let panel {
             panel.delegate = nil
             panel.orderOut(nil)
+            panel.contentViewController = nil
+            panel.contentView = nil
             panel.close()
         }
         panel = nil
@@ -128,7 +123,8 @@ final class WidgetSettingsPanelController: NSObject {
 
     private func beginDockVisibilityHoldIfNeeded() {
         guard heldMainWindow == nil,
-              let mainWindow = NSApp.windows.compactMap({ $0 as? MainWindow }).first else {
+            let mainWindow = NSApp.windows.compactMap({ $0 as? MainWindow }).first
+        else {
             return
         }
         mainWindow.beginInteraction()
@@ -147,38 +143,8 @@ final class WidgetSettingsPanelController: NSObject {
             return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
         }
 
-        switch dockEdge {
-        case .maxY:
-            let proposedY = sourceFrame.maxY + Self.edgeGap
-            let y = proposedY + size.height <= visibleFrame.maxY
-                ? proposedY
-                : max(visibleFrame.minY, sourceFrame.minY - size.height - Self.edgeGap)
-            let x = clamp(sourceFrame.midX - size.width / 2, lower: visibleFrame.minX, upper: visibleFrame.maxX - size.width)
-            return CGPoint(x: x, y: y)
-        case .minY:
-            let proposedY = sourceFrame.minY - size.height - Self.edgeGap
-            let y = proposedY >= visibleFrame.minY ? proposedY : sourceFrame.maxY + Self.edgeGap
-            let x = clamp(sourceFrame.midX - size.width / 2, lower: visibleFrame.minX, upper: visibleFrame.maxX - size.width)
-            return CGPoint(x: x, y: y)
-        case .maxX:
-            let proposedX = sourceFrame.maxX + Self.edgeGap
-            let x = proposedX + size.width <= visibleFrame.maxX
-                ? proposedX
-                : max(visibleFrame.minX, sourceFrame.minX - size.width - Self.edgeGap)
-            let y = clamp(sourceFrame.midY - size.height / 2, lower: visibleFrame.minY, upper: visibleFrame.maxY - size.height)
-            return CGPoint(x: x, y: y)
-        case .minX:
-            let proposedX = sourceFrame.minX - size.width - Self.edgeGap
-            let x = proposedX >= visibleFrame.minX ? proposedX : sourceFrame.maxX + Self.edgeGap
-            let y = clamp(sourceFrame.midY - size.height / 2, lower: visibleFrame.minY, upper: visibleFrame.maxY - size.height)
-            return CGPoint(x: x, y: y)
-        @unknown default:
-            return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
-        }
-    }
-
-    private func clamp(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
-        min(max(value, lower), upper)
+        return DockPresentationGeometry.origin(for: .init(size: size, source: sourceFrame, visible: visibleFrame,
+            edge: DockyPreferences.shared.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation), gap: Self.edgeGap))
     }
 
     private func convertToScreen(_ frame: CGRect) -> CGRect {

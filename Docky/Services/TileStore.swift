@@ -2293,7 +2293,7 @@ final class TileStore: ObservableObject {
         case "divider": return .divider
         default:
             guard let widgetKind = WidgetKind(rawValue: insertion.kind),
-                  let registration = WidgetCatalog.staticRegistrations.first(where: { $0.kind == widgetKind }) else {
+                  let registration = WidgetCatalog.registration(for: widgetKind) else {
                 return nil
             }
             let span: TileSpan = insertion.span
