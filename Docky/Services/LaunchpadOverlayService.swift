@@ -126,12 +126,13 @@ final class LaunchpadOverlayService: ObservableObject {
     /// (Calculator, Notes, Reminders, etc.) — without it the launchpad
     /// would be missing every built-in app. `~/Applications` is rare but
     /// some installers put per-user apps there.
-    private static let applicationDirectories: [URL] = [
+    nonisolated private static let defaultApplicationDirectories: [URL] = [
         URL(fileURLWithPath: "/Applications", isDirectory: true),
         URL(fileURLWithPath: "/System/Applications", isDirectory: true),
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Applications", isDirectory: true)
     ]
+    nonisolated private let applicationDirectories: [URL]
     private let scanQueue = DispatchQueue(
         label: "gt.quintero.Docky.LaunchpadScan",
         qos: .utility
@@ -147,7 +148,12 @@ final class LaunchpadOverlayService: ObservableObject {
     /// the grid updates immediately without waiting for another scan.
     private var appsByBundleID: [String: AppTile] = [:]
 
-    private init() {
+    private convenience init() {
+        self.init(applicationDirectories: Self.defaultApplicationDirectories)
+    }
+
+    init(applicationDirectories: [URL]) {
+        self.applicationDirectories = applicationDirectories
         startWatchingApplicationDirectories()
         observeWallpaperURL()
         scheduleRescan(delay: 0)
@@ -167,7 +173,7 @@ final class LaunchpadOverlayService: ObservableObject {
             // Run a synchronous scan so the overlay has something to
             // render on first present; async rescans then keep it
             // fresh as the user installs / uninstalls apps.
-            applyScan(Self.scanApplications())
+            applyScan(Self.scanApplications(in: applicationDirectories))
         }
         isPresented = true
     }
@@ -241,7 +247,7 @@ final class LaunchpadOverlayService: ObservableObject {
     }
 
     private func startWatchingApplicationDirectories() {
-        for directory in Self.applicationDirectories {
+        for directory in applicationDirectories {
             guard FileManager.default.fileExists(atPath: directory.path) else { continue }
 
             let descriptor = open(directory.path, O_EVTONLY)
@@ -267,7 +273,9 @@ final class LaunchpadOverlayService: ObservableObject {
 
     private func scheduleRescan(delay: TimeInterval) {
         pendingRescan?.cancel()
-        let task = DispatchWorkItem { [weak self] in
+        // DispatchWorkItem does not require a Sendable closure, so make
+        // the background boundary explicit instead of inheriting MainActor.
+        let task = DispatchWorkItem { @Sendable [weak self] in
             self?.performRescan()
         }
         pendingRescan = task
@@ -282,8 +290,8 @@ final class LaunchpadOverlayService: ObservableObject {
         }
     }
 
-    private func performRescan() {
-        let scan = Self.scanApplications()
+    nonisolated private func performRescan() {
+        let scan = Self.scanApplications(in: applicationDirectories)
         // Warm icon cache off the main thread (the icon service is
         // thread-safe; the actual NSImage materializes on first read).
         for app in scan.appsByBundleID.values {
@@ -395,7 +403,7 @@ final class LaunchpadOverlayService: ObservableObject {
     /// seed for virtual folders. Duplicates across roots are
     /// deduped by bundle id (first occurrence wins; `/Applications`
     /// takes precedence over `/System/Applications`).
-    private static func scanApplications() -> LaunchpadScan {
+    nonisolated private static func scanApplications(in applicationDirectories: [URL]) -> LaunchpadScan {
         var seenBundleIDs = Set<String>()
         var appsByBundleID: [String: AppTile] = [:]
         var datesByBundleID: [String: LaunchpadAppDates] = [:]
@@ -455,7 +463,7 @@ final class LaunchpadOverlayService: ObservableObject {
         )
     }
 
-    private static func scanSubfolderApps(
+    nonisolated private static func scanSubfolderApps(
         in folderURL: URL,
         seenBundleIDs: inout Set<String>,
         datesByBundleID: inout [String: LaunchpadAppDates]
@@ -484,7 +492,7 @@ final class LaunchpadOverlayService: ObservableObject {
         return apps
     }
 
-    private static func makeAppTile(from url: URL) -> AppTile? {
+    nonisolated private static func makeAppTile(from url: URL) -> AppTile? {
         guard let bundleIdentifier = Bundle(url: url)?.bundleIdentifier,
               !bundleIdentifier.isEmpty,
               bundleIdentifier != Bundle.main.bundleIdentifier else {
@@ -498,7 +506,7 @@ final class LaunchpadOverlayService: ObservableObject {
     /// fall back to `.distantPast` when unavailable so date-sorts keep a
     /// stable, deterministic position for apps the filesystem won't
     /// report on.
-    private static func appDates(for url: URL) -> LaunchpadAppDates {
+    nonisolated private static func appDates(for url: URL) -> LaunchpadAppDates {
         let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
         return LaunchpadAppDates(
             created: values?.creationDate ?? .distantPast,
