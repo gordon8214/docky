@@ -473,17 +473,12 @@ enum DockWindowSpaceBehavior: String, CaseIterable, Identifiable {
     }
 
     func collectionBehavior(includesFullScreenAuxiliary: Bool) -> NSWindow.CollectionBehavior {
-        switch self {
-        case .activeSpace:
-            return NSWindow.CollectionBehavior(arrayLiteral: .moveToActiveSpace, .stationary, .ignoresCycle)
-        case .allSpaces:
-            var behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-            if includesFullScreenAuxiliary {
-                behavior.insert(.fullScreenAuxiliary)
-            }
-            return behavior
-        }
+        var behavior: NSWindow.CollectionBehavior = [.stationary, .ignoresCycle]
+        behavior.insert(self == .allSpaces ? .canJoinAllSpaces : .moveToActiveSpace)
+        if includesFullScreenAuxiliary { behavior.insert(.fullScreenAuxiliary) }
+        return behavior
     }
+
 }
 
 enum DockOverflowBehavior: String, CaseIterable, Identifiable {
@@ -524,30 +519,6 @@ enum DockBackgroundImageMode: String, CaseIterable, Identifiable {
         switch self {
         case .fill: String(localized: "Fill")
         case .sprite: String(localized: "Sprite")
-        }
-    }
-}
-
-enum MaximizedWindowBehavior: String, CaseIterable, Identifiable {
-    case ignore
-    case hideDocky
-    case resizeWindow
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .ignore: String(localized: "Ignore")
-        case .hideDocky: String(localized: "Hide Docky")
-        case .resizeWindow: String(localized: "Resize Windows")
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .ignore: String(localized: "Maximized windows render under Docky.")
-        case .hideDocky: String(localized: "Slide Docky off-screen while a maximized window is on its display, with edge-dwell to reveal.")
-        case .resizeWindow: String(localized: "When an app maximizes, shrink its window to leave room for Docky. Requires Accessibility permission and may not work for every app.")
         }
     }
 }
@@ -1802,15 +1773,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// How Docky reacts to a maximized (visibleFrame-sized, non-fullscreen)
-    /// window on its target screen.
-    var maximizedWindowBehavior: MaximizedWindowBehavior {
-        didSet {
-            guard maximizedWindowBehavior != oldValue else { return }
-            defaults.set(maximizedWindowBehavior.rawValue, forKey: Keys.maximizedWindowBehavior)
-        }
-    }
-
     /// Dwell time the pointer must spend at the screen edge before Docky
     /// reveals while a fullscreen app is on the target screen. Mirrors the
     /// macOS Dock's intent-gating behavior in fullscreen.
@@ -1862,18 +1824,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard windowPreviewLayout != oldValue else { return }
             defaults.set(windowPreviewLayout.rawValue, forKey: Keys.windowPreviewLayout)
-        }
-    }
-
-    /// Whether Docky should hide the macOS system Dock while running.
-    /// Turning this on snapshots the user's current Dock preferences and
-    /// overwrites autohide/bounce behavior; turning it off restores the
-    /// snapshot. The snapshot is also restored when Docky quits.
-    var hidesSystemDock: Bool {
-        didSet {
-            guard hidesSystemDock != oldValue else { return }
-            defaults.set(hidesSystemDock, forKey: Keys.hidesSystemDock)
-            applySystemDockVisibilityPreference()
         }
     }
 
@@ -1984,18 +1934,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard showsMinimizedWindows != oldValue else { return }
             defaults.set(showsMinimizedWindows, forKey: Keys.showsMinimizedWindows)
-        }
-    }
-
-    /// When true, Docky hides while a fullscreen app is on its target
-    /// screen and reveals on edge dwell (gated by `fullscreenRevealDelay`).
-    /// Default true, matches the system Dock and what existed before this
-    /// preference was added. Turning it off keeps Docky pinned over
-    /// fullscreen apps.
-    var hidesDuringFullscreen: Bool {
-        didSet {
-            guard hidesDuringFullscreen != oldValue else { return }
-            defaults.set(hidesDuringFullscreen, forKey: Keys.hidesDuringFullscreen)
         }
     }
 
@@ -3566,8 +3504,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let fullscreenRevealDelay = "docky.fullscreenRevealDelay"
         static let windowPreviewHoverDelay = "docky.windowPreviewHoverDelay"
         static let windowPreviewLayout = "docky.windowPreviewLayout"
-        static let maximizedWindowBehavior = "docky.maximizedWindowBehavior"
-        static let hidesSystemDock = "docky.hidesSystemDock"
         static let overflowBehavior = "docky.overflowBehavior"
         static let windowAxisSizing = "docky.windowAxisSizing"
         static let enablesWidgetHoverPreview = "docky.enablesWidgetHoverPreview"
@@ -3576,7 +3512,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let showsActivePinnedSeparator = "docky.showsActivePinnedSeparator"
         static let showsRunningApps = "docky.showsRunningApps"
         static let showsMinimizedWindows = "docky.showsMinimizedWindows"
-        static let hidesDuringFullscreen = "docky.hidesDuringFullscreen"
         static let enablesShelveMode = "docky.enablesShelveMode"
         static let shelveHidesFinder = "docky.shelveHidesFinder"
         static let shelveHidesTrash = "docky.shelveHidesTrash"
@@ -3677,8 +3612,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let fullscreenRevealDelay: TimeInterval = 0.5
         static let windowPreviewHoverDelay: TimeInterval = 1.0
         static let windowPreviewLayout: WindowSwitcherLayout = .auto
-        static let maximizedWindowBehavior: MaximizedWindowBehavior = .ignore
-        static let hidesSystemDock = true
         static let overflowBehavior: DockOverflowBehavior = .rescale
         static let windowAxisSizing: DockWindowAxisSizing = .fitContent
         static let enablesWidgetHoverPreview = true
@@ -3687,7 +3620,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let showsActivePinnedSeparator = true
         static let showsRunningApps = true
         static let showsMinimizedWindows = true
-        static let hidesDuringFullscreen = true
         static let enablesShelveMode = false
         static let shelveHidesFinder = true
         static let shelveHidesTrash = true
@@ -3759,6 +3691,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
 
     private init() {
         self.defaults = .standard
+        DockLegacyPreferenceMigration.discardOverlapSettings(in: defaults)
         let storedVerticalPadding = defaults.object(forKey: Keys.tileVerticalPadding) as? Double
         let storedTileSpacing = defaults.object(forKey: Keys.tileSpacing) as? Double
         let storedTileClipShape = defaults.string(forKey: Keys.tileClipShape)
@@ -3811,8 +3744,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedFullscreenRevealDelay = defaults.object(forKey: Keys.fullscreenRevealDelay) as? Double
         let storedWindowPreviewHoverDelay = defaults.object(forKey: Keys.windowPreviewHoverDelay) as? Double
         let storedWindowPreviewLayout = defaults.string(forKey: Keys.windowPreviewLayout)
-        let storedMaximizedWindowBehavior = defaults.string(forKey: Keys.maximizedWindowBehavior)
-        let storedHidesSystemDock = defaults.object(forKey: Keys.hidesSystemDock) as? Bool
         let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
         let storedWindowAxisSizing = defaults.string(forKey: Keys.windowAxisSizing)
         let storedEnablesWidgetHoverPreview = defaults.object(forKey: Keys.enablesWidgetHoverPreview) as? Bool
@@ -3943,8 +3874,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.fullscreenRevealDelay = max(storedFullscreenRevealDelay ?? DefaultValues.fullscreenRevealDelay, 0)
         self.windowPreviewHoverDelay = max(storedWindowPreviewHoverDelay ?? DefaultValues.windowPreviewHoverDelay, 0)
         self.windowPreviewLayout = storedWindowPreviewLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowPreviewLayout
-        self.maximizedWindowBehavior = (storedMaximizedWindowBehavior.flatMap(MaximizedWindowBehavior.init(rawValue:)) ?? DefaultValues.maximizedWindowBehavior)
-        self.hidesSystemDock = storedHidesSystemDock ?? DefaultValues.hidesSystemDock
         self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
         self.windowAxisSizing = (storedWindowAxisSizing.flatMap(DockWindowAxisSizing.init(rawValue:)) ?? DefaultValues.windowAxisSizing)
         self.enablesWidgetHoverPreview = storedEnablesWidgetHoverPreview ?? DefaultValues.enablesWidgetHoverPreview
@@ -3955,7 +3884,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.showsActivePinnedSeparator = storedShowsActivePinnedSeparator ?? DefaultValues.showsActivePinnedSeparator
         self.showsRunningApps = storedShowsRunningApps ?? DefaultValues.showsRunningApps
         self.showsMinimizedWindows = storedShowsMinimizedWindows ?? DefaultValues.showsMinimizedWindows
-        self.hidesDuringFullscreen = (defaults.object(forKey: Keys.hidesDuringFullscreen) as? Bool) ?? DefaultValues.hidesDuringFullscreen
         self.enablesShelveMode = storedEnablesShelveMode ?? DefaultValues.enablesShelveMode
         self.shelveHidesFinder = storedShelveHidesFinder ?? DefaultValues.shelveHidesFinder
         self.shelveHidesTrash = storedShelveHidesTrash ?? DefaultValues.shelveHidesTrash
@@ -4071,12 +3999,11 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
     }
 
     func applySystemDockVisibilityPreference() {
-        if hidesSystemDock {
-            SystemDockVisibilityService.shared.hide()
-            syncSystemDockPositionIfNeeded()
-        } else {
-            SystemDockVisibilityService.shared.restore()
-        }
+        // Legacy overlap/coexistence preferences no longer change behavior,
+        // including values imported from older profiles and backups.
+        DockLegacyPreferenceMigration.discardOverlapSettings(in: defaults)
+        SystemDockVisibilityService.shared.hide()
+        syncSystemDockPositionIfNeeded()
     }
 
     func applyOpenAtLoginPreference() {
@@ -4198,7 +4125,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
         windowAxisSizing = DefaultValues.windowAxisSizing
-        maximizedWindowBehavior = DefaultValues.maximizedWindowBehavior
         overflowBehavior = DefaultValues.overflowBehavior
 
         // Visibility
@@ -4209,7 +4135,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         folderBadgePreviewStyle = DefaultValues.folderBadgePreviewStyle
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         autohideAnimationDuration = DefaultValues.autohideAnimationDuration
-        hidesDuringFullscreen = DefaultValues.hidesDuringFullscreen
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
         enablesShelveMode = DefaultValues.enablesShelveMode
         shelveHidesFinder = DefaultValues.shelveHidesFinder
@@ -4237,7 +4162,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         opensAtLogin = DefaultValues.opensAtLogin
 
         // System dock
-        hidesSystemDock = DefaultValues.hidesSystemDock
 
         // Same rationale as `resetAppearanceToDefaults`: setters guard
         // against same-value writes, so any pre-existing override flag
@@ -4273,8 +4197,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
         windowPreviewHoverDelay = DefaultValues.windowPreviewHoverDelay
         windowPreviewLayout = DefaultValues.windowPreviewLayout
-        maximizedWindowBehavior = DefaultValues.maximizedWindowBehavior
-        hidesSystemDock = DefaultValues.hidesSystemDock
         overflowBehavior = DefaultValues.overflowBehavior
         windowAxisSizing = DefaultValues.windowAxisSizing
         enablesWidgetHoverPreview = DefaultValues.enablesWidgetHoverPreview
@@ -4283,7 +4205,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
         showsRunningApps = DefaultValues.showsRunningApps
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
-        hidesDuringFullscreen = DefaultValues.hidesDuringFullscreen
         enablesShelveMode = DefaultValues.enablesShelveMode
         shelveHidesFinder = DefaultValues.shelveHidesFinder
         shelveHidesTrash = DefaultValues.shelveHidesTrash
@@ -4333,7 +4254,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
     }
 
     private func syncSystemDockPositionIfNeeded() {
-        guard hidesSystemDock else { return }
 
         let orientation: DockSettingsService.Orientation
         switch windowPosition {

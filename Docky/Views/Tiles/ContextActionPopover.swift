@@ -131,6 +131,7 @@ enum ContextActionMenuPresenter {
         private var preferredEdge: NSRectEdge
         private var onPresentationChanged: (Bool) -> Void
         private var isInterruptingAutohide = false
+        private var interactionToken: UUID?
 
         init(
             actionProvider: @escaping (NSEvent.ModifierFlags) -> [ContextAction],
@@ -239,13 +240,13 @@ enum ContextActionMenuPresenter {
 
         private func beginAutohideInterruption(for view: NSView) {
             guard !isInterruptingAutohide else { return }
-            (view.window as? any DockWindowInteractionHolding)?.beginInteraction()
+            interactionToken = (view.window as? any DockWindowInteractionHolding)?.beginInteraction()
             isInterruptingAutohide = true
         }
 
         private func endAutohideInterruption() {
             guard isInterruptingAutohide else { return }
-            (anchorView?.window as? any DockWindowInteractionHolding)?.endInteraction()
+            (anchorView?.window as? any DockWindowInteractionHolding)?.endInteraction(interactionToken)
             isInterruptingAutohide = false
         }
 

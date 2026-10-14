@@ -119,6 +119,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 11051DF32F92907A005CE09D /* Build configuration list for PBXNativeTarget "Docky" */;
 			buildPhases = (
+				D0C10010BBBBBBBB00000002 /* Build Dock Integration Bridge */,
 				11051DE32F929079005CE09D /* Sources */,
 				11051DE42F929079005CE09D /* Frameworks */,
 				11051DE52F929079005CE09D /* Resources */,
@@ -254,6 +255,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Mirror BundledThemes/ into the app's Resources/Themes/.\n# Folder-of-folders layout (not declared as folder references in\n# pbxproj) means we copy at build time so the nested\n# <theme-id>/theme.json + assets/*.png hierarchy survives.\n#\n# `--norsrc --noextattr --noacl` keeps codesign happy when the\n# source files came from a download that carried Finder metadata\n# (com.apple.quarantine, resource forks). Without these flags the\n# eventual CodeSign step would error with \"resource fork, Finder\n# information, or similar detritus not allowed\".\nset -e\nSRC=\"${SRCROOT}/BundledThemes\"\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Themes\"\n\nif [ ! -d \"$SRC\" ]; then\n  echo \"note: no BundledThemes directory at $SRC; skipping\"\n  exit 0\nfi\n\nrm -rf \"$DEST\"\nmkdir -p \"$DEST\"\nditto --norsrc --noextattr --noacl \"$SRC/\" \"$DEST/\"\nxattr -cr \"$DEST\"\necho \"note: copied bundled themes to $DEST\"\n";
+		};
+		D0C10010BBBBBBBB00000002 /* Build Dock Integration Bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build Dock Integration Bridge";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/DockyDockBridge/build.sh\"";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -30,6 +30,8 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
     var mouseDownPoint: CGPoint?
     var wasDragging = false
     var canceledMouseSession = false
+    var dragInteractionToken: UUID?
+    var folderInteractionToken: UUID?
     weak var dragWindow: MainWindow?
     weak var heldFolderWindow: MainWindow?
     let folderWatcherID = "tile-view:" + UUID().uuidString

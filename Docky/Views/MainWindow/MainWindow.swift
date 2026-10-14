@@ -37,7 +37,7 @@ final class MainWindowContainerView: NSView {
         trailingConstraint = trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
 
         NSLayoutConstraint.activate([
-            topConstraint, bottomConstraint, leadingConstraint, trailingConstraint,
+            topConstraint, bottomConstraint, leadingConstraint, trailingConstraint
         ])
 
         applyContentInsets()
@@ -175,64 +175,49 @@ final class MainWindow: NSPanel {
     override var canBecomeKey: Bool { Self.allowsKeyWindow }
     override var canBecomeMain: Bool { false }
 
-    override var level: NSWindow.Level {
-        get { .mainMenu }
-        set {}
-    }
-
-    private enum VisibilityState {
+    enum VisibilityState {
         case visible
         case hidden
     }
 
-    private let backgroundBlurRadius = 10
-    private let revealTriggerThickness: CGFloat = 2
-    private let tileMutationAnimationDuration: TimeInterval = 0.18
-    private let dockSettings = DockSettingsService.shared
-    private let preferences = DockyPreferences.shared
-    private let layout = DockLayoutService.shared
-    private let tileStore = TileStore.shared
-    private let editMode = DockEditModeService.shared
-    private let minimumWidth: CGFloat = 120
-    private var cancellables: Set<AnyCancellable> = []
-    private var hideWorkItem: DispatchWorkItem?
-    private var fullscreenRecheckWorkItem: DispatchWorkItem?
-    private var fullscreenRevealWorkItem: DispatchWorkItem?
-    private var globalPointerMonitor: Any?
-    private var localPointerMonitor: Any?
-    private var globalDragRevealMonitor: Any?
-    private var localDragRevealMonitor: Any?
-    private var revealTriggerZone: CGRect = .zero
-    private var isPointerInsideWindow = false
-    private var activeInteractionCount = 0
-    private var visibilityState: VisibilityState
-    private var hasCompletedSetup = false
-    private var hasResolvedInitialFrame = false
-    private var lastPointerScreenFrame: CGRect?
-    private var isFullscreenActiveOnTargetScreen = false
-    private var isMaximizedActiveOnTargetScreen = false
+    let backgroundBlurRadius = 10
+    let revealTriggerThickness: CGFloat = 2
+    let tileMutationAnimationDuration: TimeInterval = 0.18
+    let dockSettings = DockSettingsService.shared
+    let preferences = DockyPreferences.shared
+    let layout = DockLayoutService.shared
+    let tileStore = TileStore.shared
+    let editMode = DockEditModeService.shared
+    let minimumWidth: CGFloat = 120
+    var cancellables: Set<AnyCancellable> = []
+    var hideWorkItem: DispatchWorkItem?
+    var fullscreenRecheckWorkItem: DispatchWorkItem?
+    var fullscreenRevealWorkItem: DispatchWorkItem?
+    var globalPointerMonitor: Any?
+    var localPointerMonitor: Any?
+    var globalDragRevealMonitor: Any?
+    var localDragRevealMonitor: Any?
+    var revealTriggerZone: CGRect = .zero
+    var isPointerInsideWindow = false
+    var interactionTokens: Set<UUID> = []
+    var activeInteractionCount: Int { interactionTokens.count }
+    var visibilityState: VisibilityState
+    var hasCompletedSetup = false
+    var hasResolvedInitialFrame = false
+    var lastPointerScreenFrame: CGRect?
+    var isFullscreenActiveOnTargetScreen = false
+    var fullscreenRevealAuthorized = false
 
-    private var fullscreenHidingActive: Bool {
-        isFullscreenActiveOnTargetScreen && preferences.hidesDuringFullscreen
+    var isFullscreenActive: Bool { isFullscreenActiveOnTargetScreen }
+    var permitsPassivePresentation: Bool { !isFullscreenActiveOnTargetScreen || fullscreenRevealAuthorized }
+
+    var showsPassiveCompanions: Bool { visibilityState == .visible && permitsPassivePresentation }
+
+    var effectivelyAutohides: Bool {
+        preferences.autohidesWindow || isFullscreenActiveOnTargetScreen
     }
 
-    private var effectivelyAutohides: Bool {
-        preferences.autohidesWindow
-            || fullscreenHidingActive
-            || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
-    }
-
-    private var isContentOverlapActive: Bool {
-        fullscreenHidingActive
-            || (isMaximizedActiveOnTargetScreen && preferences.maximizedWindowBehavior == .hideDocky)
-    }
-
-    /// The frame Docky claims for content reservation, or nil when Docky is
-    /// hidden / off-screen / not currently rendering. Used by services that
-    /// keep other apps' windows out of Docky's way.
-    var currentReservationFrame: CGRect? {
-        visibilityState == .visible ? frame : nil
-    }
+    var isContentOverlapActive: Bool { isFullscreenActiveOnTargetScreen }
 
     /// Screen-coordinate rect of the visible chrome (the dock pill itself,
     /// not the magnification headroom around it). Built from `chromeSize`
@@ -246,19 +231,8 @@ final class MainWindow: NSPanel {
         guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
         let position = DockyPreferences.shared.windowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
-        let f = frame
-        let width = min(chromeSize.width, f.width)
-        let height = min(chromeSize.height, f.height)
-        switch position {
-        case .bottom:
-            return CGRect(x: f.midX - width / 2, y: f.minY, width: width, height: height)
-        case .top:
-            return CGRect(x: f.midX - width / 2, y: f.maxY - height, width: width, height: height)
-        case .left:
-            return CGRect(x: f.minX, y: f.midY - height / 2, width: width, height: height)
-        case .right:
-            return CGRect(x: f.maxX - width, y: f.midY - height / 2, width: width, height: height)
-        }
+        return DockSystemGeometry.restingChrome(
+            window: frame, size: chromeSize, edge: position, edgeGap: chromeEdgeGap(position))
     }
 
     override init(
@@ -285,13 +259,18 @@ final class MainWindow: NSPanel {
         }
     }
 
-    private func performSetupIfNeeded() {
+    func performSetupIfNeeded() {
         guard !hasCompletedSetup else { return }
         hasCompletedSetup = true
 
+        isFloatingPanel = false
+        // AppKit resets the level when isFloatingPanel changes. Set the
+        // actual Dock level afterward so WindowServer receives level 20.
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
         backgroundColor = .clear
         isOpaque = false
         isMovableByWindowBackground = false
+        hidesOnDeactivate = false
         alphaValue = 0
         // Magnification tracking lives on the content view's NSTrackingArea
         // (.mouseMoved + .activeAlways). Enabling mouseMoved on the window
@@ -307,7 +286,6 @@ final class MainWindow: NSPanel {
         updateRevealMonitoring()
         let initialOverlap = computeContentOverlapStateOnTargetScreen()
         isFullscreenActiveOnTargetScreen = initialOverlap.isFullscreen
-        isMaximizedActiveOnTargetScreen = initialOverlap.isMaximized
         if isContentOverlapActive {
             visibilityState = shouldRemainVisible ? .visible : .hidden
         }
@@ -335,7 +313,7 @@ final class MainWindow: NSPanel {
         applyBackgroundBlur()
     }
 
-    private func applyBackgroundBlur() {
+    func applyBackgroundBlur() {
         guard windowNumber > 0 else { return }
         _ = CGSSetWindowBackgroundBlurRadius(
             CGSMainConnectionID(),
@@ -344,853 +322,6 @@ final class MainWindow: NSPanel {
         )
     }
 
-    private func observeFrameInputs() {
-        // DockyPreferences is now `@Observable` so we read its
-        // properties through `observeChanges` (Observation framework
-        // auto-tracks). DockSettingsService / DockDragService /
-        // DockEditModeService are still ObservableObject; their
-        // `@Published` projections are merged via Combine below.
-        let layoutSignals: [AnyPublisher<Void, Never>] = [
-            editMode.$paletteDrag.map { _ in () }.eraseToAnyPublisher(),
-            editMode.$paletteDropDestination.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$kind.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$documentTargetTileID.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$destinationIndex.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$destinationSection.map { _ in () }.eraseToAnyPublisher(),
-        ]
-        Publishers.MergeMany(layoutSignals)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
-            }
-            .store(in: &cancellables)
-
-        observeChanges { [weak self] in
-            guard let self else { return }
-            // Touch every preference and dock-setting that drives frame
-            // layout. The Observation framework tracks these reads and
-            // re-runs the closure on any change.
-            _ = preferences.effectiveTileVerticalPadding
-            _ = preferences.effectiveTileSpacing
-            _ = preferences.overflowBehavior
-            _ = preferences.effectiveWindowAxisSizing
-            _ = preferences.windowPosition
-            _ = preferences.windowDisplayTarget
-            _ = dockSettings.orientation
-            _ = dockSettings.tileSize
-            _ = dockSettings.largeSize
-            _ = dockSettings.magnification
-            self.applyCurrentFrame(animated: true, duration: self.tileMutationAnimationDuration)
-        }
-        .store(in: &cancellables)
-
-        tileStore.$tiles
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
-            }
-            .store(in: &cancellables)
-
-        editMode.$isActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isActive in
-                guard let self else { return }
-                if isActive {
-                    self.hideWorkItem?.cancel()
-                    self.setVisibility(.visible, animated: true)
-                } else {
-                    self.scheduleHideIfNeeded()
-                }
-            }
-            .store(in: &cancellables)
-
-        // Keep the dock visible while any drag is in flight (Finder→dock,
-        // palette, or icon-out-of-folder). The cursor can briefly be outside
-        // the dock window during the transit, so without this the dock would
-        // start to auto-hide just as the user is moving the drag toward it.
-        DockDragService.shared.$kind
-            .map { $0 != nil }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] hasDrag in
-                guard let self else { return }
-                if hasDrag {
-                    self.hideWorkItem?.cancel()
-                    self.setVisibility(.visible, animated: true)
-                } else {
-                    self.scheduleHideIfNeeded()
-                }
-            }
-            .store(in: &cancellables)
-
-    }
-
-    private func observeScreenAndSpaceInputs() {
-        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: false)
-                self?.updateFullscreenStateAndApply(animated: false)
-            }
-            .store(in: &cancellables)
-
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-
-        workspaceCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: false)
-                self?.updateFullscreenStateAndApply(animated: true)
-                // The space change fires during the fullscreen exit animation
-                // while the fullscreen window is still on-screen. Re-check once
-                // the animation has had time to complete.
-                self?.scheduleFullscreenRecheck()
-            }
-            .store(in: &cancellables)
-
-        workspaceCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateFullscreenStateAndApply(animated: true)
-                self?.scheduleFullscreenRecheck()
-            }
-            .store(in: &cancellables)
-    }
-
-    private func observeWindowPlacementInputs() {
-        observeChanges { [weak self] in
-            _ = DockyPreferences.shared.windowSpaceBehavior
-            self?.applyCollectionBehavior()
-        }
-        .store(in: &cancellables)
-
-        observeChanges { [weak self] in
-            _ = DockyPreferences.shared.windowDisplayTarget
-            self?.lastPointerScreenFrame = nil
-            self?.updatePointerScreenMonitoring()
-            self?.updateFullscreenStateAndApply(animated: true)
-        }
-        .store(in: &cancellables)
-
-        PermissionsService.shared.$accessibility
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.lastPointerScreenFrame = nil
-                self?.updatePointerScreenMonitoring()
-            }
-            .store(in: &cancellables)
-
-        // App-level activate/space changes don't fire when a window in the
-        // foreground app gets maximized or fullscreened, so piggy-back on the
-        // registry's AX resize/move signal. Debounce so a drag-resize doesn't
-        // hammer the overlap recomputation.
-        WindowRegistry.shared.$windows
-            .debounce(for: .milliseconds(80), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateFullscreenStateAndApply(animated: true)
-            }
-            .store(in: &cancellables)
-    }
-
-    private func observeVisibilityInputs() {
-        observeChanges { [weak self] in
-            _ = DockyPreferences.shared.autohidesWindow
-            self?.applyEffectiveVisibility(animated: true)
-        }
-        .store(in: &cancellables)
-
-        observeChanges { [weak self] in
-            _ = DockyPreferences.shared.maximizedWindowBehavior
-            _ = DockyPreferences.shared.hidesDuringFullscreen
-            self?.updateFullscreenStateAndApply(animated: true)
-        }
-        .store(in: &cancellables)
-    }
-
-    private func applyCollectionBehavior() {
-        collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(includesFullScreenAuxiliary: true)
-    }
-
-    private func updatePointerScreenMonitoring() {
-        if let globalPointerMonitor {
-            NSEvent.removeMonitor(globalPointerMonitor)
-            self.globalPointerMonitor = nil
-        }
-        if let localPointerMonitor {
-            NSEvent.removeMonitor(localPointerMonitor)
-            self.localPointerMonitor = nil
-        }
-
-        guard preferences.windowDisplayTarget == .displayContainingPointer else { return }
-
-        let pointerEvents: NSEvent.EventTypeMask = [
-            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel,
-        ]
-        if PermissionsService.shared.accessibility == .granted {
-            globalPointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: pointerEvents) { [weak self] _ in
-                self?.handlePointerScreenChangeIfNeeded()
-            }
-        }
-        localPointerMonitor = NSEvent.addLocalMonitorForEvents(matching: pointerEvents) { [weak self] event in
-            self?.handlePointerScreenChangeIfNeeded()
-            return event
-        }
-    }
-
-    /// A hidden panel sits off-screen, where its tracking area can't fire, so
-    /// the reveal runs off monitored pointer movement instead.
-    private func updateRevealMonitoring() {
-        if let globalDragRevealMonitor {
-            NSEvent.removeMonitor(globalDragRevealMonitor)
-            self.globalDragRevealMonitor = nil
-        }
-        if let localDragRevealMonitor {
-            NSEvent.removeMonitor(localDragRevealMonitor)
-            self.localDragRevealMonitor = nil
-        }
-
-        let revealEvents: NSEvent.EventTypeMask = [
-            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
-        ]
-        globalDragRevealMonitor = NSEvent.addGlobalMonitorForEvents(matching: revealEvents) { [weak self] _ in
-            self?.syncPointerPresence()
-        }
-        localDragRevealMonitor = NSEvent.addLocalMonitorForEvents(matching: revealEvents) { [weak self] event in
-            self?.syncPointerPresence()
-            return event
-        }
-    }
-
-    private func handlePointerScreenChangeIfNeeded() {
-        guard preferences.windowDisplayTarget == .displayContainingPointer else { return }
-        let nextScreenFrame = targetScreen()?.frame
-        guard nextScreenFrame != lastPointerScreenFrame else { return }
-        lastPointerScreenFrame = nextScreenFrame
-        DispatchQueue.main.async { [weak self] in
-            self?.applyCurrentFrame(animated: false)
-            self?.updateFullscreenStateAndApply(animated: true)
-        }
-    }
-
-    func pointerDidEnterWindow() {
-        isPointerInsideWindow = true
-        hideWorkItem?.cancel()
-
-        guard effectivelyAutohides else { return }
-
-        if shouldDwellBeforeReveal {
-            scheduleFullscreenReveal()
-            return
-        }
-
-        setVisibility(.visible, animated: true)
-    }
-
-    func pointerDidExitWindow() {
-        isPointerInsideWindow = false
-        fullscreenRevealWorkItem?.cancel()
-        fullscreenRevealWorkItem = nil
-        scheduleHideIfNeeded()
-    }
-
-    private var shouldDwellBeforeReveal: Bool {
-        isContentOverlapActive
-            && visibilityState == .hidden
-            && preferences.fullscreenRevealDelay > 0
-    }
-
-    private func scheduleFullscreenReveal() {
-        fullscreenRevealWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self,
-                self.isPointerInsideWindow,
-                self.effectivelyAutohides
-            else { return }
-            self.setVisibility(.visible, animated: true)
-        }
-        fullscreenRevealWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + preferences.fullscreenRevealDelay, execute: workItem)
-    }
-
-    private func syncPointerPresence() {
-        guard effectivelyAutohides else { return }
-
-        let location = NSEvent.mouseLocation
-        let containsPointer = frame.contains(location) || revealTriggerZone.contains(location)
-        if containsPointer, !isPointerInsideWindow {
-            pointerDidEnterWindow()
-        } else if !containsPointer, isPointerInsideWindow {
-            pointerDidExitWindow()
-        }
-    }
-
-    func beginInteraction() {
-        activeInteractionCount += 1
-        hideWorkItem?.cancel()
-
-        guard effectivelyAutohides else { return }
-        setVisibility(.visible, animated: true)
-    }
-
-    func endInteraction() {
-        activeInteractionCount = max(0, activeInteractionCount - 1)
-        scheduleHideIfNeeded()
-    }
-
-    private func applyEffectiveVisibility(animated: Bool) {
-        hideWorkItem?.cancel()
-
-        if effectivelyAutohides {
-            let nextState: VisibilityState = shouldRemainVisible ? .visible : .hidden
-            setVisibility(nextState, animated: animated)
-            return
-        }
-
-        setVisibility(.visible, animated: animated)
-    }
-
-    private func scheduleHideIfNeeded() {
-        hideWorkItem?.cancel()
-
-        guard effectivelyAutohides, !shouldRemainVisible else { return }
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, !self.shouldRemainVisible else { return }
-            self.setVisibility(.hidden, animated: true)
-        }
-        hideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + preferences.autohideWindowDelay, execute: workItem)
-    }
-
-    private var shouldRemainVisible: Bool {
-        isPointerInsideWindow || activeInteractionCount > 0 || editMode.isActive || DockDragService.shared.kind != nil
-    }
-
-    private func setVisibility(_ state: VisibilityState, animated: Bool) {
-        if state == .visible {
-            fullscreenRevealWorkItem?.cancel()
-            fullscreenRevealWorkItem = nil
-        }
-
-        // Re-requesting the current state must not touch the frame. During a
-        // reveal the panel slides under the cursor, the content view's
-        // tracking area fires `mouseEntered`, and `pointerDidEnterWindow`
-        // asks for `.visible` again while the slide is still in flight. A
-        // non-animated `setFrame` here would snap the panel fully on screen,
-        // after which the still-running animator reapplies its interpolated
-        // (near-hidden) frame and finishes the slide, producing a visible
-        // show / hide / show flicker. Layout-input changes already re-apply
-        // the frame through their own observers, so nothing is lost by
-        // returning early.
-        guard visibilityState != state else { return }
-
-        visibilityState = state
-        applyCurrentFrame(animated: animated)
-    }
-
-    private func applyCurrentFrame(animated: Bool) {
-        applyCurrentFrame(animated: animated, duration: nil)
-    }
-
-    private func applyCurrentFrame(animated: Bool, duration: TimeInterval?) {
-        let resolvedScreen = targetScreen() ?? screen ?? NSScreen.main
-        let screenBounds = resolvedScreen?.frame ?? .zero
-        lastPointerScreenFrame = screenBounds
-        // Vertical full-axis used to span `screen.frame` and slipped
-        // behind the menu bar (and the system Dock, when shown). Use
-        // `visibleFrame` for vertical positions so axis length and
-        // origin centering are computed against the same clamped
-        // rect — the dock then sits exactly between the menu bar
-        // and the system Dock without any per-edge offset math.
-        // Horizontal positions stay anchored to `screen.frame` so a
-        // top dock keeps anchoring to the top edge, etc.
-        let visibleBounds = resolvedScreen?.visibleFrame ?? screenBounds
-        // Window-frame math needs the *total* horizontal and vertical
-        // padding the chrome view leaves around itself inside the panel.
-        // Per-edge insets live in `DockyPreferences`; full-axis mode
-        // forces them to zero in `MainWindowContainerView` and we
-        // mirror that here so the panel sizing stays in sync.
-        let fullAxis = preferences.effectiveWindowAxisSizing == .fullAxis
-        let horizontalContentPadding: CGFloat =
-            fullAxis
-            ? 0
-            : preferences.effectiveWindowContentInsetLeading + preferences.effectiveWindowContentInsetTrailing
-        let verticalContentPadding: CGFloat =
-            fullAxis
-            ? 0
-            : preferences.effectiveWindowContentInsetTop + preferences.effectiveWindowContentInsetBottom
-        let position = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
-        let baseTileSize = dockSettings.displayTileSize
-        let baseTileHeight = baseTileSize + preferences.effectiveTileVerticalPadding * 2
-        let externalAppDropPreview: AppTile? = {
-            if case .app(_, let tile) = DockDragService.shared.kind { return tile }
-            return nil
-        }()
-        let externalFolderDropPreview: FolderTile? = {
-            // Only grow the chrome when there's an actual placement: cursor in the
-            // trailing drop region with a resolved insertion index. Open-with mode
-            // (over an app tile) and idle hovering both leave chrome unchanged.
-            guard DockDragService.shared.documentTargetTileID == nil,
-                DockDragService.shared.destinationSection == .trailing,
-                DockDragService.shared.destinationIndex != nil,
-                case .folder(_, let tile) = DockDragService.shared.kind
-            else {
-                return nil
-            }
-            return tile
-        }()
-        let sizingTiles = DockTileGeometry.previewedTiles(
-            from: tileStore.tiles,
-            paletteDrag: editMode.paletteDrag,
-            paletteDropDestination: editMode.paletteDropDestination,
-            externalAppDropPreview: externalAppDropPreview,
-            externalFolderDropPreview: externalFolderDropPreview
-        )
-        let naturalContentSize = DockTileGeometry.contentSize(
-            tiles: sizingTiles,
-            tileSize: baseTileSize,
-            tileHeight: baseTileHeight,
-            tileSpacing: preferences.effectiveTileSpacing,
-            position: position
-        )
-        let alongAxisContentPadding = position.isVertical ? verticalContentPadding : horizontalContentPadding
-        let layoutBounds = position.isVertical ? visibleBounds : screenBounds
-        let unreservedAvailableAxisLength = max(
-            0,
-            axisLength(of: layoutBounds.size, position: position) - alongAxisContentPadding
-        )
-        let contentAvailableAxisLength = max(
-            0,
-            unreservedAvailableAxisLength
-                - (shouldReserveStatusBarLength(
-                    for: naturalContentSize,
-                    availableAxisLength: unreservedAvailableAxisLength,
-                    position: position
-                ) ? reservedStatusBarLength : 0)
-        )
-        let availableAxisLength =
-            preferences.effectiveWindowAxisSizing == .fullAxis
-            ? unreservedAvailableAxisLength
-            : contentAvailableAxisLength
-        let compactsWidgetsForOverflow = shouldCompactWidgetsForOverflow(
-            contentSize: naturalContentSize,
-            availableAxisLength: availableAxisLength,
-            position: position
-        )
-        let baseContentSize = DockTileGeometry.contentSize(
-            tiles: sizingTiles,
-            tileSize: baseTileSize,
-            tileHeight: baseTileHeight,
-            tileSpacing: preferences.effectiveTileSpacing,
-            position: position,
-            compactWidgets: compactsWidgetsForOverflow
-        )
-        let contentScale = overflowContentScale(
-            for: baseContentSize,
-            availableAxisLength: availableAxisLength,
-            position: position
-        )
-        layout.setContentScale(contentScale)
-        layout.setCompactsWidgetsForOverflow(compactsWidgetsForOverflow)
-
-        let scaledTileSize = baseTileSize * contentScale
-        let scaledTileHeight = scaledTileSize + (preferences.effectiveTileVerticalPadding * contentScale * 2)
-        let scaledTileSpacing = preferences.effectiveTileSpacing * contentScale
-        let displayedContentSize = DockTileGeometry.contentSize(
-            tiles: sizingTiles,
-            tileSize: scaledTileSize,
-            tileHeight: scaledTileHeight,
-            tileSpacing: scaledTileSpacing,
-            position: position,
-            compactWidgets: compactsWidgetsForOverflow,
-            edgePadding: DockTileGeometry.edgePadding * contentScale
-        )
-        let displayedChromeAxisLength =
-            preferences.effectiveWindowAxisSizing == .fullAxis
-            ? availableAxisLength
-            : min(axisLength(of: displayedContentSize, position: position), availableAxisLength)
-        layout.setChromeSize(
-            displayedChromeSize(
-                for: displayedContentSize,
-                displayedAxisLength: displayedChromeAxisLength,
-                position: position
-            ))
-        // Keep the chrome stretched across the current dock axis even when the
-        // tile layout itself remains content-sized.
-        let displayedAxisLength = availableAxisLength
-        // Magnified icons render beyond the chrome's natural cross-axis
-        // extent. We grow only the window, not the chrome rect, so the
-        // chrome itself keeps its resting shape and the icons spill into
-        // the headroom above (or beside, on a vertical dock) it. Peak
-        // size is the UNscaled `largeSize` even when overflow has shrunk
-        // the resting tiles, so headroom is measured from the scaled
-        // chrome height up to that fixed peak.
-        let scaledBaseTileSize = dockSettings.tileSize * contentScale
-        let magnificationHeadroom: CGFloat =
-            (dockSettings.magnification && dockSettings.largeSize > scaledBaseTileSize)
-            ? dockSettings.largeSize - scaledBaseTileSize
-            : 0
-        let windowContentSize: CGSize = {
-            guard magnificationHeadroom > 0 else { return displayedContentSize }
-            return position.isVertical
-                ? CGSize(width: displayedContentSize.width + magnificationHeadroom, height: displayedContentSize.height)
-                : CGSize(width: displayedContentSize.width, height: displayedContentSize.height + magnificationHeadroom)
-        }()
-        let width = displayedWindowWidth(
-            for: windowContentSize,
-            displayedAxisLength: displayedAxisLength,
-            availableAxisLength: availableAxisLength,
-            horizontalContentPadding: horizontalContentPadding,
-            position: position
-        )
-        let height = displayedWindowHeight(
-            for: windowContentSize,
-            displayedAxisLength: displayedAxisLength,
-            verticalContentPadding: verticalContentPadding,
-            position: position
-        )
-        let size = CGSize(width: width, height: height)
-        let origin = frameOrigin(
-            in: layoutBounds,
-            size: size,
-            position: position,
-            visibilityState: visibilityState
-        )
-
-        let frame = CGRect(origin: origin, size: size)
-        revealTriggerZone = makeRevealTriggerZone(in: layoutBounds, frame: frame, position: position)
-        applyFrame(frame, animated: animated, duration: duration)
-    }
-
-    private func applyFrame(_ frame: CGRect, animated: Bool, duration: TimeInterval?) {
-        let shouldAnimate = animated && hasResolvedInitialFrame
-
-        guard shouldAnimate else {
-            setFrame(frame, display: true, animate: false)
-            revealAfterInitialFrameIfNeeded()
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration ?? autohideAnimationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            animator().setFrame(frame, display: true)
-        }
-    }
-
-    private func revealAfterInitialFrameIfNeeded() {
-        guard !hasResolvedInitialFrame else { return }
-        hasResolvedInitialFrame = true
-        alphaValue = 1
-    }
-
-    private var autohideAnimationDuration: TimeInterval {
-        min(max(0, preferences.autohideAnimationDuration), 1)
-    }
-
-    private func overflowContentScale(
-        for contentSize: CGSize,
-        availableAxisLength: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> CGFloat {
-        guard preferences.overflowBehavior == .rescale, availableAxisLength > 0 else {
-            return 1
-        }
-
-        let contentAxisLength = axisLength(of: contentSize, position: position)
-        guard contentAxisLength > 0 else { return 1 }
-        return min(1, availableAxisLength / contentAxisLength)
-    }
-
-    private func shouldCompactWidgetsForOverflow(
-        contentSize: CGSize,
-        availableAxisLength: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> Bool {
-        guard preferences.overflowBehavior == .rescale, availableAxisLength > 0 else {
-            return false
-        }
-
-        return axisLength(of: contentSize, position: position) > availableAxisLength
-    }
-
-    private func axisLength(of size: CGSize, position: ResolvedDockWindowPosition) -> CGFloat {
-        position.isVertical ? size.height : size.width
-    }
-
-    private func shouldReserveStatusBarLength(
-        for contentSize: CGSize,
-        availableAxisLength: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> Bool {
-        axisLength(of: contentSize, position: position) > availableAxisLength
-    }
-
-    private var reservedStatusBarLength: CGFloat {
-        NSStatusBar.system.thickness * 4
-    }
-
-    private func displayedWindowWidth(
-        for contentSize: CGSize,
-        displayedAxisLength: CGFloat,
-        availableAxisLength: CGFloat,
-        horizontalContentPadding: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> CGFloat {
-        if position.isVertical {
-            return contentSize.width + horizontalContentPadding
-        }
-
-        let visibleAxisLength =
-            availableAxisLength > 0
-            ? min(max(minimumWidth, displayedAxisLength), availableAxisLength)
-            : max(minimumWidth, displayedAxisLength)
-        return visibleAxisLength + horizontalContentPadding
-    }
-
-    private func displayedWindowHeight(
-        for contentSize: CGSize,
-        displayedAxisLength: CGFloat,
-        verticalContentPadding: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> CGFloat {
-        if position.isVertical {
-            return displayedAxisLength + verticalContentPadding
-        }
-
-        return contentSize.height + verticalContentPadding
-    }
-
-    private func displayedChromeSize(
-        for contentSize: CGSize,
-        displayedAxisLength: CGFloat,
-        position: ResolvedDockWindowPosition
-    ) -> CGSize {
-        if position.isVertical {
-            return CGSize(width: contentSize.width, height: displayedAxisLength)
-        }
-
-        return CGSize(width: displayedAxisLength, height: contentSize.height)
-    }
-
-    private func frameOrigin(
-        in screenBounds: CGRect,
-        size: CGSize,
-        position: ResolvedDockWindowPosition,
-        visibilityState: VisibilityState
-    ) -> CGPoint {
-        let hidden = visibilityState == .hidden
-
-        switch position {
-        case .top:
-            return CGPoint(
-                x: screenBounds.minX + (screenBounds.width - size.width) / 2,
-                y: hidden ? screenBounds.maxY : screenBounds.maxY - size.height
-            )
-        case .left:
-            return CGPoint(
-                x: hidden ? screenBounds.minX - size.width : screenBounds.minX,
-                y: screenBounds.minY + (screenBounds.height - size.height) / 2
-            )
-        case .right:
-            return CGPoint(
-                x: hidden ? screenBounds.maxX : screenBounds.maxX - size.width,
-                y: screenBounds.minY + (screenBounds.height - size.height) / 2
-            )
-        case .bottom:
-            return CGPoint(
-                x: screenBounds.minX + (screenBounds.width - size.width) / 2,
-                y: hidden ? screenBounds.minY - size.height : screenBounds.minY
-            )
-        }
-    }
-
-    private func makeRevealTriggerZone(
-        in screenBounds: CGRect,
-        frame: CGRect,
-        position: ResolvedDockWindowPosition
-    ) -> CGRect {
-        let thickness = revealTriggerThickness
-
-        switch position {
-        case .top:
-            return CGRect(x: frame.minX, y: screenBounds.maxY - thickness, width: frame.width, height: thickness)
-        case .bottom:
-            return CGRect(x: frame.minX, y: screenBounds.minY, width: frame.width, height: thickness)
-        case .left:
-            return CGRect(x: screenBounds.minX, y: frame.minY, width: thickness, height: frame.height)
-        case .right:
-            return CGRect(x: screenBounds.maxX - thickness, y: frame.minY, width: thickness, height: frame.height)
-        }
-    }
-
-    private func targetScreen() -> NSScreen? {
-        switch preferences.windowDisplayTarget {
-        case .primaryDisplay:
-            return NSScreen.screens.first ?? NSScreen.main
-        case .displayContainingPointer:
-            let mouseLocation = NSEvent.mouseLocation
-            return NSScreen.screens.first { $0.frame.contains(mouseLocation) }
-                ?? screen
-                ?? NSScreen.main
-                ?? NSScreen.screens.first
-        }
-    }
-
-    private func updateFullscreenStateAndApply(animated: Bool) {
-        let observation = computeContentOverlapStateOnTargetScreen()
-        let fullscreenChanged = observation.isFullscreen != isFullscreenActiveOnTargetScreen
-        let maximizedChanged = observation.isMaximized != isMaximizedActiveOnTargetScreen
-        guard fullscreenChanged || maximizedChanged else { return }
-        isFullscreenActiveOnTargetScreen = observation.isFullscreen
-        isMaximizedActiveOnTargetScreen = observation.isMaximized
-        applyEffectiveVisibility(animated: animated)
-    }
-
-    private func scheduleFullscreenRecheck() {
-        fullscreenRecheckWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.updateFullscreenStateAndApply(animated: true)
-        }
-        fullscreenRecheckWorkItem = workItem
-        // Long enough to cover the macOS fullscreen exit animation, which can
-        // run up to ~750 ms with reduce-motion off.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
-    }
-
-    private struct ContentOverlapObservation {
-        let isFullscreen: Bool
-        let isMaximized: Bool
-    }
-
-    private func computeContentOverlapStateOnTargetScreen() -> ContentOverlapObservation {
-        guard let screen = targetScreen(),
-            let primaryScreenHeight = NSScreen.screens.first?.frame.height
-        else {
-            return ContentOverlapObservation(isFullscreen: false, isMaximized: false)
-        }
-
-        let listOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let windows = CGWindowListCopyWindowInfo(listOptions, kCGNullWindowID) as? [[String: Any]] else {
-            return ContentOverlapObservation(isFullscreen: false, isMaximized: false)
-        }
-
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        let frame = screen.frame
-        let visibleFrame = screen.visibleFrame
-        let dockSide = preferences.windowPosition.resolved(systemOrientation: dockSettings.orientation)
-        var fullscreenCandidate = false
-        var foundMaximized = false
-        var fullscreenCandidatePIDs = Set<pid_t>()
-
-        for info in windows {
-            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
-
-            let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
-            if ownerPID == ownPID {
-                continue
-            }
-
-            guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-                let cgBounds = CGRect(dictionaryRepresentation: boundsDict)
-            else { continue }
-
-            // CGWindow uses a flipped Y axis with origin at the top-left of the
-            // primary display; convert back to NSScreen space before comparing.
-            let nsBounds = CGRect(
-                x: cgBounds.minX,
-                y: primaryScreenHeight - cgBounds.maxY,
-                width: cgBounds.width,
-                height: cgBounds.height
-            )
-
-            // Fullscreen: window covers the entire NSScreen.frame (including
-            // the menubar area). Maximized: window fills a full axis of the
-            // visibleFrame flush against Docky's edge, so it falls behind
-            // Docky. This catches a true maximize (all four edges flush) as
-            // well as a half tile that spans the full axis touching Docky
-            // (e.g. tiled right with Docky on the right, or tiled top with
-            // Docky on either side), which a strict visibleFrame match misses.
-            if Self.rect(nsBounds, matches: frame) {
-                fullscreenCandidate = true
-                if let ownerPID { fullscreenCandidatePIDs.insert(ownerPID) }
-            } else if Self.fillsFullAxisBehindDock(nsBounds, visibleFrame: visibleFrame, dockSide: dockSide) {
-                foundMaximized = true
-            }
-        }
-
-        let foundFullscreen =
-            fullscreenCandidate
-            && registryReportsFullscreenWindow(
-                candidatePIDs: fullscreenCandidatePIDs,
-                matching: frame,
-                primaryScreenHeight: primaryScreenHeight
-            )
-
-        return ContentOverlapObservation(isFullscreen: foundFullscreen, isMaximized: foundMaximized)
-    }
-
-    private func registryReportsFullscreenWindow(
-        candidatePIDs: Set<pid_t>,
-        matching frame: CGRect,
-        primaryScreenHeight: CGFloat
-    ) -> Bool {
-        func fills(_ window: AppWindow) -> Bool {
-            guard !window.isMinimized, let axFrame = window.frame else { return false }
-            let nsFrame = CGRect(
-                x: axFrame.minX,
-                y: primaryScreenHeight - axFrame.maxY,
-                width: axFrame.width,
-                height: axFrame.height
-            )
-            return Self.rect(nsFrame, matches: frame, tolerance: 2)
-        }
-
-        for pid in candidatePIDs {
-            if WindowRegistry.shared.liveWindows(for: pid).contains(where: fills) {
-                return true
-            }
-        }
-
-        return WindowRegistry.shared.windows.contains(where: fills)
-    }
-
-    private static func rect(_ a: CGRect, matches b: CGRect, tolerance: CGFloat = 1) -> Bool {
-        abs(a.minX - b.minX) < tolerance
-            && abs(a.minY - b.minY) < tolerance
-            && abs(a.width - b.width) < tolerance
-            && abs(a.height - b.height) < tolerance
-    }
-
-    /// True when `rect` fills a full axis of `visibleFrame` (at least three
-    /// edges flush, i.e. a half tile or full maximize) AND is flush against
-    /// the edge Docky occupies, meaning it extends into Docky's strip. A
-    /// window with a non-flush edge on Docky's side (e.g. tiled to the
-    /// opposite half) stays clear and returns false.
-    private static func fillsFullAxisBehindDock(
-        _ rect: CGRect,
-        visibleFrame: CGRect,
-        dockSide: ResolvedDockWindowPosition,
-        tolerance: CGFloat = 2
-    ) -> Bool {
-        let flushLeft = abs(rect.minX - visibleFrame.minX) < tolerance
-        let flushRight = abs(rect.maxX - visibleFrame.maxX) < tolerance
-        let flushBottom = abs(rect.minY - visibleFrame.minY) < tolerance
-        let flushTop = abs(rect.maxY - visibleFrame.maxY) < tolerance
-
-        let flushCount = [flushLeft, flushRight, flushBottom, flushTop].filter { $0 }.count
-        guard flushCount >= 3 else { return false }
-
-        switch dockSide {
-        case .left: return flushLeft
-        case .right: return flushRight
-        case .bottom: return flushBottom
-        case .top: return flushTop
-        }
-    }
 }
 
 extension MainWindow: DockWindowInteractionHolding, DockSearchFocusWindow {

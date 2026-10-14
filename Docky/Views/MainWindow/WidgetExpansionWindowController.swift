@@ -22,6 +22,7 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
     private var currentTileID: String?
     private var isPreviewHovered = false
     private var isHoldingDockVisible = false
+    private var interactionToken: UUID?
     private weak var heldMainWindow: MainWindow?
     private var pendingDismissTask: Task<Void, Never>?
     private var dismissAnimationTask: Task<Void, Never>?
@@ -53,7 +54,8 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         cornerRadius: CGFloat,
         renderedSpan: TileSpan
     ) {
-        guard let window else { return }
+        guard NSApp.windows.compactMap({ $0 as? MainWindow }).first?.permitsPassivePresentation != false,
+              let window else { return }
 
         currentTileID = sourceTileID
         activeSourceTileID = sourceTileID
@@ -63,23 +65,10 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         dismissAnimationTask = nil
         beginDockVisibilityHoldIfNeeded()
 
-        let resolvedTileSize = max(
-            1,
-            min(
-                sourceFrame.height,
-                sourceFrame.width / CGFloat(max(renderedSpan.rawValue, 1))
-            ))
-        let baseTileSize = max(Self.minimumExpansionBaseTileSize, resolvedTileSize)
         let extent = widget.kind.expansionExtent
-        let size = CGSize(
-            width: baseTileSize * CGFloat(extent.widthTiles),
-            height: baseTileSize * CGFloat(extent.heightTiles)
-        )
-        let windowSize = CGSize(
-            width: size.width + Self.contentPadding * 2,
-            height: size.height + Self.contentPadding * 2
-        )
-
+        let windowSize = expansionWindowSize(widget: widget, sourceFrame: sourceFrame, span: renderedSpan)
+        let size = CGSize(width: windowSize.width - Self.contentPadding * 2,
+                          height: windowSize.height - Self.contentPadding * 2)
         // Widget views pick their layout variant (1-up / 2-up / 3-up)
         // off `renderedSpan`, so a 1x1 tile's expanded preview was
         // drawing 1-up content inside a 3x3 window. Map the expansion
@@ -120,6 +109,39 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
             window.animator().setFrame(finalFrame, display: true)
             window.animator().alphaValue = 1
         }
+    }
+
+    private func expansionWindowSize(widget: WidgetTile, sourceFrame: CGRect, span renderedSpan: TileSpan) -> CGSize {
+        let resolvedTileSize = max(
+            1,
+            min(
+                sourceFrame.height,
+                sourceFrame.width / CGFloat(max(renderedSpan.rawValue, 1))
+            ))
+        let baseTileSize = max(Self.minimumExpansionBaseTileSize, resolvedTileSize)
+        let extent = widget.kind.expansionExtent
+        let size = CGSize(
+            width: baseTileSize * CGFloat(extent.widthTiles),
+            height: baseTileSize * CGFloat(extent.heightTiles)
+        )
+        return CGSize(
+            width: size.width + Self.contentPadding * 2,
+            height: size.height + Self.contentPadding * 2
+        )
+
+    }
+
+    func dismissImmediately() {
+        pendingDismissTask?.cancel()
+        pendingDismissTask = nil
+        dismissAnimationTask?.cancel()
+        dismissAnimationTask = nil
+        isPreviewHovered = false
+        endDockVisibilityHoldIfNeeded()
+        currentTileID = nil
+        activeSourceTileID = nil
+        window?.orderOut(nil)
+        close()
     }
 
     func dismiss(sourceTileID: String) {
@@ -194,7 +216,7 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
         guard !isHoldingDockVisible else { return }
         guard let mainWindow = NSApp.windows.compactMap({ $0 as? MainWindow }).first else { return }
 
-        mainWindow.beginInteraction()
+        interactionToken = mainWindow.beginInteraction()
         heldMainWindow = mainWindow
         isHoldingDockVisible = true
     }
@@ -202,20 +224,24 @@ final class WidgetExpansionWindowController: NSWindowController, ObservableObjec
     private func endDockVisibilityHoldIfNeeded() {
         guard isHoldingDockVisible else { return }
 
-        heldMainWindow?.endInteraction()
+        heldMainWindow?.endInteraction(interactionToken)
         heldMainWindow = nil
         isHoldingDockVisible = false
     }
 
     private func frameOrigin(for size: CGSize, sourceFrame originalSourceFrame: CGRect) -> CGPoint {
         let sourceFrame = convertToScreen(originalSourceFrame)
-        let screen = NSScreen.screens.first { $0.visibleFrame.intersects(sourceFrame) } ?? NSScreen.main
+        let screens = NSScreen.screens
+        let index = DockPresentationGeometry.screenIndex(containing: sourceFrame, frames: screens.map(\.frame))
+        let screen = index.map { screens[$0] } ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else {
             return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
         }
 
-        return DockPresentationGeometry.origin(for: .init(size: size, source: sourceFrame, visible: visibleFrame,
-            edge: DockyPreferences.shared.windowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation), gap: 0))
+        let edge = DockyPreferences.shared.windowPosition.resolved(
+            systemOrientation: DockSettingsService.shared.orientation)
+        return DockPresentationGeometry.origin(
+            for: .init(size: size, source: sourceFrame, visible: visibleFrame, edge: edge))
     }
 
     private func convertToScreen(_ frame: CGRect) -> CGRect {

@@ -10,6 +10,10 @@ enum DockPresentationGeometry {
         let edge: ResolvedDockWindowPosition
         var gap: CGFloat = 0
     }
+    static func screenIndex(containing source: CGRect, frames: [CGRect]) -> Int? {
+        let center = CGPoint(x: source.midX, y: source.midY)
+        return frames.firstIndex { $0.contains(center) } ?? frames.firstIndex { $0.intersects(source) }
+    }
     static func origin(for request: Request) -> CGPoint {
         let size = request.size
         let source = request.source

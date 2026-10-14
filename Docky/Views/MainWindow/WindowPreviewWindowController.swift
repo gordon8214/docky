@@ -29,6 +29,7 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     private var currentBundleIdentifier: String?
     private var isPreviewHovered = false
     private var isHoldingDockVisible = false
+    private var interactionToken: UUID?
     private weak var heldMainWindow: MainWindow?
     private var pendingDismissTask: Task<Void, Never>?
     private var dismissAnimationTask: Task<Void, Never>?
@@ -80,7 +81,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         sourceFrame: CGRect,
         preferredEdge: NSRectEdge
     ) -> Bool {
-        guard let window else { return false }
+        guard NSApp.windows.compactMap({ $0 as? MainWindow }).first?.permitsPassivePresentation != false,
+              let window else { return false }
 
         let didLoad = WindowPreviewService.shared.present(
             forBundleIdentifiers: bundleIDs,
@@ -138,6 +140,21 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         }
 
         return true
+    }
+
+    func dismissImmediately() {
+        pendingDismissTask?.cancel()
+        pendingDismissTask = nil
+        dismissAnimationTask?.cancel()
+        dismissAnimationTask = nil
+        isPreviewHovered = false
+        endDockVisibilityHoldIfNeeded()
+        currentTileID = nil
+        activeSourceTileID = nil
+        currentBundleIdentifier = nil
+        WindowPreviewService.shared.dismiss()
+        window?.orderOut(nil)
+        close()
     }
 
     func dismiss(sourceTileID: String) {
@@ -226,14 +243,14 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     private func beginDockVisibilityHoldIfNeeded() {
         guard !isHoldingDockVisible else { return }
         guard let mainWindow = NSApp.windows.compactMap({ $0 as? MainWindow }).first else { return }
-        mainWindow.beginInteraction()
+        interactionToken = mainWindow.beginInteraction()
         heldMainWindow = mainWindow
         isHoldingDockVisible = true
     }
 
     private func endDockVisibilityHoldIfNeeded() {
         guard isHoldingDockVisible else { return }
-        heldMainWindow?.endInteraction()
+        heldMainWindow?.endInteraction(interactionToken)
         heldMainWindow = nil
         isHoldingDockVisible = false
     }
@@ -252,7 +269,9 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         // and centered docks see an X offset (bottom docks happened to work by
         // coincidence when the tile sat at the dock window's vertical center).
         let sourceFrame = convertToScreen(originalSourceFrame)
-        let screen = NSScreen.screens.first { $0.visibleFrame.intersects(sourceFrame) } ?? NSScreen.main
+        let screens = NSScreen.screens
+        let index = DockPresentationGeometry.screenIndex(containing: sourceFrame, frames: screens.map(\.frame))
+        let screen = index.map { screens[$0] } ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else {
             return CGPoint(x: sourceFrame.midX - size.width / 2, y: sourceFrame.maxY)
         }
@@ -264,7 +283,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         case .minX: edge = .right
         default: edge = .bottom
         }
-        return DockPresentationGeometry.origin(for: .init(size: size, source: sourceFrame, visible: visibleFrame, edge: edge))
+        return DockPresentationGeometry.origin(
+            for: .init(size: size, source: sourceFrame, visible: visibleFrame, edge: edge))
     }
     private func convertToScreen(_ frame: CGRect) -> CGRect {
         guard let dockFrame = NSApp.windows.compactMap({ $0 as? MainWindow }).first?.frame else { return frame }

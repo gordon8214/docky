@@ -25,13 +25,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var debugSnapshotTextView: NSTextView?
     private var debugSnapshotCancellables = Set<AnyCancellable>()
 
-    func applicationDidFinishLaunching(_ aNotification: Notification) {
-        #if DEBUG
+    #if DEBUG
+    private func runDebugRegressionIfRequested() -> Bool {
+        if ProcessInfo.processInfo.arguments.contains("--dock-bridge-crash-fixture") {
+            window?.orderOut(nil)
+            Task { await DockBridgeRegression.runCrashFixture() }
+            return true
+        }
+        if ProcessInfo.processInfo.arguments.contains("--dock-bridge-regression") {
+            window?.orderOut(nil)
+            Task { await DockBridgeRegression.run() }
+            return true
+        }
+        if ProcessInfo.processInfo.arguments.contains("--dock-system-regression") {
+            window?.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            Task { await DockSystemRegression.run() }
+            return true
+        }
         if ProcessInfo.processInfo.arguments.contains("--appkit-ui-regression") {
             window?.orderOut(nil)
             Task { await AppKitUIRegression.run() }
-            return
+            return true
         }
+        return false
+    }
+    #endif
+
+    func applicationDidFinishLaunching(_ aNotification: Notification) {
+        #if DEBUG
+        if runDebugRegressionIfRequested() { return }
         #endif
         // Bound every AX call to 1s so a hung app can't stall the main run loop.
         // Must precede any other AX work — applies process-wide.
@@ -230,6 +253,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
+        WindowReservationService.shared.stop()
         if SystemDockVisibilityService.shared.hasSnapshot {
             SystemDockVisibilityService.shared.restore()
         }

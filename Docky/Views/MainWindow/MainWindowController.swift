@@ -11,7 +11,7 @@ final class MainWindowController: NSWindowController {
     private var dockEditorOverlayWindowController: DockEditorOverlayWindowController?
     private var dockEditorHintWindowController: DockEditorHintWindowController?
     private var launchpadOverlayWindowController: LaunchpadOverlayWindowController?
-    private var smartOrganizeProgressChipWindowController: SmartOrganizeProgressChipWindowController?
+    private var organizeProgressController: SmartOrganizeProgressChipWindowController?
     private var windowSwitcherOverlayWindowController: WindowSwitcherOverlayWindowController?
     private var startMenuOverlayWindowController: StartMenuOverlayWindowController?
     private var profileSwitcherWindowController: ProfileSwitcherWindowController?
@@ -27,7 +27,7 @@ final class MainWindowController: NSWindowController {
         dockEditorOverlayWindowController = DockEditorOverlayWindowController(mainWindow: mainWindow)
         dockEditorHintWindowController = DockEditorHintWindowController(mainWindow: mainWindow)
         launchpadOverlayWindowController = LaunchpadOverlayWindowController(mainWindow: mainWindow)
-        smartOrganizeProgressChipWindowController = SmartOrganizeProgressChipWindowController(mainWindow: mainWindow)
+        organizeProgressController = SmartOrganizeProgressChipWindowController(mainWindow: mainWindow)
         windowSwitcherOverlayWindowController = WindowSwitcherOverlayWindowController(mainWindow: mainWindow)
         startMenuOverlayWindowController = StartMenuOverlayWindowController(mainWindow: mainWindow)
         profileSwitcherWindowController = ProfileSwitcherWindowController(mainWindow: mainWindow)
@@ -42,6 +42,7 @@ final class MainWindowController: NSWindowController {
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
+        (window as? MainWindow)?.didOrderDockWindow()
         dockEditorHintWindowController?.scheduleInitialPresentation()
     }
 }

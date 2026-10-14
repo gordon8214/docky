@@ -149,13 +149,9 @@ enum NativeSettingsFields {
                 "Per-App Badge Style", \.folderBadgePreviewStyle, values: FolderBadgePreviewStyle.allCases,
                 name: { $0.title }),
             NativePreferenceField.number("Fullscreen Reveal Delay", \.fullscreenRevealDelay, range: 0...2),
-            NativePreferenceField.boolean("Hide in Fullscreen", \.hidesDuringFullscreen),
             NativePreferenceField.boolean("Disable Recent Apps", \.hidesRecentApps),
             NativePreferenceField.boolean(
                 "List Minimized Windows in Switcher & Previews", \.includesMinimizedWindows),
-            NativePreferenceField.choice(
-                "Maximized Windows", \.maximizedWindowBehavior, values: MaximizedWindowBehavior.allCases,
-                name: { $0.title }),
             NativePreferenceField.choice(
                 "Overflow Behavior", \.overflowBehavior, values: DockOverflowBehavior.allCases, name: { $0.title }),
             NativePreferenceField.boolean("Hide Finder", \.shelveHidesFinder),
@@ -179,12 +175,6 @@ enum NativeSettingsFields {
     static func behaviorLaunchRows() -> [NSView] {
         return [
             NativePreferenceField.boolean("Open at Login", \.opensAtLogin)
-        ]
-    }
-
-    static func behaviorSystemDockRows() -> [NSView] {
-        return [
-            NativePreferenceField.boolean("Hide System Dock", \.hidesSystemDock)
         ]
     }
 
@@ -268,6 +258,31 @@ enum NativeSettingsFields {
             NativePreferenceField.choice(
                 "App Tile Frontmost Click Behavior", \.appTileFrontmostClickBehavior,
                 values: AppTileFrontmostClickBehavior.allCases, name: { $0.title })
+        ]
+    }
+
+}
+
+extension NativeSettingsFields {
+    static func behaviorSystemDockRows() -> [NSView] {
+        let status = nativeLabel("")
+        let retry = NativeActionButton("Retry") { WindowReservationService.shared.retryIntegration() }
+        retry.setAccessibilityLabel(String(localized: "Retry system Dock integration"))
+        let row = NativeFormRow(title: "System Integration", control: status, accessories: [retry])
+        row.observe { [weak status, weak retry] in
+            let service = WindowReservationService.shared
+            let connected = service.backendStatus.contains("verified")
+            status?.stringValue = service.lastError == nil
+                ? (connected ? String(localized: "Connected") : String(localized: "Connecting…"))
+                : String(localized: "Needs attention")
+            status?.toolTip = service.lastError ?? service.backendDetails
+            retry?.isHidden = service.lastError == nil
+        }
+        return [
+            NSTextField(wrappingLabelWithString:
+                "Docky replaces the system Dock while running. "
+                    + "Your original Dock settings are restored when Docky quits."),
+            row
         ]
     }
 

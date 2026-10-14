@@ -90,7 +90,10 @@ enum FeedbackBundle {
             "processorCount": processInfo.processorCount,
             "physicalMemoryBytes": processInfo.physicalMemory,
             "locale": Locale.current.identifier,
-            "screens": screens
+            "screens": screens,
+            "dockReservationBackend": WindowReservationService.shared.backendStatus,
+            "dockReservationDetails": WindowReservationService.shared.backendDetails ?? "",
+            "dockReservationError": WindowReservationService.shared.lastError ?? ""
         ]
     }
 

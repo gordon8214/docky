@@ -24,10 +24,11 @@ final class ProfileSwitcherWindowController: NSWindowController {
     private let dockSettings = DockSettingsService.shared
     private let contentController: NativeProfileSwitcherController
     private let chromeGap: CGFloat = 8
-    /// Whether we've called `mainWindow.beginInteraction()` without a
-    /// matching `endInteraction()` yet. Keeps the count balanced when
+    /// Whether we've acquired a main-window interaction token without a
+    /// matching release yet. Keeps ownership balanced when
     /// the switcher's hover state flips repeatedly.
     private var isHoldingMainInteraction = false
+    private var interactionToken: UUID?
     /// Tracks the last visibility decision so we don't redundantly
     /// orderFront/orderOut the companion window on every observation
     /// tick. Driven by `applyStripVisibility`.
@@ -58,7 +59,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
     isolated deinit {
         if isHoldingMainInteraction {
-            mainWindow?.endInteraction()
+            mainWindow?.endInteraction(interactionToken)
         }
     }
 
@@ -96,7 +97,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
     /// when there's only a single profile (one-profile case mirrors
     /// macOS: nothing to switch to, so the affordance is noise).
     private func shouldShowStrip() -> Bool {
-        guard !preferences.hidesProfileStrip else { return false }
+        guard mainWindow?.showsPassiveCompanions == true, !preferences.hidesProfileStrip else { return false }
         return profileService.profiles.count > 1
     }
 
@@ -115,7 +116,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
             // Drop the interaction hold so the dock can autohide if the
             // strip was active when it disappeared.
             if isHoldingMainInteraction {
-                mainWindow?.endInteraction()
+                mainWindow?.endInteraction(interactionToken)
                 isHoldingMainInteraction = false
             }
         }
@@ -132,17 +133,21 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
     private func applySwitcherActive(_ active: Bool) {
         guard let mainWindow else { return }
-        if active, !isHoldingMainInteraction {
-            mainWindow.beginInteraction()
+        if active, mainWindow.showsPassiveCompanions, !isHoldingMainInteraction {
+            interactionToken = mainWindow.beginInteraction()
             isHoldingMainInteraction = true
         } else if !active, isHoldingMainInteraction {
-            mainWindow.endInteraction()
+            mainWindow.endInteraction(interactionToken)
             isHoldingMainInteraction = false
         }
     }
 
     private func observeMainWindow() {
         let center = NotificationCenter.default
+        center.publisher(for: .dockyVisibilityChanged, object: mainWindow)
+            .merge(with: center.publisher(for: .dockyEnteredFullscreen, object: mainWindow))
+            .sink { [weak self] _ in self?.applyStripVisibility(force: true) }
+            .store(in: &cancellables)
         center.publisher(for: NSWindow.didMoveNotification, object: mainWindow)
             .merge(with: center.publisher(for: NSWindow.didResizeNotification, object: mainWindow))
             .merge(with: center.publisher(for: NSWindow.didChangeScreenNotification, object: mainWindow))

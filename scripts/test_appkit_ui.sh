@@ -7,4 +7,4 @@ if [[ ! -x "$app_binary" ]]; then
     echo "Build the Debug Docky app before running its AppKit UI regressions." >&2
     exit 1
 fi
-gtimeout 30 "$app_binary" --appkit-ui-regression
+gtimeout 30 "$app_binary" --appkit-ui-regression -ApplePersistenceIgnoreState YES

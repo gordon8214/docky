@@ -11,6 +11,7 @@ final class DockEditorHintWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
     private var isInterruptingMainWindow = false
+    private var interactionToken: UUID?
     private var presentationWorkItem: DispatchWorkItem?
     private let animationDuration: TimeInterval = 0.16
     private let chipGap: CGFloat = 10
@@ -71,6 +72,13 @@ final class DockEditorHintWindowController: NSWindowController {
     }
 
     private func observeMainWindow() {
+        NotificationCenter.default.publisher(for: .dockyEnteredFullscreen, object: mainWindow)
+            .sink { [weak self] _ in
+                self?.cancelScheduledPresentation()
+                self?.window?.orderOut(nil)
+                self?.endMainWindowInteraction()
+            }
+            .store(in: &cancellables)
         NotificationCenter.default.publisher(for: NSWindow.didMoveNotification, object: mainWindow)
             .merge(with: NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: mainWindow))
             .merge(
@@ -114,7 +122,7 @@ final class DockEditorHintWindowController: NSWindowController {
 
         guard !preferences.hasSeenDockEditorHint else { return }
         guard !editMode.isActive else { return }
-        guard let window, let mainWindow, mainWindow.isVisible else { return }
+        guard let window, let mainWindow, mainWindow.isVisible, mainWindow.permitsPassivePresentation else { return }
 
         preferences.hasSeenDockEditorHint = true
         updateFrame()
@@ -206,13 +214,13 @@ final class DockEditorHintWindowController: NSWindowController {
 
     private func beginMainWindowInteraction() {
         guard !isInterruptingMainWindow else { return }
-        mainWindow?.beginInteraction()
+        interactionToken = mainWindow?.beginInteraction()
         isInterruptingMainWindow = true
     }
 
     private func endMainWindowInteraction() {
         guard isInterruptingMainWindow else { return }
-        mainWindow?.endInteraction()
+        mainWindow?.endInteraction(interactionToken)
         isInterruptingMainWindow = false
     }
 }

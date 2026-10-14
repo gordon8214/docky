@@ -23,6 +23,7 @@ final class StartMenuOverlayWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
     private var isInterruptingMainWindow = false
+    private var interactionToken: UUID?
     private var isAttachedToParent = false
     private var localDismissMonitor: Any?
     private var globalDismissMonitor: Any?
@@ -194,13 +195,13 @@ final class StartMenuOverlayWindowController: NSWindowController {
 
     private func beginMainInteraction() {
         guard !isInterruptingMainWindow else { return }
-        mainWindow?.beginInteraction()
+        interactionToken = mainWindow?.beginInteraction()
         isInterruptingMainWindow = true
     }
 
     private func endMainInteraction() {
         guard isInterruptingMainWindow else { return }
-        mainWindow?.endInteraction()
+        mainWindow?.endInteraction(interactionToken)
         isInterruptingMainWindow = false
     }
 

@@ -25,6 +25,7 @@ final class WidgetSettingsPanelController: NSObject {
     private var globalClickMonitor: Any?
     private var localEventMonitor: Any?
     private weak var heldMainWindow: MainWindow?
+    private var interactionToken: UUID?
 
     private override init() { super.init() }
 
@@ -127,12 +128,12 @@ final class WidgetSettingsPanelController: NSObject {
         else {
             return
         }
-        mainWindow.beginInteraction()
+        interactionToken = mainWindow.beginInteraction()
         heldMainWindow = mainWindow
     }
 
     private func endDockVisibilityHoldIfNeeded() {
-        heldMainWindow?.endInteraction()
+        heldMainWindow?.endInteraction(interactionToken)
         heldMainWindow = nil
     }
 

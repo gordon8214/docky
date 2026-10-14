@@ -1,3 +1,4 @@
+import AppKit
 import CoreFoundation
 import Darwin
 import Foundation
@@ -22,6 +23,29 @@ private struct WatchdogState {
 }
 
 let arguments = CommandLine.arguments
+#if DEBUG
+if arguments.contains("--window-behavior-probe") {
+    var signal: URL?
+    if let index = arguments.firstIndex(of: "--reservation-signal"), index + 1 < arguments.count {
+        signal = URL(fileURLWithPath: arguments[index + 1])
+    }
+    NativeWindowProbe.run(reservationSignal: signal)
+}
+#endif
+if arguments.contains("--visible-frame-probe") {
+    _ = NSApplication.shared
+    var frames: [String: String] = [:]
+    for screen in NSScreen.screens {
+        if let display = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            frames[display.stringValue] = NSStringFromRect(screen.visibleFrame)
+        }
+    }
+    if let data = try? JSONSerialization.data(withJSONObject: frames) {
+        FileHandle.standardOutput.write(data)
+        exit(0)
+    }
+    exit(1)
+}
 guard arguments.count >= 5 else {
     exit(64)
 }

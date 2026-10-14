@@ -1,223 +1,262 @@
-//
-//  WindowReservationService.swift
-//  Docky
-//
-//  Watches for app windows that get maximized to a screen's visibleFrame
-//  and shrinks them via the Accessibility API to leave room for Docky.
-//  The macOS 26 system Dock no longer reserves screen space, so apps think
-//  visibleFrame is theirs to fill. This service makes Docky behave as if
-//  it reserved space — only when the user opts into resizeWindow mode.
-//
-//  Activation gates: maximizedWindowBehavior == .resizeWindow AND
-//  accessibility permission granted. The service piggybacks on
-//  WindowRegistry's AX observers (which already track every app's window
-//  resizes) rather than spinning up a parallel observer set.
-//
-
 import AppKit
 import Combine
 import Foundation
+import Observation
 
+/// Publishes usable desktop geometry to WindowServer. Never resizes another
+/// application's windows. A separate AppKit process confirms visibleFrame.
 @MainActor
+@Observable
 final class WindowReservationService {
     static let shared = WindowReservationService()
-
-    private let preferences = DockyPreferences.shared
-    private let permissions = PermissionsService.shared
-    private let registry = WindowRegistry.shared
-
-    private var cancellables: Set<AnyCancellable> = []
-    private var registrySubscription: AnyCancellable?
-    private var windowCooldowns: [WindowID: Date] = [:]
-    private let cooldownInterval: TimeInterval = 0.25
-    private let matchTolerance: CGFloat = 1
-    private let edgeTolerance: CGFloat = 2
-
-    private enum DockSide { case top, bottom, left, right }
+    private(set) var backendStatus = "Not started"
+    private(set) var lastError: String?
+    private(set) var backendDetails: String?
+    private var started = false
+    private var timer: Timer?
+    private var wanted: NativeDockIntegration.Reservation?
+    private var expectedVisibleFrame: CGRect?
+    private var expectedDisplay: CGDirectDisplayID?
+    private var verification: Task<Void, Never>?
+    private var generation = 0
+    private var injectedDockPID: pid_t?
+    private var attemptedDockPID: pid_t?
+    private var subscriptions = Set<AnyCancellable>()
 
     private init() {}
 
     func start() {
-        // `permissions.$accessibility` is still ObservableObject-based,
-        // so re-derive both inputs every time either side fires. The
-        // Observation read of `preferences.maximizedWindowBehavior`
-        // re-runs the closure on its own changes; the Combine .sink
-        // handles the permission side.
-        observeChanges { [weak self] in
-            let mode = DockyPreferences.shared.maximizedWindowBehavior
-            let status = PermissionsService.shared.accessibility
-            self?.updateActivation(mode: mode, status: status)
+        guard !started else { return }
+        started = true
+        // Also detects Dock relaunch and compositor transitions that do not
+        // produce an AX resize or an application activation notification.
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reconcile() }
         }
-        .store(in: &cancellables)
-
-        permissions.$accessibility
+        if let timer { RunLoop.main.add(timer, forMode: .common) }
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] status in
-                let mode = DockyPreferences.shared.maximizedWindowBehavior
-                self?.updateActivation(mode: mode, status: status)
-            }
-            .store(in: &cancellables)
+            .sink { [weak self] _ in self?.reconcile() }
+            .store(in: &subscriptions)
     }
 
-    private func updateActivation(mode: MaximizedWindowBehavior, status: PermissionStatus) {
-        let shouldBeActive = (mode == .resizeWindow) && (status == .granted)
-        if shouldBeActive {
-            attachIfNeeded()
-        } else {
-            detach()
+    func update(screen: NSScreen, chrome: CGRect, edge: ResolvedDockWindowPosition, reserves: Bool) {
+        guard started, SystemDockVisibilityService.shared.ownsSession, let primary = NSScreen.screens.first,
+              let display = NativeDockIntegration.displayID(screen) else { return }
+        let base = NativeDockIntegration.unreservedFrame(screen)
+        let strip = reserves ? DockSystemGeometry.strip(screen: base, chrome: chrome, edge: edge) : .zero
+        let next = NativeDockIntegration.Reservation(
+            rect: reserves ? DockSystemGeometry.quartz(strip, primaryMaxY: primary.frame.maxY) : .zero,
+            reason: reserves ? 0 : 2, orientation: DockSystemGeometry.orientation(edge))
+        let visible = reserves ? DockSystemGeometry.usableFrame(screen: base, strip: strip, edge: edge) : base
+        guard wanted != next || expectedDisplay != display || expectedVisibleFrame != visible else { return }
+        wanted = next
+        expectedDisplay = display
+        expectedVisibleFrame = visible
+        publishAndVerify()
+    }
+
+    func stop() {
+        started = false
+        timer?.invalidate()
+        timer = nil
+        verification?.cancel()
+        DockBridgeLoader.cancelPendingLoad()
+        subscriptions.removeAll()
+        SystemDockVisibilityService.shared.setReservationOwnership(active: false)
+        if let wanted {
+            _ = NativeDockIntegration.publish(.init(rect: .zero, reason: 2, orientation: wanted.orientation))
         }
+        wanted = nil
+        backendStatus = "Stopped"
     }
 
-    private func attachIfNeeded() {
-        guard registrySubscription == nil else { return }
-        registrySubscription = registry.$windows
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] windows in
-                self?.scan(windows: windows)
-            }
-    }
-
-    private func detach() {
-        registrySubscription?.cancel()
-        registrySubscription = nil
-        windowCooldowns.removeAll()
-    }
-
-    private func scan(windows: [AppWindow]) {
-        guard let mainWindow = NSApp.windows.compactMap({ $0 as? MainWindow }).first,
-              let dockyScreen = mainWindow.screen,
-              let dockyFrame = mainWindow.currentReservationFrame,
-              let primaryScreenHeight = NSScreen.screens.first?.frame.height
-        else { return }
-
-        let visibleFrame = dockyScreen.visibleFrame
-        guard let dockySide = side(of: dockyFrame, on: visibleFrame) else { return }
-
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        let now = Date()
-
-        for window in windows where window.processIdentifier != ownPID {
-            if let until = windowCooldowns[window.id], now < until { continue }
-
-            guard let axFrame = window.frame else { continue }
-            // WindowRegistry returns AX-space frames (flipped Y, origin at the
-            // top-left of the primary display). Convert to NSScreen space
-            // before any geometry comparison.
-            let nsFrame = flipY(axFrame, primaryHeight: primaryScreenHeight)
-
-            // Only act on windows on the same screen as Docky.
-            guard let windowScreen = screenContaining(nsFrame), windowScreen == dockyScreen else { continue }
-
-            // Tile/maximize signature: window intersects Docky AND is anchored
-            // to ≥2 edges of the visible frame. This catches full maximize (4
-            // flush edges), half tiles (3), and quarter tiles (2) without
-            // resizing free-floating windows that happen to overlap Docky.
-            guard nsFrame.intersects(dockyFrame) else { continue }
-            guard flushEdgeCount(of: nsFrame, against: visibleFrame) >= 2 else { continue }
-
-            // Push the window off Docky's strip.
-            let nsTarget = pushAway(nsFrame, from: dockyFrame, on: dockySide)
-            // Don't issue redundant resizes.
-            guard !rectsMatch(nsFrame, nsTarget) else { continue }
-            // Don't shrink a window that has nothing left in the relevant axis.
-            guard nsTarget.width > 0, nsTarget.height > 0 else { continue }
-
-            // AX setters take flipped-Y coordinates; convert before applying.
-            let axTarget = flipY(nsTarget, primaryHeight: primaryScreenHeight)
-            let succeeded = registry.resize(window, to: axTarget)
-            if succeeded {
-                windowCooldowns[window.id] = now.addingTimeInterval(cooldownInterval)
-            }
+    private func reconcile() {
+        guard started else { return }
+        guard SystemDockVisibilityService.shared.ownsSession else {
+            verification?.cancel()
+            wanted = nil
+            backendStatus = "Reservation ownership released"
+            return
         }
+        let window = NSApp.windows.compactMap { $0 as? MainWindow }.first
+        window?.refreshSystemIntegration()
+        let currentDockPID = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
+            .first?.processIdentifier
+        guard let wanted else { return }
+        // A failed probe releases the Dock-side lease. Do not immediately
+        // reclaim it in this polling loop; retry on a new Dock or explicit
+        // request, or when the requested layout changes.
+        if currentDockPID == attemptedDockPID, lastError != nil { return }
+        if currentDockPID != injectedDockPID {
+            if currentDockPID != attemptedDockPID { lastError = nil }
+            guard verification == nil, lastError == nil else { return }
+            publishAndVerify()
+        } else if NativeDockIntegration.readReservation() != wanted {
+            publishAndVerify()
+        }
+
     }
 
-    /// Flips a rect between AX (top-left origin, Y grows down) and NSScreen
-    /// (bottom-left origin, Y grows up) coordinate spaces. The transform is
-    /// its own inverse.
-    private func flipY(_ rect: CGRect, primaryHeight: CGFloat) -> CGRect {
-        CGRect(
-            x: rect.minX,
-            y: primaryHeight - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
+    func retryIntegration() {
+        DockBridgeLoader.resetFailure()
+        injectedDockPID = nil
+        publishAndVerify()
     }
 
-    private func screenContaining(_ frame: CGRect) -> NSScreen? {
-        // Match by largest intersection so a window straddling a display
-        // boundary picks the screen it mostly lives on.
-        var best: (screen: NSScreen, area: CGFloat)?
-        for screen in NSScreen.screens {
-            let intersection = screen.frame.intersection(frame)
-            let area = intersection.width * intersection.height
-            if area > 0, area > (best?.area ?? 0) {
-                best = (screen, area)
+    private func publishAndVerify() {
+        guard let wanted, let display = expectedDisplay else { return }
+        generation += 1
+        let currentGeneration = generation
+        verification?.cancel()
+        SystemDockVisibilityService.shared.setReservationOwnership(active: true)
+        // Probe the direct API before installing the Dock-side publisher.
+        // On current macOS, direct geometry can be read by new clients, but
+        // Dock overwrites it and only Dock-origin notifications update old
+        // clients. Its WindowManager tiling cache also needs the bridge.
+        if injectedDockPID == nil {
+            do { try Self.probeDirectPublication(wanted) } catch {
+                fail(error.localizedDescription)
+                return
             }
         }
-        return best?.screen
+        backendStatus = "Connecting Dock-side publisher"
+        let request = DockBridgeRequest(
+            session: SystemDockVisibilityService.shared.sessionIdentity, revision: UInt64(currentGeneration),
+            display: display, rect: [wanted.rect.minX, wanted.rect.minY, wanted.rect.width, wanted.rect.height],
+            reason: wanted.reason, orientation: wanted.orientation)
+        verification = Task { [weak self] in
+            guard let self else { return }
+            do { try await self.connectAndVerify(request, wanted: wanted, generation: currentGeneration) } catch {
+                guard !Task.isCancelled, currentGeneration == self.generation else { return }
+                if error.localizedDescription.contains("restarting")
+                    || error.localizedDescription.contains("changed during bridge initialization") {
+                    // Workspace may briefly report the old Dock while the
+                    // loader sees its replacement. This is a restart race,
+                    // not a rejected debugger authorization.
+                    self.attemptedDockPID = nil
+                    self.injectedDockPID = nil
+                    DockBridgeLoader.resetFailure()
+                }
+                self.fail(error.localizedDescription)
+            }
+        }
     }
 
-    /// Identifies which edge of the visible frame Docky is flush against.
-    /// Returns nil when Docky isn't anchored to any edge (corner-floating or
-    /// inset by more than the edge tolerance), in which case there's no clean
-    /// reservation strip to subtract.
-    private func side(of dock: CGRect, on visible: CGRect) -> DockSide? {
-        if abs(dock.minX - visible.minX) < edgeTolerance, dock.maxX < visible.maxX - edgeTolerance {
-            return .left
+    private func connectAndVerify(_ request: DockBridgeRequest, wanted: NativeDockIntegration.Reservation,
+                                  generation currentGeneration: Int) async throws {
+        let display = request.display
+        guard let dockPID = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
+            .first(where: { $0.isFinishedLaunching && !$0.isTerminated })?.processIdentifier else {
+            throw self.integrationError("Apple's Dock is restarting")
         }
-        if abs(dock.maxX - visible.maxX) < edgeTolerance, dock.minX > visible.minX + edgeTolerance {
-            return .right
+        self.attemptedDockPID = dockPID
+        try await DockBridgeLoader.load(into: dockPID)
+        try Task.checkCancellation()
+        try await sendToBridge(request, dockPID: dockPID)
+        guard !Task.isCancelled, currentGeneration == self.generation else { return }
+        guard NativeDockIntegration.readReservation() == wanted else {
+            throw self.integrationError("Dock-side SkyLight readback mismatch")
         }
-        if abs(dock.minY - visible.minY) < edgeTolerance, dock.maxY < visible.maxY - edgeTolerance {
-            return .bottom
+        self.injectedDockPID = dockPID
+        let frames = try await self.externalVisibleFrames()
+        guard !Task.isCancelled, currentGeneration == self.generation else { return }
+        guard let expected = self.expectedVisibleFrame,
+              let actual = frames[String(display)], self.matches(actual, expected) else {
+            throw self.integrationError("Independent AppKit visibleFrame mismatch: "
+                + "expected \(String(describing: self.expectedVisibleFrame)); actual \(frames)")
         }
-        if abs(dock.maxY - visible.maxY) < edgeTolerance, dock.minY > visible.minY + edgeTolerance {
-            return .top
-        }
-        return nil
+        self.backendStatus = "Dock-side publisher; independent AppKit readback verified"
+        self.lastError = nil
+        self.verification = nil
+        #if DEBUG
+        NSLog("[Docky] Native Dock reservation verified: \(expected)")
+        #endif
     }
 
-    /// Counts how many of `frame`'s edges sit flush against `visible`. macOS
-    /// tile and maximize states leave windows snapped to visible-frame edges,
-    /// so this is a cheap classifier for "the user committed this window to a
-    /// system-managed slot."
-    private func flushEdgeCount(of frame: CGRect, against visible: CGRect) -> Int {
-        var count = 0
-        if abs(frame.minX - visible.minX) < edgeTolerance { count += 1 }
-        if abs(frame.maxX - visible.maxX) < edgeTolerance { count += 1 }
-        if abs(frame.minY - visible.minY) < edgeTolerance { count += 1 }
-        if abs(frame.maxY - visible.maxY) < edgeTolerance { count += 1 }
-        return count
-    }
-
-    /// Shrinks `frame` so it no longer overlaps Docky, by advancing the side
-    /// of the frame that touches Docky's strip. Other edges are preserved so
-    /// half/quarter tiles keep their cross-axis anchoring.
-    private func pushAway(_ frame: CGRect, from dock: CGRect, on side: DockSide) -> CGRect {
-        var result = frame
-        switch side {
-        case .left:
-            let newMinX = max(frame.minX, dock.maxX)
-            result.origin.x = newMinX
-            result.size.width = max(0, frame.maxX - newMinX)
-        case .right:
-            let newMaxX = min(frame.maxX, dock.minX)
-            result.size.width = max(0, newMaxX - frame.minX)
-        case .bottom:
-            let newMinY = max(frame.minY, dock.maxY)
-            result.origin.y = newMinY
-            result.size.height = max(0, frame.maxY - newMinY)
-        case .top:
-            let newMaxY = min(frame.maxY, dock.minY)
-            result.size.height = max(0, newMaxY - frame.minY)
+    private func sendToBridge(_ request: DockBridgeRequest, dockPID: pid_t) async throws {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while true {
+            try Task.checkCancellation()
+            do {
+                let response = try await DockBridgeTransport.shared.send(request, dockPID: dockPID)
+                backendDetails = response.backendDetails
+                break
+            } catch {
+                guard error.localizedDescription.contains("not connected"),
+                      ContinuousClock.now < deadline else { throw error }
+                try await Task.sleep(for: .milliseconds(100))
+            }
         }
-        return result
     }
 
-    private func rectsMatch(_ a: CGRect, _ b: CGRect) -> Bool {
-        abs(a.minX - b.minX) < matchTolerance
-            && abs(a.minY - b.minY) < matchTolerance
-            && abs(a.width - b.width) < matchTolerance
-            && abs(a.height - b.height) < matchTolerance
+    private func integrationError(_ message: String) -> NSError {
+        NSError(domain: "DockyReservation", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    static func probeDirectPublication(_ reservation: NativeDockIntegration.Reservation) throws {
+        guard let original = NativeDockIntegration.readReservation() else {
+            throw NSError(domain: "DockyReservation", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Could not snapshot Apple's Dock reservation"])
+        }
+        // Restore before any suspension or injection. The payload must capture
+        // Apple's geometry, and denied loader authorization must leave no probe.
+        let publication = NativeDockIntegration.publish(reservation)
+        let readback = NativeDockIntegration.readReservation()
+        let restoration = NativeDockIntegration.publish(original)
+        guard restoration == 0, NativeDockIntegration.readReservation() == original else {
+            throw NSError(domain: "DockyReservation", code: Int(restoration),
+                          userInfo: [NSLocalizedDescriptionKey: "Could not restore the direct reservation probe"])
+        }
+        // A rejected direct publication still permits the authorized Dock-side
+        // backend. Record the probe result without accepting it as verification.
+        if publication != 0 || readback != reservation {
+            NSLog("[Docky] Direct reservation probe rejected; trying Dock-side publisher")
+        }
+    }
+
+    private func fail(_ message: String) {
+        verification = nil
+        // The Dock-side lease observes this independently, even when its IPC
+        // channel has failed. Keep the watchdog's preference snapshot intact.
+        SystemDockVisibilityService.shared.setReservationOwnership(active: false)
+        backendStatus = "Reservation unavailable"
+        if lastError != message { NSLog("[Docky] \(message)") }
+        lastError = message
+    }
+
+    private func matches(_ actual: CGRect, _ expected: CGRect) -> Bool {
+        abs(actual.minX - expected.minX) < 1 && abs(actual.minY - expected.minY) < 1
+            && abs(actual.width - expected.width) < 1 && abs(actual.height - expected.height) < 1
+    }
+
+    func externalVisibleFrames() async throws -> [String: CGRect] {
+        let executable = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/LoginItems")
+            .appendingPathComponent("DockyDockWatchdog.app/Contents/MacOS/DockyDockWatchdog")
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["--visible-frame-probe"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        defer { if process.isRunning { process.terminate() } }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while process.isRunning {
+            try Task.checkCancellation()
+            guard ContinuousClock.now < deadline else {
+                throw NSError(domain: "DockyReservation", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "AppKit probe exceeded its five-second budget"])
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard process.terminationStatus == 0,
+              let frames = try JSONSerialization.jsonObject(with: output.fileHandleForReading.readDataToEndOfFile())
+                as? [String: String] else {
+            throw NSError(domain: "DockyReservation", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "AppKit probe returned invalid output"])
+        }
+        return frames.mapValues { NSRectFromString($0) }
     }
 }

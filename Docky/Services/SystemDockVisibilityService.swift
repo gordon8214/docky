@@ -1,13 +1,5 @@
-//
-//  SystemDockVisibilityService.swift
-//  Docky
-//
-//  Hides the macOS Dock by writing to com.apple.dock preferences
-//  (autohide on, large delay, instant animation, no bouncing, no launch
-//  animation). The user's previous values are snapshotted before the first
-//  overwrite so they can be restored when the preference is turned off or
-//  when Docky quits.
-//
+// Suppresses Apple's visible Dock while preserving its preferences. The
+// independent watchdog restores the snapshot if Docky exits unexpectedly.
 
 import AppKit
 import Darwin
@@ -52,6 +44,29 @@ final class SystemDockVisibilityService {
         let ownerPID: pid_t
         let sessionID: String
         let snapshot: [String: Any]?
+    }
+
+    var sessionIdentity: String { sessionID }
+
+    var ownsSession: Bool {
+        guard let state = readVisibilityState() else { return false }
+        return state.active && state.ownerPID == ProcessInfo.processInfo.processIdentifier
+            && state.sessionID == sessionID
+    }
+
+    func setReservationOwnership(active: Bool) {
+        guard ownsSession, let stateFileURL else { return }
+        do {
+            let data = try Data(contentsOf: stateFileURL)
+            guard var state = try PropertyListSerialization.propertyList(from: data, format: nil)
+                as? [String: Any] else { return }
+            state["reservationOwnerActive"] = active
+            let updated = try PropertyListSerialization.data(fromPropertyList: state, format: .xml, options: 0)
+            try updated.write(to: stateFileURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateFileURL.path)
+        } catch {
+            NSLog("[Docky] Could not update reservation ownership: \(error.localizedDescription)")
+        }
     }
 
     var hasSnapshot: Bool {
@@ -167,6 +182,7 @@ final class SystemDockVisibilityService {
 
             let state: [String: Any] = [
                 "active": true,
+                "reservationOwnerActive": true,
                 "ownerPID": Int(ProcessInfo.processInfo.processIdentifier),
                 "sessionID": sessionID,
                 "snapshot": serializedSnapshot(snapshot)
@@ -177,6 +193,7 @@ final class SystemDockVisibilityService {
                 options: 0
             )
             try data.write(to: stateFileURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateFileURL.path)
         } catch {
             NSLog("[Docky] Failed to write system Dock visibility watchdog state: \(error.localizedDescription)")
         }
@@ -255,6 +272,9 @@ final class SystemDockVisibilityService {
         }
     }
 
+}
+
+extension SystemDockVisibilityService {
     private func serializedSnapshot(_ snapshot: [String: Any]) -> [String: Any] {
         var serialized: [String: Any] = [:]
         for key in Self.managedKeys {

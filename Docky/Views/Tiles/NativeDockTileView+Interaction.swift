@@ -35,7 +35,7 @@ extension NativeDockTileView {
         guard wasDragging || hypot(translation.width, translation.height) >= 4 else { return }
         if !wasDragging {
             dragWindow = window as? MainWindow
-            dragWindow?.beginInteraction()
+            dragInteractionToken = dragWindow?.beginInteraction()
             dragWindow?.makeFirstResponder(canvas)
             dragWindow?.setSearchFocus(true)
         }
@@ -60,7 +60,7 @@ extension NativeDockTileView {
                 value: DockPointerDrag(
                     location: location, translation: CGSize(width: location.x - start.x, height: location.y - start.y)))
             dragWindow?.setSearchFocus(false)
-            dragWindow?.endInteraction()
+            dragWindow?.endInteraction(dragInteractionToken)
             dragWindow = nil
         } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
             activate()
@@ -155,7 +155,7 @@ extension NativeDockTileView {
         popover.delegate = self
         if !holdsFolderInteraction {
             heldFolderWindow = window as? MainWindow
-            heldFolderWindow?.beginInteraction()
+            folderInteractionToken = heldFolderWindow?.beginInteraction()
             holdsFolderInteraction = true
         }
         popover.contentViewController = browser
@@ -185,7 +185,7 @@ extension NativeDockTileView {
                 self.fan = fan
                 if !holdsFolderInteraction {
                     heldFolderWindow = window as? MainWindow
-                    heldFolderWindow?.beginInteraction()
+                    folderInteractionToken = heldFolderWindow?.beginInteraction()
                     holdsFolderInteraction = true
                 }
                 fan.present()
@@ -200,7 +200,7 @@ extension NativeDockTileView {
         if mouseDownPoint != nil { canceledMouseSession = true }
         if wasDragging {
             dragWindow?.setSearchFocus(false)
-            dragWindow?.endInteraction()
+            dragWindow?.endInteraction(dragInteractionToken)
             dragWindow = nil
         }
         wasDragging = false
@@ -211,12 +211,31 @@ extension NativeDockTileView {
         interaction.isAppFolderPopoverPresented = false
         interaction.lastFolderPopoverDismissedAt = Date.timeIntervalSinceReferenceDate
         if holdsFolderInteraction {
-            heldFolderWindow?.endInteraction()
+            heldFolderWindow?.endInteraction(folderInteractionToken)
             heldFolderWindow = nil
             holdsFolderInteraction = false
         }
         folderPopover = nil
     }
+    func dismissTransientPresentation() {
+    folderPreviewTask?.cancel()
+    folderPreviewTask = nil
+    folderPreviewNeedsRefresh = true
+    cancelDrag()
+    if holdsFolderInteraction {
+        heldFolderWindow?.endInteraction(folderInteractionToken)
+        heldFolderWindow = nil
+        holdsFolderInteraction = false
+    }
+    fan?.dismiss()
+    folderPopover?.close()
+    interaction.widgetExpansionTask?.cancel()
+    interaction.windowPreviewDelayTask?.cancel()
+    TilePressService.shared.clearHover(tileID: interaction.tile.id)
+    WindowPreviewWindowController.shared.dismiss(sourceTileID: interaction.tile.id)
+    WidgetExpansionWindowController.shared.dismiss(sourceTileID: interaction.tile.id)
+    }
+
     func nativeViewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil && canvas?.isUpdatingHierarchy == true { return }
@@ -229,22 +248,7 @@ extension NativeDockTileView {
             FolderAccessService.shared.beginWatching(folder.url, ownerID: folderWatcherID)
         }
         if window == nil {
-            folderPreviewTask?.cancel()
-            folderPreviewTask = nil
-            folderPreviewNeedsRefresh = true
-            cancelDrag()
-            if holdsFolderInteraction {
-                heldFolderWindow?.endInteraction()
-                heldFolderWindow = nil
-                holdsFolderInteraction = false
-            }
-            fan?.dismiss()
-            folderPopover?.close()
-            interaction.widgetExpansionTask?.cancel()
-            interaction.windowPreviewDelayTask?.cancel()
-            TilePressService.shared.clearHover(tileID: interaction.tile.id)
-            WindowPreviewWindowController.shared.dismiss(sourceTileID: interaction.tile.id)
-            WidgetExpansionWindowController.shared.dismiss(sourceTileID: interaction.tile.id)
+            dismissTransientPresentation()
         } else {
             refresh()
         }

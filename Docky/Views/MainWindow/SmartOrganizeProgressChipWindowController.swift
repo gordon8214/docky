@@ -11,7 +11,7 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
     private var isInterruptingMainWindow = false
-    private let animationDuration: TimeInterval = 0.16
+    private var interactionToken: UUID?
     private let chipGap: CGFloat = 10
     private let preferences = DockyPreferences.shared
     private let dockSettings = DockSettingsService.shared
@@ -42,7 +42,6 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
             includesFullScreenAuxiliary: true)
         configureHiddenWindowState()
         updateFrame()
-        window.orderFront(nil)
     }
 
     private func observeProgressPresentation() {
@@ -50,11 +49,7 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isPresented in
                 guard let self else { return }
-                if isPresented {
-                    self.presentChip()
-                } else {
-                    self.dismissChip()
-                }
+                self.syncPresentation(isPresented: isPresented)
             }
             .store(in: &cancellables)
 
@@ -67,6 +62,12 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
     }
 
     private func observeMainWindow() {
+        NotificationCenter.default.publisher(for: .dockyVisibilityChanged, object: mainWindow)
+            .merge(with: NotificationCenter.default.publisher(for: .dockyEnteredFullscreen, object: mainWindow))
+            .sink { [weak self] _ in
+                self?.syncPresentation(isPresented: SmartOrganizeProgressService.shared.isPresented)
+            }
+            .store(in: &cancellables)
         NotificationCenter.default.publisher(for: NSWindow.didMoveNotification, object: mainWindow)
             .merge(with: NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: mainWindow))
             .merge(
@@ -88,18 +89,20 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
         .store(in: &cancellables)
     }
 
-    private func presentChip() {
-        guard let window else { return }
-        updateFrame()
-        beginMainWindowInteraction()
-        window.orderFront(nil)
-        animateWindowAlpha(to: 1)
-    }
-
-    private func dismissChip() {
-        animateWindowAlpha(to: 0) { [weak self] in
-            self?.endMainWindowInteraction()
+    private func syncPresentation(isPresented: Bool) {
+        guard let window, let mainWindow else { return }
+        guard isPresented, mainWindow.permitsPassivePresentation else {
+            window.orderOut(nil)
+            configureHiddenWindowState()
+            endMainWindowInteraction()
+            return
         }
+        // Background progress must not hold a fullscreen edge reveal open.
+        if !mainWindow.isFullscreenActive { beginMainWindowInteraction() }
+        guard mainWindow.showsPassiveCompanions else { window.orderOut(nil); return }
+        updateFrame()
+        window.orderFront(nil)
+        window.alphaValue = 1
     }
 
     private func updateFrame() {
@@ -149,32 +152,15 @@ final class SmartOrganizeProgressChipWindowController: NSWindowController {
         window.ignoresMouseEvents = true
     }
 
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor @Sendable () -> Void)? = nil) {
-        guard let window else {
-            completion?()
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().alphaValue = alphaValue
-        } completionHandler: {
-            Task { @MainActor in
-                completion?()
-            }
-        }
-    }
-
     private func beginMainWindowInteraction() {
         guard !isInterruptingMainWindow else { return }
-        mainWindow?.beginInteraction()
         isInterruptingMainWindow = true
+        interactionToken = mainWindow?.beginInteraction()
     }
 
     private func endMainWindowInteraction() {
         guard isInterruptingMainWindow else { return }
-        mainWindow?.endInteraction()
+        mainWindow?.endInteraction(interactionToken)
         isInterruptingMainWindow = false
     }
 }

@@ -2,8 +2,8 @@ import AppKit
 
 @MainActor
 protocol DockWindowInteractionHolding: AnyObject {
-    func beginInteraction()
-    func endInteraction()
+    @discardableResult func beginInteraction() -> UUID?
+    func endInteraction(_ token: UUID?)
 }
 
 @MainActor
