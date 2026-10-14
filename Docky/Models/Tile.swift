@@ -187,7 +187,7 @@ enum WidgetKind: Codable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
-    nonisolated var title: String {
+    @MainActor var title: String {
         switch self {
         case .calendar:
             String(localized: "Calendar")
@@ -212,7 +212,7 @@ enum WidgetKind: Codable, Identifiable, Hashable {
         }
     }
 
-    nonisolated var supportedSpans: [TileSpan] {
+    @MainActor var supportedSpans: [TileSpan] {
         switch self {
         case .calendarDate:
             [.one]
@@ -223,7 +223,7 @@ enum WidgetKind: Codable, Identifiable, Hashable {
         }
     }
 
-    nonisolated var expansionExtent: WidgetExpansionExtent {
+    @MainActor var expansionExtent: WidgetExpansionExtent {
         switch self {
         case .nowPlaying:
             WidgetExpansionExtent(widthTiles: 5, heightTiles: 2)
@@ -239,7 +239,7 @@ enum WidgetKind: Codable, Identifiable, Hashable {
     /// genuine extra content at expanded size. Widgets whose 1x/2x/3x
     /// representation IS the full thing (search field, calendar date)
     /// stay inline.
-    nonisolated var isExpandable: Bool {
+    @MainActor var isExpandable: Bool {
         switch self {
         case .calendar, .reminders, .batteries, .systemStatus, .nowPlaying, .weather, .photoFrame:
             true
@@ -300,7 +300,7 @@ struct WidgetTile: Equatable {
     /// Per-instance configuration; empty means default behavior.
     var settings: WidgetSettings = [:]
 
-    var effectiveSpan: TileSpan {
+    @MainActor var effectiveSpan: TileSpan {
         kind.supportedSpans.contains(span) ? span : kind.supportedSpans.last ?? .one
     }
 }

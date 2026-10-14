@@ -13,7 +13,7 @@ private struct PermissionsWindowFramePreference: Equatable {
 }
 
 private struct PermissionsWindowFramePreferenceKey: PreferenceKey {
-    static var defaultValue = PermissionsWindowFramePreference(frame: .zero, layoutKey: "")
+    static let defaultValue = PermissionsWindowFramePreference(frame: .zero, layoutKey: "")
 
     static func reduce(value: inout PermissionsWindowFramePreference, nextValue: () -> PermissionsWindowFramePreference) {
         value = nextValue()

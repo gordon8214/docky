@@ -8,6 +8,7 @@ import Combine
 import Darwin
 import Foundation
 
+@MainActor
 final class SystemStatusService: ObservableObject {
     static let shared = SystemStatusService()
     static let activityMonitorBundleIdentifier = "com.apple.ActivityMonitor"

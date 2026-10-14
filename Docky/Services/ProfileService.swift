@@ -17,6 +17,7 @@
 import Foundation
 import Observation
 
+@MainActor
 @Observable
 final class ProfileService {
     static let shared = ProfileService()

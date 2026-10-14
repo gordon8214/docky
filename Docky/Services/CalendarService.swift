@@ -8,6 +8,7 @@ import Combine
 import EventKit
 import Foundation
 
+@MainActor
 final class CalendarService: ObservableObject {
     static let shared = CalendarService()
 
@@ -26,6 +27,7 @@ final class CalendarService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
         NotificationCenter.default.publisher(for: .EKEventStoreChanged, object: eventStore)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refresh(force: true)
             }
@@ -192,7 +194,9 @@ final class CalendarService: ObservableObject {
         }
 
         let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
-            self?.refresh(force: true)
+            MainActor.assumeIsolated {
+                self?.refresh(force: true)
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         rolloverTimer = timer

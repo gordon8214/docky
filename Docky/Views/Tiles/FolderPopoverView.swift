@@ -6,6 +6,7 @@
 import AppKit
 import QuickLookUI
 import SwiftUI
+import Synchronization
 import UniformTypeIdentifiers
 
 struct FolderPopoverView: View {
@@ -412,8 +413,7 @@ struct FolderPopoverView: View {
     private func moveDroppedFiles(providers: [NSItemProvider], into destination: URL) {
         let typeID = UTType.fileURL.identifier
         let group = DispatchGroup()
-        var collected: [URL] = []
-        let queue = DispatchQueue(label: "docky.folder.drop")
+        let collected = Mutex<[URL]>([])
 
         for provider in providers {
             guard provider.hasItemConformingToTypeIdentifier(typeID) else { continue }
@@ -421,12 +421,12 @@ struct FolderPopoverView: View {
             provider.loadDataRepresentation(forTypeIdentifier: typeID) { data, _ in
                 defer { group.leave() }
                 guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                queue.sync { collected.append(url) }
+                collected.withLock { $0.append(url) }
             }
         }
 
         group.notify(queue: .main) {
-            for source in collected {
+            for source in collected.withLock({ $0 }) {
                 let target = destination.appendingPathComponent(source.lastPathComponent)
                 guard target.standardizedFileURL != source.standardizedFileURL else { continue }
                 do {
@@ -669,6 +669,7 @@ private struct FolderPopoverKeyMonitor: NSViewRepresentable {
         coordinator.detach()
     }
 
+    @MainActor
     final class Coordinator {
         var keyDownHandler: (NSEvent) -> Bool
         private weak var view: NSView?
@@ -697,7 +698,7 @@ private struct FolderPopoverKeyMonitor: NSViewRepresentable {
             self.eventMonitor = nil
         }
 
-        deinit {
+        isolated deinit {
             detach()
         }
     }
@@ -709,6 +710,7 @@ private final class KeyMonitorView: NSView {
     }
 }
 
+@MainActor
 final class FolderQuickLookController: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     static let shared = FolderQuickLookController()
 

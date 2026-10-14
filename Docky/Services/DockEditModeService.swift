@@ -52,6 +52,7 @@ struct DockEditDropDestination: Equatable {
     let index: Int
 }
 
+@MainActor
 final class DockEditModeService: ObservableObject {
     static let shared = DockEditModeService()
 

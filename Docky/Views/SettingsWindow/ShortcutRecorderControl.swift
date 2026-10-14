@@ -70,6 +70,7 @@ private struct ShortcutRecorderMonitor: NSViewRepresentable {
         coordinator.stop()
     }
 
+    @MainActor
     final class Coordinator {
         var onShortcut: (NSEvent) -> Bool
         var onCancel: () -> Void

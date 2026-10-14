@@ -16,6 +16,7 @@ enum FolderContentsSnapshot: Equatable {
     case unreadable
 }
 
+@MainActor
 final class FolderAccessService: ObservableObject {
     static let shared = FolderAccessService()
 
@@ -35,7 +36,7 @@ final class FolderAccessService: ObservableObject {
 
     private init() {}
 
-    deinit {
+    isolated deinit {
         for watcher in watchersByURL.values {
             watcher.source.cancel()
         }

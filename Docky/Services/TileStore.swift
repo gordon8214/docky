@@ -14,6 +14,7 @@ import AppKit
 import Combine
 import os.log
 
+@MainActor
 final class TileStore: ObservableObject {
     static let shared = TileStore()
 
@@ -70,7 +71,9 @@ final class TileStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.reloadSystemDockState(syncPreferencesFromSystemDock: false)
+            MainActor.assumeIsolated {
+                self?.reloadSystemDockState(syncPreferencesFromSystemDock: false)
+            }
         }
         WorkspaceService.shared.$runningApps
             .receive(on: DispatchQueue.main)
@@ -137,7 +140,7 @@ final class TileStore: ObservableObject {
             .store(in: &cancellables)
     }
 
-    deinit {
+    isolated deinit {
         if let notificationObserver {
             DistributedNotificationCenter.default().removeObserver(notificationObserver)
         }

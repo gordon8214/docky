@@ -75,6 +75,7 @@ private func readState() -> WatchdogState? {
     )
 }
 
+@MainActor
 private func restoreSnapshot(_ snapshot: [String: Any]) {
     for key in managedKeys {
         restoreKey(key, from: snapshot[key] as? [String: Any])
@@ -83,6 +84,7 @@ private func restoreSnapshot(_ snapshot: [String: Any]) {
     CFPreferencesAppSynchronize(dockDomain)
 }
 
+@MainActor
 private func restoreKey(_ key: String, from entry: [String: Any]?) {
     guard let entry, let type = entry["type"] as? String else {
         CFPreferencesSetAppValue(key as CFString, nil, dockDomain)
@@ -101,6 +103,7 @@ private func restoreKey(_ key: String, from entry: [String: Any]?) {
     }
 }
 
+@MainActor
 private func clearDockySnapshot() {
     let domain = dockyBundleIdentifier as CFString
     CFPreferencesSetAppValue(snapshotKey, nil, domain)

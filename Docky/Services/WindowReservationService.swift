@@ -18,6 +18,7 @@ import AppKit
 import Combine
 import Foundation
 
+@MainActor
 final class WindowReservationService {
     static let shared = WindowReservationService()
 

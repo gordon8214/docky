@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 
+@MainActor
 final class SmartOrganizeProgressService: ObservableObject {
     static let shared = SmartOrganizeProgressService()
 

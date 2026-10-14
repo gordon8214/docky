@@ -17,8 +17,7 @@
 //    switcher, tile click logic) read a ready snapshot instead of paying
 //    the enumeration cost each interaction.
 //
-//  Threading: this class is not `@MainActor`-annotated (matching the rest
-//  of the services) but all mutation happens on main — AX observers are
+//  Threading: this class is isolated to the main actor — AX observers are
 //  added to the main run loop, and `NSWorkspace` notifications are
 //  delivered on the main queue.
 //
@@ -28,8 +27,8 @@ import ApplicationServices
 import Combine
 import ScreenCaptureKit
 
-private let axWindowNumberAttribute = "AXWindowNumber" as CFString
-private let axCloseAction = "AXClose" as CFString
+@MainActor private let axWindowNumberAttribute = "AXWindowNumber" as CFString
+@MainActor private let axCloseAction = "AXClose" as CFString
 private let minimumTrackedWindowSize = CGSize(width: 100, height: 100)
 
 /// System helpers whose AX windows would leak into the switcher / preview if
@@ -47,7 +46,7 @@ private let filteredBundleIdentifiers: Set<String> = [
 /// `AXUIElement`'s CF identity — equal and hashable across the lifetime
 /// of the underlying window.
 nonisolated struct WindowID: Hashable {
-    nonisolated fileprivate let element: AXUIElement
+    fileprivate let element: AXUIElement
 
     nonisolated static func == (lhs: WindowID, rhs: WindowID) -> Bool {
         CFEqual(lhs.element, rhs.element)
@@ -69,7 +68,7 @@ nonisolated struct WindowID: Hashable {
 /// `AXUIElement`; all other fields are best-effort snapshots updated as
 /// AX notifications arrive.
 struct AppWindow: Identifiable, Hashable {
-    nonisolated fileprivate let element: AXUIElement
+    fileprivate let element: AXUIElement
     nonisolated let bundleIdentifier: String
     nonisolated let processIdentifier: pid_t
     nonisolated let appDisplayName: String
@@ -104,6 +103,7 @@ struct AppWindow: Identifiable, Hashable {
     }
 }
 
+@MainActor
 final class WindowRegistry: ObservableObject {
     static let shared = WindowRegistry()
 
@@ -223,7 +223,7 @@ final class WindowRegistry: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         stopObserving()
     }
 
@@ -482,14 +482,20 @@ final class WindowRegistry: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                self?.handleAppLaunched(notification)
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                MainActor.assumeIsolated {
+                    self?.handleAppLaunched(app)
+                }
             },
             center.addObserver(
                 forName: NSWorkspace.didTerminateApplicationNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                self?.handleAppTerminated(notification)
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                MainActor.assumeIsolated {
+                    self?.handleAppTerminated(app)
+                }
             },
             center.addObserver(
                 forName: NSWorkspace.didHideApplicationNotification,
@@ -497,7 +503,9 @@ final class WindowRegistry: ObservableObject {
                 queue: .main
             ) { [weak self] notification in
                 guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
-                self?.removeWindows(for: pid)
+                MainActor.assumeIsolated {
+                    self?.removeWindows(for: pid)
+                }
             },
             center.addObserver(
                 forName: NSWorkspace.didUnhideApplicationNotification,
@@ -505,7 +513,9 @@ final class WindowRegistry: ObservableObject {
                 queue: .main
             ) { [weak self] notification in
                 guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
-                self?.syncWindows(for: pid)
+                MainActor.assumeIsolated {
+                    self?.syncWindows(for: pid)
+                }
             },
             // AX's view of windows can drift after a Space switch — windows on
             // the now-inactive Space sometimes get hidden/shown inconsistently.
@@ -515,14 +525,15 @@ final class WindowRegistry: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.rebuildSnapshot()
+                MainActor.assumeIsolated {
+                    self?.rebuildSnapshot()
+                }
             },
         ]
     }
 
-    private func handleAppLaunched(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              shouldTrack(app) else {
+    private func handleAppLaunched(_ app: NSRunningApplication) {
+        guard shouldTrack(app) else {
             return
         }
         installObserver(for: app)
@@ -532,10 +543,7 @@ final class WindowRegistry: ObservableObject {
         }
     }
 
-    private func handleAppTerminated(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
-            return
-        }
+    private func handleAppTerminated(_ app: NSRunningApplication) {
         removeObserver(for: app.processIdentifier)
         removeWindows(for: app.processIdentifier)
     }
@@ -1228,9 +1236,17 @@ private func axObserverCallback(
 ) {
     guard let context else { return }
     let registry = Unmanaged<WindowRegistry>.fromOpaque(context).takeUnretainedValue()
-    registry.handleNotification(
-        observer: observer,
-        element: element,
-        notificationName: notificationName
-    )
+    // Every AX observer source is installed on the main run loop.
+    // These borrowed CF handles stay on that executor; they are never sent
+    // to an asynchronous task or accessed from another thread.
+    nonisolated(unsafe) let callbackObserver = observer
+    nonisolated(unsafe) let callbackElement = element
+    let name = notificationName as String
+    MainActor.assumeIsolated {
+        registry.handleNotification(
+            observer: callbackObserver,
+            element: callbackElement,
+            notificationName: name as CFString
+        )
+    }
 }

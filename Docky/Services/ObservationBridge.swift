@@ -29,34 +29,43 @@
 import Combine
 import Foundation
 import Observation
+import Synchronization
 
 @discardableResult
 @MainActor
 func observeChanges(
     _ action: @escaping @MainActor () -> Void
-) -> AnyCancellable {
-    let state = ObserveBridgeState()
+) -> sending AnyCancellable {
+    let state = ObserveBridgeState(action: action)
+    state.install()
+    return AnyCancellable { @Sendable in state.isCancelled = true }
+}
 
-    func install() {
-        guard !state.isCancelled else { return }
+private final class ObserveBridgeState: Sendable {
+    private let cancelled = Mutex(false)
+    private let action: @MainActor () -> Void
+
+    init(action: @escaping @MainActor () -> Void) {
+        self.action = action
+    }
+
+    var isCancelled: Bool {
+        get { cancelled.withLock { $0 } }
+        set { cancelled.withLock { $0 = newValue } }
+    }
+
+    @MainActor func install() {
+        guard !isCancelled else { return }
         withObservationTracking {
-            action()
-        } onChange: {
+            self.action()
+        } onChange: { [self] in
             // `onChange` is called from the mutating thread, before
             // the new value is installed. Re-install on the next
             // main-actor tick so reads inside `action()` see the
             // mutation result.
             Task { @MainActor in
-                guard !state.isCancelled else { return }
-                install()
+                self.install()
             }
         }
     }
-
-    install()
-    return AnyCancellable { state.isCancelled = true }
-}
-
-private final class ObserveBridgeState: @unchecked Sendable {
-    var isCancelled = false
 }

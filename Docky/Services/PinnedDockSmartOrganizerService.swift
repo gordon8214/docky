@@ -43,6 +43,7 @@ private struct SmartPinnedLayoutSuggestionItem {
 #endif
 
 @available(macOS 26.0, *)
+@MainActor
 final class PinnedDockSmartOrganizerService {
     static let shared = PinnedDockSmartOrganizerService()
 

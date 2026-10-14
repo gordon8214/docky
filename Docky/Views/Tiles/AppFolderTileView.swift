@@ -348,7 +348,7 @@ private struct AppFolderReorderDragState: Equatable {
 /// Aggregates per-cell frames keyed by bundle identifier so the drag
 /// handler can convert the cursor location into an insertion index.
 private struct AppFolderCellFramePreference: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
     }
@@ -871,6 +871,7 @@ struct AppFolderListMenuPresenter: NSViewRepresentable {
         coordinator.close()
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         private var tile: AppFolderTile
         private var tileID: String
@@ -1060,6 +1061,7 @@ struct AppFolderPopoverPresenter: NSViewRepresentable {
         coordinator.close()
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSPopoverDelegate {
         private let popover = NSPopover()
         private let hostingController = NSHostingController(

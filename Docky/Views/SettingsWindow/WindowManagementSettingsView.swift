@@ -303,6 +303,7 @@ private struct SingleKeyRecorderMonitor: NSViewRepresentable {
         coordinator.stop()
     }
 
+    @MainActor
     final class Coordinator {
         var onKey: (NSEvent) -> Void
         var onCancel: () -> Void

@@ -7,6 +7,7 @@ import Combine
 import EventKit
 import Foundation
 
+@MainActor
 final class RemindersService: ObservableObject {
     static let shared = RemindersService()
 
@@ -24,13 +25,14 @@ final class RemindersService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
 
         NotificationCenter.default.publisher(for: .EKEventStoreChanged, object: eventStore)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refresh(force: true)
             }
             .store(in: &cancellables)
     }
 
-    deinit {
+    isolated deinit {
         pendingRefreshTask?.cancel()
     }
 
@@ -171,7 +173,7 @@ final class RemindersService: ObservableObject {
         }
     }
 
-    private func fetchCandidateReminders(now: Date) async -> [EKReminder] {
+    private func fetchCandidateReminders(now: Date) async -> [ReminderItemSnapshot] {
         let searchEnd = Calendar.autoupdatingCurrent.date(byAdding: .day, value: 14, to: now)
             ?? now.addingTimeInterval(1_209_600)
         let scheduledPredicate = eventStore.predicateForIncompleteReminders(
@@ -192,22 +194,13 @@ final class RemindersService: ObservableObject {
         return await fetchReminders(matching: allPredicate)
     }
 
-    private func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
+    private func fetchReminders(matching predicate: NSPredicate) async -> [ReminderItemSnapshot] {
         await withCheckedContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+                let items = (reminders ?? []).map(ReminderItemSnapshot.init(reminder:))
+                continuation.resume(returning: items)
             }
         }
-    }
-
-    private static func makeSnapshot(from reminders: [EKReminder], now: Date) -> RemindersSnapshot {
-        let items = reminders
-            .map(ReminderItemSnapshot.init(reminder:))
-            .sorted { lhs, rhs in
-                comesBefore(lhs, rhs, now: now)
-            }
-
-        return makeSnapshot(from: items, now: now)
     }
 
     private static func makeSnapshot(from items: [ReminderItemSnapshot], now: Date) -> RemindersSnapshot {
@@ -367,7 +360,7 @@ struct RemindersSnapshot: Equatable {
     }
 }
 
-struct ReminderItemSnapshot: Identifiable, Equatable {
+struct ReminderItemSnapshot: Identifiable, Equatable, Sendable {
     let identifier: String
     let title: String
     let dueDate: Date?

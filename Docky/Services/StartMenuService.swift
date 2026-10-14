@@ -10,6 +10,7 @@ import AppKit
 import Carbon
 import Combine
 
+@MainActor
 final class StartMenuService: ObservableObject {
     static let shared = StartMenuService()
 
@@ -30,7 +31,7 @@ final class StartMenuService: ObservableObject {
         registerHotKey()
     }
 
-    deinit {
+    isolated deinit {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
         }

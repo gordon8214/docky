@@ -8,6 +8,7 @@ import Combine
 import Dispatch
 import Foundation
 
+@MainActor
 final class TrashService: ObservableObject {
     static let shared = TrashService()
 
@@ -22,7 +23,7 @@ final class TrashService: ObservableObject {
         startWatchingTrashDirectory()
     }
 
-    deinit {
+    isolated deinit {
         trashSource?.cancel()
         if trashFileDescriptor >= 0 {
             close(trashFileDescriptor)

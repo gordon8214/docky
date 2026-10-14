@@ -2427,6 +2427,7 @@ private struct TileTooltipPopoverPresenter: NSViewRepresentable {
         coordinator.close()
     }
 
+    @MainActor
     final class Coordinator {
         private let hostingController = NSHostingController(rootView: TileTooltipView(title: ""))
         private let popover = NSPopover()
@@ -2540,6 +2541,7 @@ private struct FolderListMenuPresenter: NSViewRepresentable {
         coordinator.close()
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSMenuDelegate {
         /// Estimated height (pt) per NSMenuItem row that carries a 16x16 image
         /// + single-line title. Used to derive how many items fit in the
@@ -2807,6 +2809,7 @@ private struct FolderPopoverPresenter: NSViewRepresentable {
         coordinator.close()
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSPopoverDelegate {
         private let popover = NSPopover()
         private let hostingController = NSHostingController(
@@ -3007,6 +3010,7 @@ private final class FolderPopoverAnchorView: NSView {
     }
 }
 
+@MainActor
 private func folderNavigationContextActions(for folderURL: URL) -> [ContextAction] {
     let snapshot = FolderAccessService.shared.snapshot(of: folderURL)
     guard case .loaded(let items) = snapshot else {
@@ -3122,6 +3126,7 @@ func contextMenuSymbol(_ name: String) -> NSImage? {
 /// chosen. Inserted before any "Options" submenu, falling back to the end
 /// when none is present. Called from both the dock tile path and the app
 /// folder grid path so menus stay in sync.
+@MainActor
 func injectingAppWindowActions(
     _ windows: [AppWindow],
     into actions: [ContextAction]

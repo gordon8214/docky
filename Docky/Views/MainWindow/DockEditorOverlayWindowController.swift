@@ -143,11 +143,11 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         return searchIndex.contains(normalizedSearchText)
     }
 
-    nonisolated static let allItems: [DockEditorGalleryItem] = WidgetCatalog.paletteRegistrations.map(Self.makeWidgetItem)
+    @MainActor static let allItems: [DockEditorGalleryItem] = WidgetCatalog.paletteRegistrations.map { Self.makeWidgetItem(registration: $0) }
         + [makeSmartStackItem()]
         + [makeUtilityItem(.launchpad), makeUtilityItem(.startMenu), makeUtilityItem(.spacer), makeUtilityItem(.flexibleSpacer), makeUtilityItem(.divider)]
 
-    nonisolated private static func makeWidgetItem(registration: WidgetRegistration) -> Self {
+    @MainActor private static func makeWidgetItem(registration: WidgetRegistration) -> Self {
         let paletteItem = DockEditPaletteItem.widget(
             ownerBundleIdentifier: registration.ownerBundleIdentifier,
             kind: registration.kind
@@ -172,7 +172,7 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         )
     }
 
-    nonisolated private static func makeSmartStackItem() -> Self {
+    @MainActor private static func makeSmartStackItem() -> Self {
         let paletteItem = DockEditPaletteItem.smartStack
         let localizedTitle = String(localized: "Smart Stack")
         let localizedSubtitle = String(localized: "Stacks available widgets into a single tile you can scroll through.")
@@ -193,7 +193,7 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         )
     }
 
-    nonisolated private static func makeUtilityItem(_ paletteItem: DockEditPaletteItem) -> Self {
+    @MainActor private static func makeUtilityItem(_ paletteItem: DockEditPaletteItem) -> Self {
         Self(
             paletteItem: paletteItem,
             title: title(for: paletteItem),
@@ -211,7 +211,7 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         )
     }
 
-    nonisolated private static func title(for item: DockEditPaletteItem) -> String {
+    @MainActor private static func title(for item: DockEditPaletteItem) -> String {
         switch item {
         case .launchpad:
             String(localized: "Launchpad")
@@ -274,7 +274,7 @@ private struct DockEditorGalleryItem: Equatable, Identifiable {
         }
     }
 
-    nonisolated private static func iconName(for item: DockEditPaletteItem) -> String {
+    @MainActor private static func iconName(for item: DockEditPaletteItem) -> String {
         switch item {
         case .launchpad:
             "square.grid.3x3.fill"

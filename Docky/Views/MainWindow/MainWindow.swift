@@ -273,7 +273,9 @@ final class MainWindow: NSPanel {
 
     override func awakeFromNib() {
         super.awakeFromNib()
-        applyCurrentFrame(animated: false)
+        MainActor.assumeIsolated {
+            applyCurrentFrame(animated: false)
+        }
     }
 
     private func performSetupIfNeeded() {
@@ -304,7 +306,7 @@ final class MainWindow: NSPanel {
         }
     }
 
-    deinit {
+    isolated deinit {
         fullscreenRecheckWorkItem?.cancel()
         fullscreenRevealWorkItem?.cancel()
         if let globalPointerMonitor {

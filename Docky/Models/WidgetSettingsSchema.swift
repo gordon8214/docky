@@ -42,7 +42,7 @@ struct WidgetSettingsField: Equatable, Codable, Identifiable {
 
 extension WidgetKind {
     /// External widgets have settings iff their bundle shipped a non-empty manifest.
-    nonisolated var hasConfigurableSettings: Bool {
+    @MainActor var hasConfigurableSettings: Bool {
         switch self {
         case .weather, .calendar, .nowPlaying:
             true

@@ -10,6 +10,7 @@ import IOKit
 import IOKit.hid
 import IOKit.ps
 
+@MainActor
 final class BatteriesService: ObservableObject {
     static let shared = BatteriesService()
 

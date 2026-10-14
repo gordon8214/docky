@@ -65,7 +65,7 @@ final class ProfileSwitcherWindowController: NSWindowController {
         observeStripVisibility()
     }
 
-    deinit {
+    isolated deinit {
         if isHoldingMainInteraction {
             mainWindow?.endInteraction()
         }
@@ -87,13 +87,16 @@ final class ProfileSwitcherWindowController: NSWindowController {
 
         alphaObservation = mainWindow.observe(\.alphaValue, options: [.initial, .new]) { [weak self] _, change in
             guard let self, let newAlpha = change.newValue else { return }
-            self.window?.alphaValue = newAlpha
-            // When the dock is hidden (alpha ≈ 0) the switcher shouldn't
-            // be reachable either, so stop hit-testing it. The strip's
-            // own visibility gate (profile count / preference) wins on
-            // top of this in `applyStripVisibility`.
-            guard self.isStripVisible else { return }
-            self.window?.ignoresMouseEvents = newAlpha < 0.05
+            // AppKit window alpha changes are made on the main thread.
+            MainActor.assumeIsolated {
+                self.window?.alphaValue = newAlpha
+                // When the dock is hidden (alpha ≈ 0) the switcher shouldn't
+                // be reachable either, so stop hit-testing it. The strip's
+                // own visibility gate (profile count / preference) wins on
+                // top of this in `applyStripVisibility`.
+                guard self.isStripVisible else { return }
+                self.window?.ignoresMouseEvents = newAlpha < 0.05
+            }
         }
     }
 

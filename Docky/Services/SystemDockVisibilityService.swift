@@ -13,6 +13,7 @@ import AppKit
 import Darwin
 import Foundation
 
+@MainActor
 final class SystemDockVisibilityService {
     static let shared = SystemDockVisibilityService()
 

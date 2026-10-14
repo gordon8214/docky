@@ -183,7 +183,7 @@ final class DockEditorHintWindowController: NSWindowController {
         window.ignoresMouseEvents = false
     }
 
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (() -> Void)? = nil) {
+    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor () -> Void)? = nil) {
         guard let window else {
             completion?()
             return
@@ -194,7 +194,9 @@ final class DockEditorHintWindowController: NSWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
-            completion?()
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 

@@ -2207,7 +2207,7 @@ private struct ScrollableSectionLayout {
 }
 
 private struct TileFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static let defaultValue: [String: CGRect] = [:]
 
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
@@ -2235,6 +2235,7 @@ private struct TileDragKeyMonitor: NSViewRepresentable {
         coordinator.stop()
     }
 
+    @MainActor
     final class Coordinator {
         var keyDownHandler: (NSEvent) -> Bool
         private var eventMonitor: Any?
@@ -2257,7 +2258,7 @@ private struct TileDragKeyMonitor: NSViewRepresentable {
             self.eventMonitor = nil
         }
 
-        deinit {
+        isolated deinit {
             stop()
         }
     }

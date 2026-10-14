@@ -70,7 +70,7 @@ final class RecentFilesService: ObservableObject {
         Self.logger.info("query.start() returned=\(started, privacy: .public)")
     }
 
-    deinit {
+    isolated deinit {
         observers.forEach(NotificationCenter.default.removeObserver)
         query.stop()
     }

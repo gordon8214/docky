@@ -176,7 +176,7 @@ final class StartMenuOverlayWindowController: NSWindowController {
     }
 
 
-    private func animateAlpha(to value: CGFloat, completion: (() -> Void)? = nil) {
+    private func animateAlpha(to value: CGFloat, completion: (@MainActor () -> Void)? = nil) {
         guard let window else {
             completion?()
             return
@@ -186,7 +186,9 @@ final class StartMenuOverlayWindowController: NSWindowController {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = value
         } completionHandler: {
-            completion?()
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 

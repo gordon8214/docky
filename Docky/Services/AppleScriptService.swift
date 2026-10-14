@@ -19,6 +19,7 @@
 import AppKit
 import Foundation
 
+@MainActor
 final class AppleScriptService {
     static let shared = AppleScriptService()
 
@@ -36,7 +37,7 @@ final class AppleScriptService {
         await runSystemEventsPermissionProbe()
     }
 
-    func executeDescriptor(source: String) throws -> NSAppleEventDescriptor? {
+    nonisolated private func executeDescriptor(source: String) throws -> NSAppleEventDescriptor? {
         guard let script = NSAppleScript(source: source) else {
             throw AppleScriptServiceError.compilationFailed
         }
@@ -49,12 +50,23 @@ final class AppleScriptService {
         return result
     }
 
-    private func executeOnScriptQueue(source: String) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+    func execute(source: String) async throws {
+        try await executeOnScriptQueue(source: source) { _ in () }
+    }
+
+    func executeBoolean(source: String) async throws -> Bool {
+        try await executeOnScriptQueue(source: source) { $0?.booleanValue ?? false }
+    }
+
+    private func executeOnScriptQueue<Value: Sendable>(
+        source: String,
+        result: @escaping @Sendable (NSAppleEventDescriptor?) -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
             scriptQueue.async {
                 do {
-                    _ = try self.executeDescriptor(source: source)
-                    continuation.resume()
+                    let descriptor = try self.executeDescriptor(source: source)
+                    continuation.resume(returning: result(descriptor))
                 } catch {
                     continuation.resume(throwing: error)
                 }
@@ -70,7 +82,7 @@ final class AppleScriptService {
         targetApp: String?
     ) async -> Result<Void, AppleScriptServiceError> {
         do {
-            try await executeOnScriptQueue(source: source)
+            try await execute(source: source)
             permissionRequirements.forEach { permission in
                 updateGrantedPermission(permission)
             }
@@ -136,7 +148,7 @@ final class AppleScriptService {
 
     private func runFinderScript(_ command: FinderCommand) async -> Bool {
         do {
-            try await executeOnScriptQueue(source: command.source)
+            try await execute(source: command.source)
             PermissionsService.shared.updateFinderAutomation(status: .granted)
             return true
         } catch let error as AppleScriptServiceError {
@@ -150,7 +162,7 @@ final class AppleScriptService {
 
     private func runSystemEventsPermissionProbe() async -> Bool {
         do {
-            try await executeOnScriptQueue(source: SystemEventsCommand.permissionProbe.source)
+            try await execute(source: SystemEventsCommand.permissionProbe.source)
             PermissionsService.shared.updateSystemEventsAutomation(status: .granted)
             return true
         } catch let error as AppleScriptServiceError {
@@ -162,7 +174,7 @@ final class AppleScriptService {
         }
     }
 
-    private func scriptError(from errorInfo: NSDictionary?) -> AppleScriptServiceError? {
+    nonisolated private func scriptError(from errorInfo: NSDictionary?) -> AppleScriptServiceError? {
         guard let errorInfo else { return nil }
         let number = errorInfo[NSAppleScript.errorNumber] as? Int
         let message = (errorInfo[NSAppleScript.errorMessage] as? String) ?? "AppleScript execution failed."

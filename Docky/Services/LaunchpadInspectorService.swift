@@ -12,6 +12,7 @@
 import Combine
 import Foundation
 
+@MainActor
 final class LaunchpadInspectorService: ObservableObject {
     static let shared = LaunchpadInspectorService()
 

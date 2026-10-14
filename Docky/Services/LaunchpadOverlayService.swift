@@ -103,6 +103,7 @@ struct LaunchpadScan {
     }
 }
 
+@MainActor
 final class LaunchpadOverlayService: ObservableObject {
     static let shared = LaunchpadOverlayService()
 
@@ -138,7 +139,7 @@ final class LaunchpadOverlayService: ObservableObject {
     private var watchers: [DispatchSourceFileSystemObject] = []
     private var pendingRescan: DispatchWorkItem?
     private var wallpaperLuminanceSubscription: AnyCancellable?
-    private static let luminanceContext = CIContext(options: [.workingColorSpace: NSNull()])
+    nonisolated private static let luminanceContext = CIContext(options: [.workingColorSpace: NSNull()])
 
     /// Cached app metadata from the most recent filesystem scan. The
     /// layout service can mutate independently of the scan (drag-and-drop,
@@ -189,8 +190,11 @@ final class LaunchpadOverlayService: ObservableObject {
                     return Just(0).eraseToAnyPublisher()
                 }
                 return Future { promise in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        promise(.success(Self.computeAverageLuminance(of: url) ?? 0))
+                    Task { @MainActor in
+                        let luminance = await Task.detached(priority: .userInitiated) {
+                            Self.computeAverageLuminance(of: url) ?? 0
+                        }.value
+                        promise(.success(luminance))
                     }
                 }
                 .eraseToAnyPublisher()
@@ -202,7 +206,7 @@ final class LaunchpadOverlayService: ObservableObject {
             }
     }
 
-    private static func computeAverageLuminance(of url: URL) -> Double? {
+    nonisolated private static func computeAverageLuminance(of url: URL) -> Double? {
         guard let image = NSImage(contentsOf: url),
               let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
@@ -502,7 +506,7 @@ final class LaunchpadOverlayService: ObservableObject {
         )
     }
 
-    deinit {
+    isolated deinit {
         for source in watchers {
             source.cancel()
         }

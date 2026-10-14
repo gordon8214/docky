@@ -150,6 +150,7 @@ struct ContextActionMenuPresenter: NSViewRepresentable {
         coordinator.uninstall()
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         private weak var anchorView: NSView?
         private var eventMonitor: Any?
@@ -341,8 +342,9 @@ struct ContextActionMenuPresenter: NSViewRepresentable {
     }
 }
 
-private var lazyMenuControllerKey: UInt8 = 0
+@MainActor private var lazyMenuControllerKey: UInt8 = 0
 
+@MainActor
 private final class LazyMenuController: NSObject, NSMenuDelegate {
     private let provider: () -> [ContextAction]
     private let populate: (NSMenu, [ContextAction]) -> Void
@@ -370,7 +372,7 @@ extension ContextActionMenuPresenter {
     /// `_popUpMenuRelativeToRect:` call are delegated to a transient
     /// Coordinator so the visual is byte-identical to the right-click
     /// path.
-    static func popUpMenu(
+    @MainActor static func popUpMenu(
         actions: [ContextAction],
         from anchorView: NSView,
         preferredEdge: NSRectEdge = .maxY,
@@ -494,6 +496,7 @@ private struct MoreActionsMenuAnchor: NSViewRepresentable {
         )
     }
 
+    @MainActor
     final class Coordinator {
         var actionProvider: (NSEvent.ModifierFlags) -> [ContextAction]
         var preferredEdge: NSRectEdge

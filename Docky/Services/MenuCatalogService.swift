@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Foundation
 
+@MainActor
 final class MenuCatalogService: ObservableObject {
     static let shared = MenuCatalogService()
 

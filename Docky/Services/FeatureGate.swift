@@ -76,7 +76,8 @@ enum DockyFeature: String, CaseIterable, Codable {
     }
 }
 
-final class FeatureGate {
+// Mutable version overrides are protected by `lock`.
+final class FeatureGate: @unchecked Sendable {
     static let shared = FeatureGate()
 
     /// UserDefaults key for the DEBUG-only "pretend we're on version X"

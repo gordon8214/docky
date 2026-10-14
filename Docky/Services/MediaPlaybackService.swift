@@ -65,6 +65,7 @@ struct MediaAppChoice: Equatable, Identifiable {
     var id: String { bundleIdentifier }
 }
 
+@MainActor
 final class MediaPlaybackService: ObservableObject {
     static let shared = MediaPlaybackService()
     static let genericNowPlayingOwnerBundleIdentifier = WidgetOwnerBundleIdentifiers.genericNowPlaying
@@ -386,7 +387,7 @@ final class MediaPlaybackService: ObservableObject {
         end tell
         """
 
-        _ = try? AppleScriptService.shared.executeDescriptor(source: source)
+        try? await AppleScriptService.shared.execute(source: source)
         try? await Task.sleep(for: .milliseconds(120))
         refresh()
     }
@@ -458,6 +459,7 @@ private struct MediaRemoteSnapshot: Decodable {
     }
 }
 
+@MainActor
 private final class MediaRemoteBridge {
     enum Command: Int32 {
         case play = 0
@@ -478,6 +480,7 @@ private final class MediaRemoteBridge {
     private let helper = MediaRemoteHelperProcess()
     private var lastPayloadByBundleIdentifier: [String: MediaRemoteSnapshot.Payload] = [:]
     private var lastActiveBundleIdentifier: String?
+    private var snapshotRevision: UInt64 = 0
 
     private init() {
         let bundleURL = NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
@@ -502,6 +505,8 @@ private final class MediaRemoteBridge {
     }
 
     private func handle(_ snapshot: MediaRemoteSnapshot?) {
+        snapshotRevision &+= 1
+        let revision = snapshotRevision
         guard let snapshot else {
             onStateChange?(nil)
             return
@@ -540,14 +545,24 @@ private final class MediaRemoteBridge {
             isPlaying: isPlaying,
             isAvailable: true,
             supportsFavorite: bundleIdentifier == "com.apple.Music",
-            isFavorite: fetchFavorite(bundleIdentifier: bundleIdentifier),
+            isFavorite: false,
             artworkData: artworkData,
             lastUpdated: Date()
         )
-        onStateChange?(state)
+        if state.supportsFavorite {
+            Task { [weak self] in
+                guard let self, self.snapshotRevision == revision else { return }
+                var updatedState = state
+                updatedState.isFavorite = await self.fetchFavorite(bundleIdentifier: bundleIdentifier)
+                guard self.snapshotRevision == revision else { return }
+                self.onStateChange?(updatedState)
+            }
+        } else {
+            onStateChange?(state)
+        }
     }
 
-    private func fetchFavorite(bundleIdentifier: String) -> Bool {
+    private func fetchFavorite(bundleIdentifier: String) async -> Bool {
         guard bundleIdentifier == "com.apple.Music" else {
             return false
         }
@@ -565,7 +580,7 @@ private final class MediaRemoteBridge {
         end tell
         """
 
-        return (try? AppleScriptService.shared.executeDescriptor(source: source))?.booleanValue ?? false
+        return (try? await AppleScriptService.shared.executeBoolean(source: source)) ?? false
     }
 
     private func displayName(for bundleIdentifier: String) -> String {
@@ -586,8 +601,9 @@ private final class MediaRemoteBridge {
     }
 }
 
+@MainActor
 private final class MediaRemoteHelperProcess {
-    private static let logger = Logger(subsystem: "gt.quintero.Docky", category: "MediaRemoteHelper")
+    nonisolated private static let logger = Logger(subsystem: "gt.quintero.Docky", category: "MediaRemoteHelper")
 
     var onSnapshot: ((MediaRemoteSnapshot?) -> Void)?
 
@@ -658,16 +674,16 @@ private final class MediaRemoteHelperProcess {
 
         Self.logger.debug("Installing output reader")
         outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            self?.drainOutput(from: handle)
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            DispatchQueue.main.async {
+                guard let self, self.outputPipe?.fileHandleForReading === handle else { return }
+                self.drainOutput(data)
+            }
         }
     }
 
-    private func drainOutput(from handle: FileHandle) {
-        let data = handle.availableData
-        guard !data.isEmpty else {
-            return
-        }
-
+    private func drainOutput(_ data: Data) {
         Self.logger.debug("drainOutput received \(data.count) bytes")
 
         bufferedOutput.append(data)

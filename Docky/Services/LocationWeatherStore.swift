@@ -53,7 +53,8 @@ extension WeatherWidgetSettingsKey {
     }
 }
 
-/// Deliberately not `@MainActor` isolated to match `WeatherService`'s publish-from-Task pattern; only handed out and observed on the main thread.
+/// Publishes weather state on the main actor, matching `WeatherService`.
+@MainActor
 final class ConfiguredWeatherModel: ObservableObject {
     let latitude: Double
     let longitude: Double
@@ -119,6 +120,7 @@ final class ConfiguredWeatherModel: ObservableObject {
 }
 
 /// Keyed by rounded coordinate so two widgets pinned to the same city share a single fetch.
+@MainActor
 final class LocationWeatherStore {
     static let shared = LocationWeatherStore()
 

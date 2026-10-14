@@ -176,7 +176,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         window.setFrame(screenFrame, display: window.isVisible)
     }
 
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (() -> Void)? = nil) {
+    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor () -> Void)? = nil) {
         guard let window else {
             completion?()
             return
@@ -187,7 +187,9 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
-            completion?()
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 }

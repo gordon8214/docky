@@ -13,6 +13,7 @@ import Combine
 import CoreGraphics
 import Foundation
 
+@MainActor
 final class DockChromeMetricsService: ObservableObject {
     static let shared = DockChromeMetricsService()
 

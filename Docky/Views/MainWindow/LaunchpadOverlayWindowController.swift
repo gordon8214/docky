@@ -139,7 +139,7 @@ final class LaunchpadOverlayWindowController: NSWindowController {
         window.orderOut(nil)
     }
 
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (() -> Void)? = nil) {
+    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor () -> Void)? = nil) {
         guard let window else {
             completion?()
             return
@@ -152,7 +152,9 @@ final class LaunchpadOverlayWindowController: NSWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = alphaValue
         } completionHandler: {
-            completion?()
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 
@@ -238,7 +240,7 @@ private struct LaunchpadDragState: Equatable {
 /// Preference key that aggregates per-cell frames keyed by layout id.
 /// Used by the drag handler to map the cursor to an insertion index.
 private struct LaunchpadCellFramePreference: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
     }

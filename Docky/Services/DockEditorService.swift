@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 
+@MainActor
 final class DockEditorService {
     static let shared = DockEditorService()
 

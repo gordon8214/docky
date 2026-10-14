@@ -16,6 +16,7 @@ import Observation
 import QuartzCore
 
 @Observable
+@MainActor
 final class DockMagnificationService {
     static let shared = DockMagnificationService()
 
@@ -160,7 +161,9 @@ final class DockMagnificationService {
     private func startTimerIfNeeded() {
         guard rampTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            self?.tick()
+            MainActor.assumeIsolated {
+                self?.tick()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         rampTimer = timer

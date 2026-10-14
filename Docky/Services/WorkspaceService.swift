@@ -33,6 +33,7 @@ struct RunningApp: Hashable, Identifiable {
     var id: String { bundleIdentifier }
 }
 
+@MainActor
 final class WorkspaceService: ObservableObject {
     static let shared = WorkspaceService()
 
@@ -89,7 +90,7 @@ final class WorkspaceService: ObservableObject {
         subscribeToRegistry()
     }
 
-    deinit {
+    isolated deinit {
         let center = NSWorkspace.shared.notificationCenter
         for observer in observers {
             center.removeObserver(observer)
@@ -665,7 +666,9 @@ final class WorkspaceService: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.refresh()
+                MainActor.assumeIsolated {
+                    self?.refresh()
+                }
             }
             observers.append(token)
         }
@@ -679,7 +682,9 @@ final class WorkspaceService: ObservableObject {
             queue: .main
         ) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            self?.updateFrontmost(app ?? NSWorkspace.shared.frontmostApplication)
+            MainActor.assumeIsolated {
+                self?.updateFrontmost(app ?? NSWorkspace.shared.frontmostApplication)
+            }
         }
         observers.append(frontmostToken)
 
@@ -718,7 +723,9 @@ final class WorkspaceService: ObservableObject {
         WindowRegistry.shared.$windows
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.refresh()
+                MainActor.assumeIsolated {
+                    self?.refresh()
+                }
             }
             .store(in: &cancellables)
 
@@ -1200,21 +1207,7 @@ final class WorkspaceService: ObservableObject {
     }
 
     private func shareableContentIncludingOffscreenWindows() async throws -> SCShareableContent {
-        try await withCheckedThrowingContinuation { continuation in
-            SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let content else {
-                    continuation.resume(throwing: NSError(domain: "Docky.WindowPreview", code: -2, userInfo: nil))
-                    return
-                }
-
-                continuation.resume(returning: content)
-            }
-        }
+        try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
     }
 
     private func constrainedCaptureSize(for sourceSize: CGSize) -> CGSize {
@@ -1332,10 +1325,11 @@ private final class ShareableContentCache {
     var content: SCShareableContent?
 }
 
+@MainActor
 private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
     private let stream: SCStream
     private let outputQueue = DispatchQueue(label: "Docky.LiveWindowPreview", qos: .userInteractive)
-    private let ciContext = CIContext(options: nil)
+    nonisolated private let ciContext = CIContext(options: nil)
     private let onFrame: @MainActor (NSImage?) -> Void
     private var isStopped = false
 
@@ -1383,7 +1377,7 @@ private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
         }
     }
 
-    func stream(
+    nonisolated func stream(
         _ stream: SCStream,
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType

@@ -78,6 +78,7 @@ struct ExternalWidgetMetadata: Equatable {
 
 /// Live registration backed by a loaded plugin instance. `view(for:)` is
 /// what WidgetTileView delegates to for `.external` kinds.
+@MainActor
 final class ExternalWidgetRegistration {
     let metadata: ExternalWidgetMetadata
     let bundleURL: URL
@@ -137,6 +138,7 @@ final class ExternalWidgetRegistration {
 /// Singleton registry. The discoverer (ExternalWidgetLoader) pushes
 /// registrations in once at startup; the rest of the app reads from
 /// `byIdentifier` to resolve `.external` kinds.
+@MainActor
 final class ExternalWidgetRegistry {
     static let shared = ExternalWidgetRegistry()
 

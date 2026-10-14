@@ -127,13 +127,13 @@ private typealias SLSWindowIsOrderedInType = @convention(c) (
     UnsafeMutablePointer<Bool>
 ) -> CGError
 
-private var skyLightHandle: UnsafeMutableRawPointer?
-private var setFrontProcessPtr: SLPSSetFrontProcessWithOptionsType?
-private var postEventRecordPtr: SLPSPostEventRecordToType?
-private var windowIsOrderedInPtr: SLSWindowIsOrderedInType?
+@MainActor private var skyLightHandle: UnsafeMutableRawPointer?
+@MainActor private var setFrontProcessPtr: SLPSSetFrontProcessWithOptionsType?
+@MainActor private var postEventRecordPtr: SLPSPostEventRecordToType?
+@MainActor private var windowIsOrderedInPtr: SLSWindowIsOrderedInType?
 
-// Single-threaded-by-convention: focus paths run on main, so the lazy load
-// doesn't need a lock.
+// Focus paths and lazy symbol loading are isolated to the main actor.
+@MainActor
 private func loadSkyLightFunctions() {
     guard skyLightHandle == nil else { return }
 
@@ -155,6 +155,7 @@ private func loadSkyLightFunctions() {
 // Whether the window server has the window mapped on some Space — the only
 // signal that separates a live off-Space window from the stale entries
 // CGWindowListCopyWindowInfo keeps serving after a window closes.
+@MainActor
 func SLSWindowIsOrderedIn(_ connection: CGSConnectionID, _ windowID: CGWindowID) -> Bool {
     loadSkyLightFunctions()
     guard let fn = windowIsOrderedInPtr else { return false }
@@ -164,6 +165,7 @@ func SLSWindowIsOrderedIn(_ connection: CGSConnectionID, _ windowID: CGWindowID)
 }
 
 @discardableResult
+@MainActor
 func _SLPSSetFrontProcessWithOptions(
     _ psn: UnsafeMutablePointer<ProcessSerialNumber>,
     _ wid: CGWindowID,
@@ -175,6 +177,7 @@ func _SLPSSetFrontProcessWithOptions(
 }
 
 @discardableResult
+@MainActor
 func SLPSPostEventRecordTo(
     _ psn: UnsafeMutablePointer<ProcessSerialNumber>,
     _ bytes: UnsafeMutablePointer<UInt8>
@@ -193,9 +196,10 @@ func SLPSPostEventRecordTo(
 // symbol is not exported in the SDK.
 
 private typealias CoreDockSendNotificationType = @convention(c) (CFString, Int32) -> Void
-private var hiServicesHandle: UnsafeMutableRawPointer?
-private var coreDockSendNotificationPtr: CoreDockSendNotificationType?
+@MainActor private var hiServicesHandle: UnsafeMutableRawPointer?
+@MainActor private var coreDockSendNotificationPtr: CoreDockSendNotificationType?
 
+@MainActor
 private func loadHIServicesFunctions() {
     guard hiServicesHandle == nil else { return }
 
@@ -208,12 +212,14 @@ private func loadHIServicesFunctions() {
     }
 }
 
+@MainActor
 func CoreDockSendNotification(_ message: String) {
     loadHIServicesFunctions()
     guard let fn = coreDockSendNotificationPtr else { return }
     fn(message as CFString, 0)
 }
 
+@MainActor
 func slpsMakeKeyWindow(psn: inout ProcessSerialNumber, windowID: CGWindowID) {
     var bytes = [UInt8](repeating: 0, count: 0xF8)
     bytes[0x04] = 0xF8

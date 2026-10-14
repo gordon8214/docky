@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 
+@MainActor
 final class ApplicationInstallService {
     static let shared = ApplicationInstallService()
 

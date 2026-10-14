@@ -10,7 +10,7 @@
 import Foundation
 
 enum DockPlistReader {
-    private static let domain = "com.apple.dock" as CFString
+    private static let domain = "com.apple.dock"
     private static let keys: [String] = [
         "orientation", "tilesize", "largesize", "magnification",
         "autohide", "autohide-delay", "autohide-time-modifier",
@@ -21,6 +21,7 @@ enum DockPlistReader {
 
     /// Full dock settings dictionary. Nil when the domain can't be read.
     static func read() -> [String: Any]? {
+        let domain = domain as CFString
         CFPreferencesAppSynchronize(domain)
         guard let values = CFPreferencesCopyMultiple(
             keys.map { $0 as CFString } as CFArray,

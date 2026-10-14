@@ -39,7 +39,7 @@ final class TilePressService: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         if let monitor {
             NSEvent.removeMonitor(monitor)
         }

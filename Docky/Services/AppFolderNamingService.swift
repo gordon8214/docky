@@ -55,6 +55,7 @@ private func _appFolderSanitize(_ value: String, fallback: String) -> String {
 }
 
 @available(macOS 26.0, *)
+@MainActor
 final class AppFolderNamingService {
     static let shared = AppFolderNamingService()
 

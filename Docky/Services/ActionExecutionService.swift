@@ -19,6 +19,7 @@ enum BuiltinAction: String {
     case emptyTrash
 }
 
+@MainActor
 final class ActionExecutionService {
     static let shared = ActionExecutionService()
 

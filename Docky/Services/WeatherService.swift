@@ -9,6 +9,7 @@ import CoreLocation
 import Foundation
 import MapKit
 
+@MainActor
 final class WeatherService: NSObject, ObservableObject {
     static let shared = WeatherService()
     static let widgetOwnerBundleIdentifier = WidgetOwnerBundleIdentifiers.weather

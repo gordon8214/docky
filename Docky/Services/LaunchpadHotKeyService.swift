@@ -7,6 +7,7 @@ import AppKit
 import Carbon
 import Combine
 
+@MainActor
 final class LaunchpadHotKeyService {
     static let shared = LaunchpadHotKeyService()
 
@@ -21,7 +22,7 @@ final class LaunchpadHotKeyService {
         subscribeToPreferences()
     }
 
-    deinit {
+    isolated deinit {
         unregisterHotKey()
 
         if let hotKeyHandlerRef {

@@ -11,7 +11,8 @@
 import AppKit
 import UniformTypeIdentifiers
 
-final class IconCacheService {
+// The only shared state is NSCache, whose access is thread-safe.
+final class IconCacheService: @unchecked Sendable {
     static let shared = IconCacheService()
 
     private let cache: NSCache<NSString, NSImage> = {
@@ -72,7 +73,7 @@ final class IconCacheService {
     func loadIconAsync(forBundleIdentifier bundleIdentifier: String) async -> NSImage {
         let key = "bundle:\(bundleIdentifier)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        return await Task.detached(priority: .userInitiated) { [cache] in
+        return await Task.detached(priority: .userInitiated) { [self] in
             let image: NSImage
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
                 image = Self.workspaceIcon(forFile: url.path)
@@ -138,7 +139,7 @@ final class IconCacheService {
     func loadPreviewThumbnailAsync(forFileURL url: URL, maxPixelSize: Int) async -> NSImage? {
         let key = Self.previewThumbnailKey(for: url, maxPixelSize: maxPixelSize)
         if let cached = cache.object(forKey: key) { return cached }
-        return await Task.detached(priority: .userInitiated) { [cache] in
+        return await Task.detached(priority: .userInitiated) { [self] in
             guard Self.isImageFile(url),
                   let image = Self.previewThumbnail(forImageFileURL: url, maxPixelSize: maxPixelSize) else {
                 return nil as NSImage?
@@ -154,7 +155,7 @@ final class IconCacheService {
     func preloadPreviewThumbnails(forFileURLs urls: [URL], maxPixelSize: Int) {
         let uncached = urls.filter { cachedPreviewThumbnail(forFileURL: $0, maxPixelSize: maxPixelSize) == nil }
         guard !uncached.isEmpty else { return }
-        Task.detached(priority: .utility) { [cache] in
+        Task.detached(priority: .utility) { [self] in
             for url in uncached {
                 guard Self.isImageFile(url),
                       let image = Self.previewThumbnail(forImageFileURL: url, maxPixelSize: maxPixelSize) else {

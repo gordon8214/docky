@@ -135,6 +135,7 @@ enum Permission: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 final class PermissionsService: ObservableObject {
     static let shared = PermissionsService()
 
@@ -305,7 +306,8 @@ final class PermissionsService: ObservableObject {
 
     @discardableResult
     func requestAccessibilityPermission(prompt: Bool) -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
+        // The SDK exposes this immutable key as a mutable C global.
+        let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
         let granted = AXIsProcessTrustedWithOptions(options)
         refreshAccessibility()
         return granted

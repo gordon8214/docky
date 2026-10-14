@@ -24,6 +24,7 @@ private final class AppUpdateFeedDelegate: NSObject, SPUUpdaterDelegate {
     }
 }
 
+@MainActor
 final class AppUpdateService: ObservableObject {
     static let shared = AppUpdateService()
     static let feedURLString = "https://getdocky.com/releases/appcast.xml"

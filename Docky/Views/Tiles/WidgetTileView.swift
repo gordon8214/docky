@@ -153,6 +153,7 @@ private struct ExternalWidgetTileView: NSViewRepresentable {
         )
     }
 
+    @MainActor
     final class Coordinator {
         var settings: WidgetSettings
         init(settings: WidgetSettings) {

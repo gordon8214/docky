@@ -13,6 +13,7 @@ enum DockDividerPositionClass {
     case right
 }
 
+@MainActor
 final class DockLayoutService: ObservableObject {
     static let shared = DockLayoutService()
 

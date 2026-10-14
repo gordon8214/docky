@@ -13,6 +13,7 @@ struct FocusedWindowPreview {
     let screenBounds: CGRect
 }
 
+@MainActor
 final class WindowSwitcherService: ObservableObject {
     static let shared = WindowSwitcherService()
 
@@ -68,7 +69,7 @@ final class WindowSwitcherService: ObservableObject {
         observeWindowPreviews()
     }
 
-    deinit {
+    isolated deinit {
         unregisterHotKey()
 
         if let hotKeyHandlerRef {

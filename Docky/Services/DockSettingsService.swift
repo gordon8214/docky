@@ -12,6 +12,7 @@ import Combine
 import Observation
 
 @Observable
+@MainActor
 final class DockSettingsService {
     static let shared = DockSettingsService()
 

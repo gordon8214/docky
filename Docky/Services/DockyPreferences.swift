@@ -136,7 +136,7 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
         )
     }
 
-    nonisolated static func smartStack(
+    @MainActor static func smartStack(
         hiddenWidgetOwnerBundleIdentifiers: [String] = WidgetCatalog.defaultHiddenSmartStackOwnerBundleIdentifiers
     ) -> Self {
         Self(
@@ -339,7 +339,7 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
         )
     }
 
-    nonisolated static func smartStack(
+    @MainActor static func smartStack(
         hiddenWidgetOwnerBundleIdentifiers: [String] = WidgetCatalog.defaultHiddenSmartStackOwnerBundleIdentifiers
     ) -> Self {
         Self(
@@ -998,6 +998,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+@MainActor
 @Observable final class DockyPreferences {
     static let shared = DockyPreferences()
 

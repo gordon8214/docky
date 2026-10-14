@@ -27,6 +27,7 @@ struct WidgetRegistration: Equatable, Identifiable {
         "\(ownerBundleIdentifier):\(kind.rawValue)"
     }
 
+    @MainActor
     func makeTile(span: TileSpan? = nil) -> WidgetTile {
         WidgetTile(
             identifier: id,
@@ -130,18 +131,22 @@ enum WidgetCatalog {
     /// bundles that ExternalWidgetLoader has registered. Computed (not
     /// cached) so registrations discovered after first access still show
     /// up the next time the palette refreshes.
+    @MainActor
     static var staticRegistrations: [WidgetRegistration] {
         builtInRegistrations + externalRegistrations()
     }
 
+    @MainActor
     static var paletteRegistrations: [WidgetRegistration] {
         staticRegistrations.filter(\.includesInPalette)
     }
 
+    @MainActor
     static var smartStackRegistrations: [WidgetRegistration] {
         staticRegistrations.filter(\.includesInSmartStack)
     }
 
+    @MainActor
     private static func externalRegistrations() -> [WidgetRegistration] {
         ExternalWidgetRegistry.shared.registrations.map { registration in
             let metadata = registration.metadata
@@ -170,6 +175,7 @@ enum WidgetCatalog {
     /// `defaultVisibleSmartStackOwnerBundleIdentifiers` — formatted as
     /// the `hiddenWidgetOwnerBundleIdentifiers` argument the
     /// persistence layer expects when creating a new smart stack item.
+    @MainActor
     static let defaultHiddenSmartStackOwnerBundleIdentifiers: [String] =
         smartStackRegistrations
             .map(\.ownerBundleIdentifier)

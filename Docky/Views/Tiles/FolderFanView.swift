@@ -347,6 +347,7 @@ struct FolderFanPresenter: NSViewRepresentable {
         coordinator.tearDown()
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         // Match the spring response + per-item stagger in
         // `FolderFanView.fanItem(...)` so the close animation
