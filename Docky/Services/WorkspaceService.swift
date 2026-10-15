@@ -590,12 +590,14 @@ final class WorkspaceService: ObservableObject {
         )
     }
 
-    func revealApplicationInFinder(bundleIdentifier: String) {
+    /// Selects the app's bundle in the chosen file browser.
+    @discardableResult
+    func revealApplication(bundleIdentifier: String) -> Bool {
         guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-            return
+            return false
         }
 
-        NSWorkspace.shared.activateFileViewerSelecting([appURL])
+        return FileBrowserService.shared.reveal(appURL)
     }
 
     func showAllWindows(bundleIdentifier: String) {

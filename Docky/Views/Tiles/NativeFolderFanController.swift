@@ -21,7 +21,11 @@ final class NativeFolderFanController: NSWindowController {
         var rows: [NSView] = []
         for (index, url) in items.enumerated() {
             let button = NativeActionButton(FileManager.default.displayName(atPath: url.path)) {
-                NSWorkspace.shared.open(url)
+                if FileBrowserService.isFolder(url) {
+                    Task { await FileBrowserService.shared.openFolder(url) }
+                } else {
+                    NSWorkspace.shared.open(url)
+                }
             }
             button.image = IconCacheService.shared.cachedPreviewThumbnail(
                 forFileURL: url, maxPixelSize: IconCacheService.tileThumbnailPixelExtent)

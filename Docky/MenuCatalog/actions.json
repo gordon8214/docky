@@ -53,7 +53,7 @@
         },
         {
           "id": "app.show-in-finder",
-          "title": "Show in Finder",
+          "title": "Show in {{fileBrowser}}",
           "kind": "builtin",
           "builtinIdentifier": "showAppInFinder",
           "tileTypes": ["app"],
@@ -123,7 +123,7 @@
         },
         {
           "id": "folder.open-in-finder",
-          "title": "Open in Finder",
+          "title": "Open in {{fileBrowser}}",
           "kind": "builtin",
           "builtinIdentifier": "openFolderInFinder",
           "tileTypes": ["folder"],
@@ -135,11 +135,11 @@
         },
         {
           "id": "folder.reveal-in-finder",
-          "title": "Reveal in Finder",
+          "title": "Reveal in {{fileBrowser}}",
           "kind": "builtin",
           "builtinIdentifier": "revealFolderInFinder",
           "tileTypes": ["folder"],
-          "permissions": ["finderAutomation"],
+          "permissions": [],
           "inputs": [],
           "destructive": false,
           "requiresFrontmost": false,

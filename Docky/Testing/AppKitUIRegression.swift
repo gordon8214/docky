@@ -21,6 +21,7 @@
             checkFolderLifecycle()
             checkWidgetDetails()
             await checkCachedSettings()
+            await checkFileBrowser()
             await checkObserverRelease()
             print("AppKit UI integration regressions passed in \(started.duration(to: .now))")
             fflush(stdout)

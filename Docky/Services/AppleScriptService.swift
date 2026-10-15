@@ -127,11 +127,6 @@ final class AppleScriptService {
     }
 
     @discardableResult
-    func revealInFinder(_ url: URL) async -> Bool {
-        await runFinderScript(.reveal(url))
-    }
-
-    @discardableResult
     func openFinderWindow(for url: URL) async -> Bool {
         await runFinderScript(.openFolder(url))
     }
@@ -374,7 +369,6 @@ final class AppleScriptService {
 
 private enum FinderCommand {
     case permissionProbe
-    case reveal(URL)
     case openFolder(URL)
     case openTrash
     case emptyTrash
@@ -386,14 +380,6 @@ private enum FinderCommand {
             tell application id \"com.apple.finder\" to launch
             tell application id \"com.apple.finder\"
                 count Finder windows
-            end tell
-            """
-        case .reveal(let url):
-            return """
-            tell application id \"com.apple.finder\" to launch
-            tell application id \"com.apple.finder\"
-                activate
-                reveal POSIX file "\(escapedPOSIXPath(url))"
             end tell
             """
         case .openFolder(let url):

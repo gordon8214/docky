@@ -34,7 +34,7 @@ extension NativeSettingsPaneController {
                 guard let self else { return }
                 do {
                     let url = try FeedbackBundle.build(feedbackText: editor.string, attachmentURL: self.attachment)
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    FileBrowserService.shared.reveal(url)
                     let items: [Any] = [editor.string, url]
                     if let mail = NSSharingService(named: .composeEmail), mail.canPerform(withItems: items) {
                         mail.recipients = ["hello@quintero.gt"]

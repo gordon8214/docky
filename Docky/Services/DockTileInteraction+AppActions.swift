@@ -22,7 +22,7 @@ extension DockTileInteraction {
 
         children.append(.divider)
         children.append(
-            .action(String(localized: "Finder Window"), isOn: folderContentViewMode == .finder) {
+            .action(FileBrowserService.shared.current.windowTitle, isOn: folderContentViewMode == .finder) {
                 TileStore.shared.setFolderContentViewMode(tileID: tile.id, folderURL: folder.url, mode: .finder)
             }
         )

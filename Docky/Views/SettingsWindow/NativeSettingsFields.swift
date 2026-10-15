@@ -22,7 +22,8 @@ enum NativeSettingsFields {
             "windowManagement": windowManagementRows,
             "profiles": profilesRows,
             "appIcons": appIconsRows,
-            "behaviorAppTileClick": behaviorAppTileClickRows
+            "behaviorAppTileClick": behaviorAppTileClickRows,
+            "behaviorGeneral": behaviorGeneralRows
         ]
         return builders[pane]?() ?? []
     }
@@ -256,6 +257,38 @@ enum NativeSettingsFields {
                 "Start Menu Icon Padding", \.startMenuIconPaddingFraction, range: 0...1),
             NativePreferenceField.image("Start Menu Icon", \.startMenuIconPath)
         ]
+    }
+
+    static func behaviorGeneralRows() -> [NSView] {
+        [fileBrowserRow()]
+    }
+
+    /// File browsers that aren't installed stay listed but can't be chosen. A saved choice that
+    /// isn't installed stays selected, and `FileBrowserService` uses Finder until it is.
+    static func fileBrowserRow() -> NSView {
+        let browsers = FileBrowser.allCases
+        let control = NSPopUpButton()
+        control.autoenablesItems = false
+        for browser in browsers {
+            let isInstalled = FileBrowserService.shared.isInstalled(browser)
+            control.addItem(
+                withTitle: isInstalled
+                    ? browser.displayName
+                    : String(
+                        localized: "\(browser.displayName) (Not Installed)",
+                        comment: "A file browser app's name, followed by a note that it isn't installed"))
+            control.lastItem?.isEnabled = isInstalled
+        }
+        let row = NativeFormRow(title: String(localized: "File Browser"), control: control)
+        row.bind(control) {
+            if browsers.indices.contains(control.indexOfSelectedItem) {
+                DockyPreferences.shared.fileBrowser = browsers[control.indexOfSelectedItem]
+            }
+        }
+        row.observe { [weak control] in
+            control?.selectItem(at: browsers.firstIndex(of: DockyPreferences.shared.fileBrowser) ?? 0)
+        }
+        return row
     }
 
     static func behaviorAppTileClickRows() -> [NSView] {

@@ -244,7 +244,7 @@ extension DockTileInteraction {
         case .startMenu: toggleStartMenu()
         case .widget(let widget): handleWidgetTap(widget)
         case .folder(let folder): tapFolder(folder)
-        case .trash: Task { _ = await AppleScriptService.shared.openTrash() }
+        case .trash: Task { await FileBrowserService.shared.openTrash() }
         case .smartStack, .spacer, .flexibleSpacer, .divider: return
         }
     }
@@ -284,7 +284,7 @@ extension DockTileInteraction {
     func tapFolder(_ folder: FolderTile) {
         if folderContentViewMode == .finder {
             isFolderPopoverPresented = false
-            Task { _ = await AppleScriptService.shared.openFinderWindow(for: folder.url) }
+            Task { await FileBrowserService.shared.openFolder(folder.url) }
             return
         }
         if folderContentViewMode == .list {

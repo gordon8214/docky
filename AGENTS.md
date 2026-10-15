@@ -79,7 +79,7 @@ bridge and lifecycle tests.
 
 | Script | Notes |
 | --- | --- |
-| `scripts/test_appkit_ui.sh` | `--appkit-ui-regression`; under 15s, 30s cap. Covers every Settings pane, widgets, Windows taskbar, window switcher, menu extras toggle |
+| `scripts/test_appkit_ui.sh` | `--appkit-ui-regression`; under 15s, 30s cap. Covers every Settings pane, widgets, Windows taskbar, window switcher, menu extras toggle, file browser choice |
 | `scripts/test_dock_system.sh` | `--dock-system-regression`; needs a WindowServer session |
 | `scripts/test_dock_bridge.sh` | Signed build. Temporarily restarts Apple's Dock |
 | `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap. Skips the ⌘Tab takeover check while another Docky runs |

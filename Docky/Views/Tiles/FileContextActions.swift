@@ -36,10 +36,8 @@ func folderNavigationContextActions(for folderURL: URL) -> [ContextAction] {
         actions.append(.divider)
     }
     actions.append(
-        .action(String(localized: "Open in Finder"), image: contextMenuSymbol("folder")) {
-            Task {
-                _ = await AppleScriptService.shared.openFinderWindow(for: folderURL)
-            }
+        .action(FileBrowserService.shared.current.openInTitle, image: contextMenuSymbol("folder")) {
+            Task { await FileBrowserService.shared.openFolder(folderURL) }
         })
 
     return actions
@@ -56,8 +54,8 @@ func fileContextActions(for url: URL) -> [ContextAction] {
         .lazySubmenu(String(localized: "Open With"), image: contextMenuSymbol("app.badge")) {
             openWithApplicationActions(for: url)
         },
-        .action(String(localized: "Reveal in Finder"), image: contextMenuSymbol("folder")) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        .action(FileBrowserService.shared.current.revealInTitle, image: contextMenuSymbol("folder")) {
+            FileBrowserService.shared.reveal(url)
         },
         .divider,
         .action(String(localized: "Copy"), image: contextMenuSymbol("doc.on.doc")) {

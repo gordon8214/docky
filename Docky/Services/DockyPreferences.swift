@@ -1974,6 +1974,15 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// The app that folder, reveal and Trash actions open. `FileBrowserService` falls back to
+    /// Finder when the chosen app isn't installed.
+    var fileBrowser: FileBrowser {
+        didSet {
+            guard fileBrowser != oldValue else { return }
+            defaults.set(fileBrowser.rawValue, forKey: Keys.fileBrowser)
+        }
+    }
+
     /// Whether Docky surfaces minimized window tiles in the trailing section.
     var showsMinimizedWindows: Bool {
         didSet {
@@ -3589,6 +3598,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let hidesRecentApps = "docky.hidesRecentApps"
         static let hidesProfileStrip = "docky.hidesProfileStrip"
         static let appTileFrontmostClickBehavior = "docky.appTileFrontmostClickBehavior"
+        static let fileBrowser = "docky.fileBrowser"
         static let activeIndicatorShape = "docky.activeIndicatorShape"
         static let activeIndicatorImagePath = "docky.activeIndicatorImagePath"
         static let activeIndicatorColor = "docky.activeIndicatorColor"
@@ -3699,6 +3709,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let hidesRecentApps = false
         static let hidesProfileStrip = false
         static let appTileFrontmostClickBehavior: AppTileFrontmostClickBehavior = .none
+        static let fileBrowser: FileBrowser = .finder
         static let activeIndicatorShape: DockTileIndicatorShape = .dot
         static let activeIndicatorImagePath: String? = nil
         static let activeIndicatorColor: DockColor? = nil
@@ -3834,6 +3845,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedHidesRecentApps = defaults.object(forKey: Keys.hidesRecentApps) as? Bool
         let storedHidesProfileStrip = defaults.object(forKey: Keys.hidesProfileStrip) as? Bool
         let storedAppTileFrontmostClickBehavior = defaults.string(forKey: Keys.appTileFrontmostClickBehavior)
+        let storedFileBrowser = defaults.string(forKey: Keys.fileBrowser)
         let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
         let storedActiveIndicatorImagePath = defaults.string(forKey: Keys.activeIndicatorImagePath)
         let storedActiveIndicatorColor = defaults.data(forKey: Keys.activeIndicatorColor)
@@ -3972,6 +3984,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.appTileFrontmostClickBehavior = storedAppTileFrontmostClickBehavior
             .flatMap(AppTileFrontmostClickBehavior.init(rawValue:))
             ?? DefaultValues.appTileFrontmostClickBehavior
+        self.fileBrowser = storedFileBrowser.flatMap(FileBrowser.init(rawValue:)) ?? DefaultValues.fileBrowser
         self.activeIndicatorShape = (storedActiveIndicatorShape.flatMap(DockTileIndicatorShape.init(rawValue:)) ?? DefaultValues.activeIndicatorShape)
         self.activeIndicatorImagePath = storedActiveIndicatorImagePath ?? DefaultValues.activeIndicatorImagePath
         self.activeIndicatorColor = Self.decodeColor(from: storedActiveIndicatorColor) ?? DefaultValues.activeIndicatorColor
@@ -4231,6 +4244,9 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         // App-tile click
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
 
+        // File browser
+        fileBrowser = DefaultValues.fileBrowser
+
         // App folders
         showsGroupedOpenedAppsInDock = DefaultValues.showsGroupedOpenedAppsInDock
         showsGroupedOpenedAppsBackdrop = DefaultValues.showsGroupedOpenedAppsBackdrop
@@ -4295,6 +4311,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         shelveHidesTrash = DefaultValues.shelveHidesTrash
         hidesRecentApps = DefaultValues.hidesRecentApps
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
+        fileBrowser = DefaultValues.fileBrowser
         activeIndicatorShape = DefaultValues.activeIndicatorShape
         activeIndicatorImagePath = DefaultValues.activeIndicatorImagePath
         activeIndicatorColor = DefaultValues.activeIndicatorColor

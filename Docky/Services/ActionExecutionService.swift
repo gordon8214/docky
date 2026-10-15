@@ -59,8 +59,7 @@ final class ActionExecutionService {
             return TileStore.shared.setPinnedApp(bundleIdentifier: bundleIdentifier, pinned: !context.isPinned)
         case .showAppInFinder:
             guard let bundleIdentifier = context.bundleIdentifier else { return false }
-            WorkspaceService.shared.revealApplicationInFinder(bundleIdentifier: bundleIdentifier)
-            return true
+            return WorkspaceService.shared.revealApplication(bundleIdentifier: bundleIdentifier)
         case .hideApp:
             guard let bundleIdentifier = context.bundleIdentifier else { return false }
             WorkspaceService.shared.hide(bundleIdentifier: bundleIdentifier)
@@ -71,12 +70,12 @@ final class ActionExecutionService {
             return true
         case .openFolderInFinder:
             guard case .folder(let folder) = context.tile.content else { return false }
-            return await AppleScriptService.shared.openFinderWindow(for: folder.url)
+            return await FileBrowserService.shared.openFolder(folder.url)
         case .revealFolderInFinder:
             guard case .folder(let folder) = context.tile.content else { return false }
-            return await AppleScriptService.shared.revealInFinder(folder.url)
+            return FileBrowserService.shared.reveal(folder.url)
         case .openTrash:
-            return await AppleScriptService.shared.openTrash()
+            return await FileBrowserService.shared.openTrash()
         case .emptyTrash:
             return await AppleScriptService.shared.emptyTrash()
         }

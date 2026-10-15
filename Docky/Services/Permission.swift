@@ -46,7 +46,7 @@ enum Permission: String, CaseIterable, Identifiable {
                 + "Dock, including protected locations like Downloads, Documents, and Desktop. No data "
                 + "leaves your Mac."
         case .finderAutomation:
-            return "Docky uses Finder automation for reveal-in-Finder, open-folder, and Trash actions. "
+            return "Docky uses Finder automation to open folders and the Trash in Finder, and to empty the Trash. "
                 + "macOS grants this separately from Full Disk Access, and you can request it here "
                 + "without waiting for the first Finder action to fail."
         case .accessibility:

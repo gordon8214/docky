@@ -123,7 +123,7 @@ final class NativeStartMenuController: NSViewController {
                     id: "shortcut:\(name)", title: name, detail: String(localized: "Folder"),
                     image: IconCacheService.shared.icon(forFileURL: url), url: url
                 ) {
-                    NSWorkspace.shared.open(url)
+                    Task { await FileBrowserService.shared.openFolder(url) }
                     StartMenuService.shared.dismiss()
                 })
         }

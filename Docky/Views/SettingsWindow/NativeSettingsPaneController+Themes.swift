@@ -30,7 +30,7 @@ extension NativeSettingsPaneController {
             nativeStack(
                 [
                     NativeActionButton(String(localized: "Reveal Themes Folder")) {
-                        NSWorkspace.shared.open(manager.themesDirectoryURL)
+                        Task { await FileBrowserService.shared.openFolder(manager.themesDirectoryURL) }
                     },
                     NativeActionButton(String(localized: "Refresh")) { manager.refreshInstalled() },
                     NativeActionButton(String(localized: "Clear Overrides")) {

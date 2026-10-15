@@ -35,11 +35,17 @@ final class NativeFolderController: NativeBrowserController {
         preferredContentSize = CGSize(width: 540, height: 420)
         header.insertArrangedSubview(
             NativeActionButton("", symbol: "chevron.left") { [weak self] in self?.back() }, at: 0)
-        header.addArrangedSubview(
-            NativeActionButton("", symbol: "folder") { [weak self] in
-                guard let url = self?.folder?.url else { return }
-                NSWorkspace.shared.open(url)
-            })
+        let openFolderButton = NativeActionButton("", symbol: "folder") { [weak self] in
+            guard let url = self?.folder?.url else { return }
+            Task { await FileBrowserService.shared.openFolder(url) }
+        }
+        let openFolderTitle = FileBrowserService.shared.current.openInTitle
+        openFolderButton.setAccessibilityLabel(openFolderTitle)
+        openFolderButton.image?.accessibilityDescription = openFolderTitle
+        openFolderButton.toolTip = openFolderTitle
+        // App folders have no folder on disk to open.
+        openFolderButton.isHidden = folder == nil
+        header.addArrangedSubview(openFolderButton)
         header.addArrangedSubview(accessButton)
         accessButton.isHidden = true
         if let folder { usesList = folder.contentViewMode == .list }

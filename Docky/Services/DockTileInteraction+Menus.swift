@@ -55,20 +55,21 @@ extension DockTileInteraction {
         return appendingCustomActions(to: action.map { [$0] } ?? [])
     }
     func folderContextActions(_ folder: FolderTile) -> [ContextAction] {
-        appendingFolderRemoval(
+        let fileBrowser = FileBrowserService.shared.current
+        return appendingFolderRemoval(
             to: folderPresentationContextActions + [
                 .divider,
-                .action(String(localized: "Open in Finder")) {
-                    Task { _ = await AppleScriptService.shared.openFinderWindow(for: folder.url) }
+                .action(fileBrowser.openInTitle) {
+                    Task { await FileBrowserService.shared.openFolder(folder.url) }
                 },
-                .action(String(localized: "Reveal in Finder")) {
-                    Task { _ = await AppleScriptService.shared.revealInFinder(folder.url) }
+                .action(fileBrowser.revealInTitle) {
+                    FileBrowserService.shared.reveal(folder.url)
                 }
             ])
     }
     var trashContextActions: [ContextAction] {
         [
-            .action(String(localized: "Open Trash")) { Task { _ = await AppleScriptService.shared.openTrash() } },
+            .action(String(localized: "Open Trash")) { Task { await FileBrowserService.shared.openTrash() } },
             .divider,
             .action(String(localized: "Empty Trash"), isDestructive: true) {
                 Task { _ = await AppleScriptService.shared.emptyTrash() }

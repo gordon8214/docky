@@ -135,8 +135,8 @@ extension DockTileInteraction {
         }
 
         actions.append(
-            .action(String(localized: "Show in Finder")) {
-                WorkspaceService.shared.revealApplicationInFinder(bundleIdentifier: app.bundleIdentifier)
+            .action(FileBrowserService.shared.current.showInTitle) {
+                WorkspaceService.shared.revealApplication(bundleIdentifier: app.bundleIdentifier)
             })
 
         return actions

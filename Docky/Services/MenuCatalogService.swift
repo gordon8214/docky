@@ -250,12 +250,20 @@ final class MenuCatalogService: ObservableObject {
     }
 
     private func resolvedTitle(for action: CatalogActionDefinition, context: CatalogActionContext) -> String {
+        let title: String
         if let alternateTitle = action.alternateTitle,
            action.alternateTitleWhen?.evaluate(in: context) == true {
-            return alternateTitle
+            title = alternateTitle
+        } else {
+            title = action.title
         }
-        return action.title
+        guard title.contains(Self.fileBrowserTitleToken) else { return title }
+        return title.replacingOccurrences(
+            of: Self.fileBrowserTitleToken, with: FileBrowserService.shared.current.displayName)
     }
+
+    /// Stands for the chosen file browser's name in catalog titles, as in "Open in {{fileBrowser}}".
+    private static let fileBrowserTitleToken = "{{fileBrowser}}"
 
     private func makeContext(for tile: Tile, modifierFlags: NSEvent.ModifierFlags) -> CatalogActionContext {
         let finderBundleIdentifier = "com.apple.finder"
