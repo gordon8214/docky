@@ -13,6 +13,7 @@ gtimeout 45 xcrun swiftc -swift-version 6 -parse-as-library \
     "$project_root/Docky/Services/DockDropGeometry.swift" \
     "$project_root/Docky/Services/DockPresentationGeometry.swift" \
     "$project_root/Docky/Services/WindowPreviewCaptureSupport.swift" \
+    "$project_root/Docky/Services/WindowRecencyOrder.swift" \
     "$project_root/Docky/Services/WindowServerWindowRules.swift" \
     "$project_root/Docky/Views/AppKit/DockWindowInteraction.swift" \
     "$project_root/Docky/Views/AppKit/NativeControls.swift" \

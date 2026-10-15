@@ -17,6 +17,7 @@ struct AppKitBrowserRegression {
         testPreviewCaptureBounds()
         testPreviewRefreshQueue()
         testWindowServerRules()
+        testWindowRecencyOrder()
         testControllerRelease()
         testObservationLifecycle()
         print("AppKit browser and geometry regressions passed")
@@ -358,6 +359,37 @@ struct AppKitBrowserRegression {
         [UInt8](repeating: 0, count: 4).withUnsafeBytes { packet in
             expect(WindowServerEvent.windowDestroyed.windowID(in: packet) == nil, "Window ID 0 names no window")
         }
+    }
+
+    private static func testWindowRecencyOrder() {
+        struct Window: Identifiable, Equatable {
+            let id: Int
+            var title = ""
+            var isOnActiveSpace = true
+        }
+        func merged(_ current: [Window], _ snapshot: [Window], front: Int? = nil) -> [Int] {
+            WindowRecencyOrder.merged(current: current, snapshot: snapshot, front: front,
+                                      isOnActiveSpace: \.isOnActiveSpace).map(\.id)
+        }
+        let current = [Window(id: 1), Window(id: 2), Window(id: 3)]
+
+        expect(merged(current, current + [Window(id: 4)]) == [1, 4, 2, 3],
+               "A window that opens without focus goes right after the current window")
+        expect(merged(current, current + [Window(id: 4)], front: 4) == [4, 1, 2, 3],
+               "A focused new window goes first and the previous window second")
+        expect(merged(current, [Window(id: 3), Window(id: 2), Window(id: 1)]) == [1, 2, 3],
+               "Known windows keep their order whatever order WindowServer lists them in")
+        expect(merged(current, current, front: 3) == [3, 1, 2], "A focused known window moves first")
+        expect(merged(current, [Window(id: 2), Window(id: 3)]) == [2, 3], "Closed windows leave the list")
+        expect(merged([], [Window(id: 5), Window(id: 6)]) == [5, 6], "The first snapshot keeps WindowServer order")
+        expect(merged(current, current + [Window(id: 5, isOnActiveSpace: false), Window(id: 6)]) == [1, 6, 5, 2, 3],
+               "New windows on the active Space come before new windows elsewhere")
+        expect(merged(current, current, front: 9) == [1, 2, 3], "A focused window that isn't listed changes nothing")
+        let renamed = WindowRecencyOrder.merged(
+            current: current, snapshot: [Window(id: 1), Window(id: 2, title: "new"), Window(id: 3)],
+            front: nil, isOnActiveSpace: \.isOnActiveSpace
+        )
+        expect(renamed[1].title == "new", "Known windows take the snapshot's fields")
     }
 
     @MainActor

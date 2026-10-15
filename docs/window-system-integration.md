@@ -145,6 +145,16 @@ background app. The registry takes titles and focus order from AX
 notifications, and hiding from `NSWorkspace`. A tab switch in the active app
 changes its focused window, which refreshes the list.
 
+A new window goes first in the list when it has focus and second, behind the
+current window, when it doesn't (`WindowRecencyOrder`). Only the frontmost
+app's focus changes reorder the list: a background app's new window becomes
+that app's focused window without being used, and moves first when the app
+activates (`NSWorkspace.didActivateApplicationNotification`). A launching app
+usually focuses its first window before Docky installs the app's AX observer,
+so that focus change sends no notification. When a snapshot first lists a
+window of the frontmost app, or Docky has just started observing that app, the
+registry reads the app's focused window from AX instead.
+
 ## Regression commands
 
 Build Debug first. Live bridge tests require a signed app. For a local unsigned

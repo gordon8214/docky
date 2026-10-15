@@ -98,7 +98,8 @@ final class WindowRegistry: ObservableObject {
 
     /// Window list across all tracked apps and Spaces, in per-window MRU
     /// order: focus changes move only the focused window to the front;
-    /// updates land in place; new windows are appended.
+    /// updates land in place; new windows go first when focused and second
+    /// otherwise (see `WindowRecencyOrder`).
     @Published private(set) var windows: [AppWindow] = []
 
     /// Fires when a window's cached preview should be evicted and re-
@@ -548,6 +549,22 @@ final class WindowRegistry: ObservableObject {
                 }
             }
         }
+        // Activation moves the app's focused window first. Its AX focus
+        // notification may arrive before `frontmostApplication` names the app,
+        // and an app Docky doesn't observe yet sends none.
+        workspaceObservers.append(center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                .processIdentifier else { return }
+            MainActor.assumeIsolated {
+                guard let self,
+                      let app = NSRunningApplication(processIdentifier: pid),
+                      Self.shouldObserve(app) else { return }
+                // A launching app may not serve AX yet.
+                self.bumpFocusedWindowToTop(pid: pid, timeout: 0.25)
+            }
+        })
     }
 
     private func removeApplication(_ pid: pid_t) {
@@ -699,17 +716,19 @@ final class WindowRegistry: ObservableObject {
 
     // MARK: - Per-app AX observer
 
-    private func installObserver(for app: NSRunningApplication) {
+    /// Returns whether the observer was newly registered.
+    @discardableResult
+    private func installObserver(for app: NSRunningApplication) -> Bool {
         let pid = app.processIdentifier
-        guard pid > 0, applicationObservers[pid] == nil else { return }
+        guard pid > 0, applicationObservers[pid] == nil else { return false }
         if let retry = observerRetries[pid], retry.attempts >= 5 || ContinuousClock.now < retry.notBefore {
-            return
+            return false
         }
 
         var observer: AXObserver?
         let createStatus = AXObserverCreate(pid, axObserverCallback, &observer)
         guard createStatus == .success, let observer else {
-            return
+            return false
         }
 
         let appElement = AXUIElementCreateApplication(pid)
@@ -739,7 +758,7 @@ final class WindowRegistry: ObservableObject {
         guard registered > 0 else {
             let attempts = (observerRetries[pid]?.attempts ?? 0) + 1
             observerRetries[pid] = (attempts, ContinuousClock.now + .seconds(1))
-            return
+            return false
         }
         observerRetries.removeValue(forKey: pid)
         applicationObservers[pid] = observer
@@ -749,6 +768,7 @@ final class WindowRegistry: ObservableObject {
             AXObserverGetRunLoopSource(observer),
             .commonModes
         )
+        return true
     }
 
     private func removeObserver(for pid: pid_t) {
@@ -788,6 +808,11 @@ final class WindowRegistry: ObservableObject {
             let newFocusedID = WindowID(windowID: windowID)
             invalidateOutgoingFocusedPreview(pid: pid, newFocusedID: newFocusedID)
             lastFocusedWindowIDByPID[pid] = newFocusedID
+            // A background app's focused window hasn't been used, like a
+            // Windows window that opens without activating. It moves when its
+            // app activates. A change that lands before `frontmostApplication`
+            // names the app is caught by the activation notification.
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
             bumpWindowToTop(newFocusedID, pid: pid)
 
         case kAXApplicationActivatedNotification,
@@ -841,11 +866,12 @@ final class WindowRegistry: ObservableObject {
     }
 
     /// The element's window ID, or for apps whose AX elements don't report
-    /// one, the listed window of `pid` with the same frame.
-    private func windowID(of element: AXUIElement, pid: pid_t) -> CGWindowID? {
+    /// one, the window of `pid` in `candidates` (by default, the listed
+    /// windows) with the same frame.
+    private func windowID(of element: AXUIElement, pid: pid_t, candidates: [AppWindow]? = nil) -> CGWindowID? {
         if let windowID = windowID(of: element) { return windowID }
         guard let frame = frameAttribute(of: element) else { return nil }
-        return windows.first { window in
+        return (candidates ?? windows).first { window in
             window.processIdentifier == pid && window.frame.map { $0.isApproximately(frame) } == true
         }?.cgWindowID
     }
@@ -897,7 +923,18 @@ final class WindowRegistry: ObservableObject {
                 scheduleResizeInvalidation(for: window.cgWindowID)
             }
         }
-        applyOrdered(collected)
+        // Observers first, so the order below knows which apps Docky just
+        // started observing. Their notifications arrive on a later turn.
+        var newlyObserved = Set<pid_t>()
+        for (pid, app) in applications where applicationObservers[pid] == nil {
+            if installObserver(for: app) {
+                newlyObserved.insert(pid)
+            }
+        }
+        for pid in applicationObservers.keys where applications[pid] == nil {
+            removeObserver(for: pid)
+        }
+        applyOrdered(collected, focusedWindow: missedFocusWindow(in: collected, newlyObserved: newlyObserved))
 
         // Listed windows first, so they keep their events if WindowServer's
         // per-connection limit is ever reached.
@@ -916,12 +953,6 @@ final class WindowRegistry: ObservableObject {
         accessibilityTitles = accessibilityTitles.filter { liveIDs.contains($0.key) }
         floatingWindowIDs.formIntersection(liveIDs)
         attemptedAccessibilityLookups.formIntersection(liveIDs)
-        for (pid, app) in applications where applicationObservers[pid] == nil {
-            installObserver(for: app)
-        }
-        for pid in applicationObservers.keys where applications[pid] == nil {
-            removeObserver(for: pid)
-        }
         resolveMissingAccessibilityElements()
     }
 
@@ -1010,8 +1041,24 @@ final class WindowRegistry: ObservableObject {
     /// Looks up the app's currently focused window via AX and bumps just
     /// that one to the front. Used when the notification carries the app
     /// element rather than a window element.
-    private func bumpFocusedWindowToTop(pid: pid_t) {
+    private func bumpFocusedWindowToTop(pid: pid_t, timeout: Float? = nil) {
+        guard let focusedElement = focusedWindowElement(pid: pid, timeout: timeout) else {
+            // No focused window reported — refresh so we at least pick up
+            // state changes (hide/unhide, fresh windows).
+            scheduleRefresh()
+            return
+        }
+
+        guard let windowID = windowID(of: focusedElement, pid: pid) else { return }
+        accessibilityElements[windowID] = focusedElement
+        bumpWindowToTop(WindowID(windowID: windowID), pid: pid)
+    }
+
+    private func focusedWindowElement(pid: pid_t, timeout: Float? = nil) -> AXUIElement? {
         let appElement = AXUIElementCreateApplication(pid)
+        if let timeout {
+            AXUIElementSetMessagingTimeout(appElement, timeout)
+        }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
                 appElement,
@@ -1020,16 +1067,34 @@ final class WindowRegistry: ObservableObject {
               ) == .success,
               let value,
               CFGetTypeID(value) == AXUIElementGetTypeID() else {
-            // No focused window reported — refresh so we at least pick up
-            // state changes (hide/unhide, fresh windows).
-            scheduleRefresh()
-            return
+            return nil
         }
+        return (value as! AXUIElement)
+    }
 
-        let focusedElement = value as! AXUIElement
-        guard let windowID = windowID(of: focusedElement, pid: pid) else { return }
-        accessibilityElements[windowID] = focusedElement
-        bumpWindowToTop(WindowID(windowID: windowID), pid: pid)
+    /// The frontmost app's focused window when Docky may have missed its
+    /// focus change: the snapshot lists one of the app's windows for the
+    /// first time, or Docky just started observing the app. A launching app
+    /// focuses its first window before Docky observes it, so no focus
+    /// notification arrives. Nil when a focus notification already named a
+    /// window, or the focused window isn't in `snapshot`.
+    private func missedFocusWindow(in snapshot: [AppWindow], newlyObserved: Set<pid_t>) -> WindowID? {
+        guard pendingFrontWindow == nil,
+              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+        if !newlyObserved.contains(pid) {
+            let known = Set(windows.map(\.id))
+            guard snapshot.contains(where: { $0.processIdentifier == pid && !known.contains($0.id) }) else {
+                return nil
+            }
+        }
+        // A launching app may not serve AX yet; don't stall the main thread
+        // for the global timeout.
+        guard let element = focusedWindowElement(pid: pid, timeout: 0.25),
+              let windowID = windowID(of: element, pid: pid, candidates: snapshot),
+              snapshot.contains(where: { $0.cgWindowID == windowID }) else { return nil }
+        accessibilityElements[windowID] = element
+        lastFocusedWindowIDByPID[pid] = WindowID(windowID: windowID)
+        return WindowID(windowID: windowID)
     }
 
     /// Per-bundle filters that strip windows known to be false
@@ -1085,26 +1150,21 @@ final class WindowRegistry: ObservableObject {
     }
 
     /// Preserves existing order: existing windows keep their slot and pick
-    /// up the latest fields from the snapshot. Newly observed windows are
-    /// appended, those on an active Space first, in WindowServer order. A
-    /// window that took focus before it was listed goes first, in the same
-    /// publish.
-    private func applyOrdered(_ snapshot: [AppWindow]) {
-        let snapshotByID = Dictionary(snapshot.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var orderedExisting: [AppWindow] = []
-        var seen = Set<WindowID>()
-        for window in windows {
-            guard let updated = snapshotByID[window.id], seen.insert(window.id).inserted else { continue }
-            orderedExisting.append(updated)
-        }
-        let newcomers = snapshot.filter { seen.insert($0.id).inserted }
-        var next = orderedExisting
-            + newcomers.filter(\.isOnActiveSpace)
-            + newcomers.filter { !$0.isOnActiveSpace }
-        if let pending = pendingFrontWindow, let index = next.firstIndex(where: { $0.id == pending.id }) {
+    /// up the latest fields from the snapshot. Newly observed windows go
+    /// second, behind the current window (see `WindowRecencyOrder`). A window
+    /// that took focus before it was listed, or whose focus change was
+    /// missed, goes first, in the same publish.
+    private func applyOrdered(_ snapshot: [AppWindow], focusedWindow: WindowID?) {
+        let front = pendingFrontWindow?.id ?? focusedWindow
+        if let pending = pendingFrontWindow, snapshot.contains(where: { $0.id == pending.id }) {
             pendingFrontWindow = nil
-            next.insert(next.remove(at: index), at: 0)
         }
+        let next = WindowRecencyOrder.merged(
+            current: windows,
+            snapshot: snapshot,
+            front: front,
+            isOnActiveSpace: \.isOnActiveSpace
+        )
         if next != windows {
             windows = next
         }

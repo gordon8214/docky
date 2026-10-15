@@ -68,7 +68,7 @@ to the script's `swiftc` list.
 | --- | --- |
 | `scripts/test_observation_bridge.sh` | 30s / 10s |
 | `scripts/test_launchpad_scan.sh` (`-warnings-as-errors`) | 30s / 10s |
-| `scripts/test_appkit_browser.sh` (geometry, drop insertion, Launchpad grid, preview capture sizing and refresh order, WindowServer tag and packet rules) | 45s / 15s |
+| `scripts/test_appkit_browser.sh` (geometry, drop insertion, Launchpad grid, preview capture sizing and refresh order, WindowServer tag and packet rules, window recency order) | 45s / 15s |
 | `scripts/test_appkit_compatibility.sh` (Settings history, legacy widget encoding) | 45s / 15s |
 | `scripts/test_dock_payload.sh` (Dock payload and loader, Objective-C) | 30s / 10s |
 | `scripts/test_native_menu_bridge.sh` (menu bridge protocol, loader stub bytes) | 30s / 5s |

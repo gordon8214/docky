@@ -204,8 +204,9 @@
             let subscription = WindowRegistry.shared.$windows.dropFirst().sink { windows in
                 let elapsed = started.duration(to: .now).formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 2)))
                 let current = Dictionary(windows.map { ($0.cgWindowID, $0) }, uniquingKeysWith: { first, _ in first })
-                for (id, window) in current where previous[id] == nil {
-                    print("\(elapsed) added \(label(window)) minimized=\(window.isMinimized) activeSpace=\(window.isOnActiveSpace)")
+                for (index, window) in windows.enumerated() where previous[window.cgWindowID] == nil {
+                    print("\(elapsed) added \(label(window)) at position \(index + 1) "
+                          + "minimized=\(window.isMinimized) activeSpace=\(window.isOnActiveSpace)")
                 }
                 for (id, window) in previous where current[id] == nil {
                     print("\(elapsed) removed \(label(window))")
