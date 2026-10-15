@@ -4,7 +4,6 @@
 
     extension AppKitUIRegression {
         static func checkWindowsReviewRegressions() async {
-            checkWindowsNetworkGeneration()
             checkWindowsSavedContent()
             checkWindowsEmptyDropRegion()
             let root = DockRootView(frame: CGRect(x: 0, y: 0, width: 1000, height: 48))
@@ -25,21 +24,6 @@
             await checkWindowsPresentationVisibility()
             await checkWindowsPreviewKeyboard()
         }
-        private static func checkWindowsNetworkGeneration() {
-            let service = WindowsTaskbarStatusService()
-            let owner = UUID()
-            service.attach(owner)
-            guard let old = service.networkGeneration else { preconditionFailure("Network session required") }
-            service.detach(owner)
-            service.attach(owner)
-            guard let current = service.networkGeneration else { preconditionFailure("New session required") }
-            service.applyNetwork(symbol: "network-wifi", description: "Current network", generation: current)
-            service.applyNetwork(symbol: "network-offline", description: "Stale network", generation: old)
-            precondition(service.networkSymbol == "network-wifi" && service.networkDescription == "Current network")
-            service.detach(owner)
-            service.applyNetwork(symbol: "network-offline", description: "Detached network", generation: current)
-            precondition(service.networkDescription == "Current network")
-        }
         private static func checkWindowsSavedContent() {
             var battery = WidgetCatalog.batteries.makeTile()
             battery.settings = ["fixture": .string("saved battery")]
@@ -53,10 +37,8 @@
                     identifier: "folder", displayName: "Folder",
                     apps: [AppTile(bundleIdentifier: "com.apple.finder", displayName: "Finder")])))
             ]
-            let desktop = DockCanvasView.windowsExtraTiles(from: tiles, hasMacBattery: false)
-            precondition(desktop == [tiles[1], tiles[3]], "Desktop Macs must retain saved battery content")
-            let notebook = DockCanvasView.windowsExtraTiles(from: tiles, hasMacBattery: true)
-            precondition(notebook == [tiles[3]], "Status content must not be duplicated")
+            let extras = DockCanvasView.windowsExtraTiles(from: tiles)
+            precondition(extras == [tiles[1], tiles[3]], "Saved battery widgets must remain in additional Dock items")
             let overflow = NativeDockTileView(tile: tiles[3])
             overflow.frame = CGRect(x: 0, y: 0, width: 84, height: 60)
             overflow.refresh()

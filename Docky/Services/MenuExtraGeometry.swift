@@ -20,12 +20,4 @@ enum MenuExtraGeometry {
                        y: destination.y - content.minY + container.minY)
     }
 
-    static func crop(frame: CGRect, region: CGRect, pixels: CGSize) -> CGRect? {
-        guard region.width > 0, region.height > 0, region.contains(frame) else { return nil }
-        let scaleX = pixels.width / region.width
-        let scaleY = pixels.height / region.height
-        return CGRect(x: (frame.minX - region.minX) * scaleX, y: (frame.minY - region.minY) * scaleY,
-                      width: frame.width * scaleX, height: frame.height * scaleY).integral
-            .intersection(CGRect(origin: .zero, size: pixels))
-    }
 }

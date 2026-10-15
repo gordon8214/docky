@@ -4,11 +4,7 @@ import Combine
 final class WindowsTaskbarStatusView: NSView {
     var extraTiles: [Tile] = [] { didSet { overflow.isHidden = extraTiles.isEmpty } }
     var calendarTile: Tile?
-    var batteryTile: Tile?
     private let overflow = WindowsStatusButton(glyph: "overflow", label: "Show additional Dock items")
-    private let network = WindowsStatusButton(glyph: "network-offline", label: "Network")
-    private let volume = WindowsStatusButton(glyph: "volume", label: "Volume")
-    private let battery = WindowsStatusButton(glyph: "battery", label: "Battery")
     private let clock = WindowsStatusButton(glyph: "clock", label: "Date and time")
     private let menuExtras = WindowsMenuExtrasView()
     private let ownerID = UUID()
@@ -16,26 +12,14 @@ final class WindowsTaskbarStatusView: NSView {
     private var popup: WindowsTaskbarPopup?
     override var isFlipped: Bool { true }
     var preferredWidth: CGFloat {
-        (extraTiles.isEmpty ? 0 : 32) + menuExtras.preferredWidth + (network.isHidden ? 0 : 32)
-            + (volume.isHidden ? 0 : 32) + (battery.isHidden ? 0 : 28) + 98 + 12
+        (extraTiles.isEmpty ? 0 : 32) + menuExtras.preferredWidth + 98 + 12
     }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for button in [overflow, network, volume, battery, clock] { addSubview(button) }
+        for button in [overflow, clock] { addSubview(button) }
+        overflow.isHidden = extraTiles.isEmpty
         addSubview(menuExtras)
         overflow.onActivate = { [weak self] in self?.showExtras() }
-        network.onActivate = {
-            WindowsTaskbarStatusService.openSettings("com.apple.Network-Settings.extension")
-        }
-        volume.onActivate = { WindowsTaskbarStatusService.openSettings("com.apple.Sound-Settings.extension") }
-        battery.onActivate = { BatteriesService.shared.openInBatterySettings() }
-        battery.onContextMenu = { [weak self] in
-            guard let self else { return }
-            ContextActionMenuPresenter.popUpMenu(actions: [
-                .action("Battery Details") { [weak self] in self?.showBatteryDetails() },
-                .action("Battery Settings") { BatteriesService.shared.openInBatterySettings() }
-            ], from: self.battery)
-        }
         clock.onActivate = { [weak self] in self?.showCalendar() }
     }
     required init?(coder: NSCoder) { nil }
@@ -48,42 +32,17 @@ final class WindowsTaskbarStatusView: NSView {
             return
         }
         WindowsTaskbarStatusService.shared.attach(ownerID)
-        BatteriesService.shared.ensureFreshBatteries()
         observeChanges { [weak self] in
-            _ = WindowsTaskbarStatusService.shared.networkSymbol
-            _ = WindowsTaskbarStatusService.shared.networkDescription
-            _ = WindowsTaskbarStatusService.shared.audioVolume
-            _ = WindowsTaskbarStatusService.shared.audioMuted
             _ = WindowsTaskbarStatusService.shared.now
             _ = MenuExtrasService.shared.items
+            _ = MenuExtrasNativeBridge.shared.enabled
+            _ = MenuExtrasNativeBridge.shared.hostedIDs
             self?.refresh()
-        }.store(in: &subscriptions)
-        BatteriesService.shared.objectWillChange.sink { [weak self] in
-            DispatchQueue.main.async { self?.refresh() }
         }.store(in: &subscriptions)
         refresh()
     }
     func refresh() {
         let status = WindowsTaskbarStatusService.shared
-        let native = MenuExtrasService.shared.items.filter {
-            $0.snapshot.displayID == (window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
-                as? NSNumber)?.uint32Value
-        }
-        network.isHidden = native.contains { $0.id.contains("com.apple.menuextra.wifi") }
-        volume.isHidden = native.contains { $0.id.contains("com.apple.menuextra.sound") }
-        network.glyph = status.networkSymbol
-        network.setAccessibilityLabel(status.networkDescription)
-        volume.glyph = status.audioMuted || status.audioVolume == 0 ? "volume-muted" : "volume"
-        volume.setAccessibilityLabel(status.audioDescription)
-        let mac = BatteriesService.shared.snapshot?.devices.first { $0.kind == .mac }
-        battery.isHidden = mac == nil || native.contains { $0.id.contains("com.apple.menuextra.battery") }
-        battery.glyph = mac?.isCharging == true ? "battery-charging" : "battery"
-        battery.level = CGFloat(mac?.levels.first?.percentage ?? 0) / 100
-        let batteryLabel =
-            mac.map {
-                "Battery \($0.levels.first?.percentage ?? 0) percent" + ($0.isCharging ? ", charging" : "")
-            } ?? "Battery unavailable"
-        battery.setAccessibilityLabel(batteryLabel)
         let time = DateFormatter()
         time.timeStyle = .short
         let date = DateFormatter()
@@ -101,11 +60,7 @@ final class WindowsTaskbarStatusView: NSView {
                               max(0, bounds.width - preferredWidth + menuExtras.preferredWidth))
         menuExtras.frame = CGRect(x: offset, y: 4, width: extrasWidth, height: 40)
         offset += extrasWidth
-        for button in [network, volume, battery, clock] where !button.isHidden {
-            let width: CGFloat = button === clock ? 98 : button === battery ? 28 : 32
-            button.frame = CGRect(x: offset, y: 4, width: width, height: 40)
-            offset += width
-        }
+        clock.frame = CGRect(x: offset, y: 4, width: 98, height: 40)
     }
     func dismissPopup() {
         popup?.dismiss()
@@ -121,21 +76,6 @@ final class WindowsTaskbarStatusView: NSView {
         self.popup = popup
         popup.onDismiss = { [weak self] in self?.popup = nil }
         popup.present(from: overflow)
-    }
-    private func showBatteryDetails() {
-        dismissPopup()
-        let tile: WidgetTile
-        if let batteryTile, case .widget(let widget) = batteryTile.content {
-            tile = widget
-        } else {
-            tile = WidgetCatalog.batteries.makeTile()
-        }
-        let content = NativeWidgetView(tile: tile, cornerRadius: 4,
-                                       span: .three, expanded: true)
-        let popup = WindowsTaskbarPopup(content: content, size: CGSize(width: 380, height: 340))
-        self.popup = popup
-        popup.onDismiss = { [weak self] in self?.popup = nil }
-        popup.present(from: battery)
     }
     private func showCalendar() {
         if popup != nil {
@@ -211,9 +151,7 @@ final class WindowsTaskbarExtraContent: NSView {
 final class WindowsStatusButton: NSView {
     var glyph: String { didSet { needsDisplay = true } }
     var clockText = "" { didSet { needsDisplay = true } }
-    var level: CGFloat = 1 { didSet { needsDisplay = true } }
     var onActivate: (() -> Void)?
-    var onContextMenu: (() -> Void)?
     private var hovered = false
     private var pressed = false
     private var tracking: NSTrackingArea?
@@ -246,7 +184,6 @@ final class WindowsStatusButton: NSView {
         hovered = false
         needsDisplay = true
     }
-    override func rightMouseDown(with event: NSEvent) { onContextMenu?() }
     override func mouseDown(with event: NSEvent) {
         pressed = true
         needsDisplay = true
@@ -280,8 +217,7 @@ final class WindowsStatusButton: NSView {
                 ])
             return
         }
-        WindowsStatusGlyph.draw(
-            glyph, in: CGRect(x: (bounds.width - 18) / 2, y: 11, width: 18, height: 18), color: color,
-            level: level)
+        WindowsStatusGlyph.drawOverflow(
+            in: CGRect(x: (bounds.width - 18) / 2, y: 11, width: 18, height: 18), color: color)
     }
 }

@@ -1,46 +1,29 @@
 # Windows taskbar menu extras
 
-The Windows theme displays captured macOS menu-extra icons in its right-side tray.
-These are the original icons, not application-icon substitutes. The existing
-Windows date/time display remains, and Docky's own status item is excluded.
-Captured Wi-Fi, Sound, and Battery items replace the corresponding fallback buttons.
+Menu extras have two states: native hosting or off. Use **Settings → Menu Extras →
+Show Menu Extras**, or right-click the taskbar and toggle **Show Menu Extras**.
+The checkbox in an extra's context menu controls the same saved setting.
 
-## Operation
+Turning the setting off removes all menu extras, releases native hosts and popup
+leases, stops discovery, and collapses their taskbar space. Turning it on discovers
+visible macOS extras and hosts their original native scenes. Items that cannot be
+hosted are omitted. There is no icon capture or image fallback, and menu extras do
+not request Screen Recording permission. Battery, Volume, and Wi-Fi use the same
+native hosts and setting; there are no separate Docky status-icon replacements.
+The date/time control remains available independently. Saved Battery widgets remain
+accessible through the additional Dock items menu.
 
-Discovery walks MenuBarAgent's Accessibility tree on an actor with bounded AX calls.
-It collapses the duplicates exposed by navigation and rendering windows, keeps each
-display's items separate, and ignores frames outside the visible menu-bar band.
-ScreenCaptureKit keeps one stream per display capturing only that band, without the
-pointer or audio. A continuing stream keeps the recording indicator from repeatedly
-reflowing the menu bar. Discovery is sampled again after capture starts, and icons
-refresh every ten seconds while a Windows taskbar view is attached. Frame requests
-have a three-second deadline and ignore late or duplicate completion and detached
-views. Streams stop when the last taskbar view detaches.
+## Native hosting
 
-Flat captured backgrounds are removed. Monochrome glyphs adapt to the taskbar's
-appearance; colored status indicators retain their color. Nonuniform backgrounds
-are preserved. Wide custom graphs/text are scaled into the prototype's icon slots.
-The tray scrolls if its icons exceed the available width. Hidden macOS extras are
-not automatically revealed or moved out of macOS's own overflow area.
-
-Clicking uses the original item's Accessibility action or its current physical
-menu-bar hit target. Third-party items have a physical-click fallback with a complete
-down/up pair. The prototype retains the original menus and popovers at their native
-anchors. Right-click an icon for **Try Native Popup Above Dock** and the last result.
-
-## Experimental native backend
-
-Right-click empty taskbar space and select **Try Native Menu Extras (Experimental)**.
-The same switch is available in an icon's context menu. It is off by default and
-persists as `nativeMenuExtras`; `--native-menu-extras` also enables it at launch.
-**Turn Off Native Menu Extras** returns to the capture backend.
+The setting is off by default and persists as `nativeMenuExtras`.
+`--native-menu-extras` also enables it at launch.
 
 The bridge currently targets this SIP-disabled Apple silicon Mac running
 macOS 27.0.1 (26A434). Docky loads its signed `MenuBridge` payload into MenuBarAgent
 and supported owning apps. No security setting is changed. Native slots preserve
-the original item's width and only fully visible slots are hosted. Unsupported
-items retain their captured image and original activation. Docky hides a captured
-image only after the agent confirms that a native host exists.
+the original item's width and only fully visible slots are hosted. Items that
+cannot be hosted are omitted. No image is used while a host starts.
+The agent confirms the matching layout before Docky treats an item as hosted.
 
 AppKit extras use `NSStatusItemHost.createActiveReplicantView`. System extras use
 an active `NSSceneHostingView` presentation of the existing system scene. Both
@@ -127,12 +110,10 @@ regression harness also passes.
 
 ## Earlier AX popup placement investigation
 
-The capture backend's **Try Native Popup Above Dock** action uses an AX position
-request and independent readback. Before the owner bridge, Control Center returned
+The earlier prototype used an AX position request and independent readback. Before the owner bridge, Control Center returned
 AX success but its coordinator reset the frame; the result was **Native host
 rejected popup placement (AX 0)**. The native backend above now intercepts those
-owner-side coordinator updates instead. The AX-only trial remains available for
-unsupported owners and retains its explicit success/failure reporting.
+owner-side coordinator updates instead. The AX-only trial is no longer a taskbar option.
 
 ## Earlier standalone owner-side anchor experiments
 
@@ -195,11 +176,11 @@ is unchanged.
 
 ## Validation
 
-The Debug AppKit UI harness includes negative/offset display geometry, Retina crop
-coordinates, popup edge clamping and transparent backdrop offsets, capture
-cancellation before registration, late completion, backdrop transparency, and
-colored-indicator preservation. It runs in
-about four to eighteen seconds, with the existing 30-second limit:
+The Debug AppKit UI harness checks negative/offset display geometry, popup edge
+clamping and transparent backdrop offsets, plus the native-only toggle. It verifies
+that the settings checkbox controls the shared saved preference, taskbar changes
+update that checkbox, and the off state clears hosts and occupies no extra space.
+The suite runs in about four to eight seconds, with a 30-second limit:
 
 ```sh
 scripts/test_appkit_ui.sh
@@ -209,11 +190,11 @@ An additional Debug-only, read-only probe has a ten-second runtime budget:
 
 ```sh
 gtimeout 10 build/AppKitDerivedData/Build/Products/Debug/Docky.app/Contents/MacOS/Docky \
-  --menu-extras-probe --capture-menu-extras --popup-diagnostics \
+  --menu-extras-probe --popup-diagnostics \
   -ApplePersistenceIgnoreState YES
 ```
 
-The probe checks AX, capture, and event-post access and reports item frames. A
+The probe checks AX and event-post access and reports item frames. A
 shell launch can inherit the shell host's grants; it does not prove that a
 Finder-launched app has its own permissions. Use a consistent development signing
 identity for interactive testing. Ad-hoc signatures change the code requirement

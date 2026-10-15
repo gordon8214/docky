@@ -15,6 +15,7 @@ enum NativeSettingsFields {
             "behaviorWidgets": behaviorWidgetsRows,
             "behaviorLaunch": behaviorLaunchRows,
             "behaviorSystemDock": behaviorSystemDockRows,
+            "menuExtras": menuExtrasRows,
             "behaviorAppFolders": behaviorAppFoldersRows,
             "startMenu": startMenuRows,
             "launchpad": launchpadRows,

@@ -15,10 +15,16 @@ final class MenuExtrasNativeBridge {
     static let shared = MenuExtrasNativeBridge()
     var enabled = ProcessInfo.processInfo.arguments.contains("--native-menu-extras")
         || UserDefaults.standard.bool(forKey: "nativeMenuExtras") {
-        didSet { UserDefaults.standard.set(enabled, forKey: "nativeMenuExtras") }
+        didSet {
+            UserDefaults.standard.set(enabled, forKey: "nativeMenuExtras")
+            unavailableIDs = []
+            if !enabled { clear(); message = "Menu extras are off" }
+            MenuExtrasService.shared.updateEnabledState()
+        }
     }
     private(set) var hostedIDs = Set<String>()
-    private(set) var message = "Native menu extras are disabled"
+    private(set) var unavailableIDs = Set<String>()
+    private(set) var message = "Menu extras are off"
     private(set) var isTracking = false
     @ObservationIgnored private var sources: [UUID: () -> [Placement]] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -81,17 +87,21 @@ final class MenuExtrasNativeBridge {
     }
 
     private func tick() async {
-        guard enabled else { clear(); message = "Native menu extras are disabled"; return }
+        guard enabled else { clear(); message = "Menu extras are off"; return }
+        let placements = currentPlacements()
         guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27 else {
+            unavailableIDs.formUnion(placements.map { $0.item.id })
             clear(); message = "Native hosting requires macOS 27"; return
         }
         guard let agent = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.MenuBarAgent").first
-        else { clear(); message = "MenuBarAgent is unavailable"; return }
-        let placements = Array(sources.values.flatMap { $0() }.reduce(into: [String: Placement]()) {
-            $0[$1.item.id] = $1
-        }.values)
+        else {
+            unavailableIDs.formUnion(placements.map { $0.item.id })
+            clear(); message = "MenuBarAgent is unavailable"; return
+        }
         guard !placements.isEmpty else {
-            clear(); message = "Native hosting paused while the taskbar is hidden"; return
+            clear()
+            if unavailableIDs.isEmpty { message = "Native hosting paused while the taskbar is hidden" }
+            return
         }
         isTracking = trackingActive() || placements.contains(where: {
             hostedIDs.contains($0.item.id) && $0.destination.contains(NSEvent.mouseLocation)
@@ -105,24 +115,21 @@ final class MenuExtrasNativeBridge {
             try publish(items, to: stateURL)
             try await load(into: agent, directory: directory)
             guard enabled, !Task.isCancelled else { clear(); return }
-            let resultURL = directory.appendingPathComponent("result.json")
-            guard let data = try? Data(contentsOf: resultURL),
-                  let result = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  result["session"] as? String == session,
-                  let expires = result["expires"] as? Double, expires > Date().timeIntervalSince1970,
-                  let results = result["items"] as? [[String: Any]] else {
-                hostedIDs = []; message = "Waiting for native scene hosts"; return
+            guard let results = readResults(in: directory, items: items) else {
+                hostedIDs.formIntersection(placements.map { $0.item.id })
+                message = "Waiting for native scene hosts"; return
             }
             let requested = Set(placements.map { $0.item.id })
             hostedIDs = Set(results.compactMap { $0["id"] as? String }).intersection(requested)
+            unavailableIDs.formUnion(requested.subtracting(hostedIDs))
             message = "Native menu extras: \(hostedIDs.count) of \(placements.count)"
             let originalAnchors = await updateOwners(placements, results: results, agentPID: agent.processIdentifier)
+            guard enabled, !Task.isCancelled else { clear(); return }
             if originalAnchors {
                 message += "; some owners keep their original popup anchors"
             }
         } catch {
-            clear()
-            message = "Native hosting unavailable: \(error.localizedDescription)"
+            handleHostingFailure(error, placements: placements)
         }
     }
 
@@ -139,6 +146,7 @@ final class MenuExtrasNativeBridge {
             $0.item.ownerPID == agentPID ? (systemOwner ?? agentPID) : $0.item.ownerPID
         })
         for (pid, group) in groups {
+            guard enabled, !Task.isCancelled else { clear(); return false }
             guard let owner = NSRunningApplication(processIdentifier: pid), owner.bundleIdentifier != nil
             else { continue }
             if failed.contains(processIdentity(owner)) { originalAnchors = true; continue }
@@ -176,6 +184,37 @@ final class MenuExtrasNativeBridge {
         }
     }
 
+}
+
+extension MenuExtrasNativeBridge {
+    private func handleHostingFailure(_ error: Error, placements: [Placement]) {
+        guard enabled, !Task.isCancelled else { clear(); return }
+        unavailableIDs.formUnion(placements.map { $0.item.id })
+        clear()
+        message = "Native hosting unavailable: \(error.localizedDescription)"
+    }
+
+    private func currentPlacements() -> [Placement] {
+        Array(sources.values.flatMap { $0() }.reduce(into: [String: Placement]()) {
+            $0[$1.item.id] = $1
+        }.values).sorted { $0.item.id < $1.item.id }
+    }
+
+    private func readResults(in directory: URL, items: [[String: Any]]) -> [[String: Any]]? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("result.json")),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              result["session"] as? String == session,
+              result["layout"] as? String == layoutID(items),
+              let expires = result["expires"] as? Double, expires > Date().timeIntervalSince1970
+        else { return nil }
+        return result["items"] as? [[String: Any]]
+    }
+
+    private func layoutID(_ items: [[String: Any]]) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: items, options: .sortedKeys)) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     private func processIdentity(_ owner: NSRunningApplication) -> String {
         "\(owner.processIdentifier):\(owner.launchDate?.timeIntervalSince1970 ?? 0)"
     }
@@ -202,6 +241,7 @@ final class MenuExtrasNativeBridge {
         var state: [String: Any] = ["version": 1, "pid": ProcessInfo.processInfo.processIdentifier,
                                     "session": session, "expires": Date().timeIntervalSince1970 + 3,
                                     "items": items,
+                                    "layout": layoutID(items),
                                     "dark": NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua]
         if let ownerPID { state["ownerPID"] = ownerPID }
         if let activation { state["activation"] = activation }

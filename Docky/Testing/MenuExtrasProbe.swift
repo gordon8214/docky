@@ -5,7 +5,7 @@
     @MainActor
     enum MenuExtrasProbe {
         static func run() async {
-            print("Menu extras probe: AX=\(AXIsProcessTrusted()) capture=\(CGPreflightScreenCaptureAccess()) "
+            print("Menu extras probe: AX=\(AXIsProcessTrusted()) "
                   + "postEvents=\(CGPreflightPostEventAccess())")
             guard let agent = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.MenuBarAgent")
                 .first else { exit(2) }
@@ -25,19 +25,6 @@
                     NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier)
                 }
                 for line in await backend.popupDiagnostics(ownerPIDs: owners) { print(line) }
-            }
-            if ProcessInfo.processInfo.arguments.contains("--capture-menu-extras"), let first = items.first {
-                let region = items.filter { $0.displayID == first.displayID }.reduce(first.frame) {
-                    $0.union($1.frame)
-                }
-                do {
-                    let image = try await MenuExtrasCapture.image(in: region)
-                    print("Capture: \(image.width)x\(image.height), region=\(region)")
-                } catch {
-                    print("Capture failed: \(error)")
-                    fflush(stdout)
-                    exit(3)
-                }
             }
             fflush(stdout)
             exit(items.isEmpty ? 2 : 0)

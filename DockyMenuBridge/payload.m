@@ -315,6 +315,7 @@ static DockyNativeMenuEntry *createEntry(NSDictionary *item, NSRect destination,
         if (entry.eventTag > 0 && !entry.systemPresentation) {
             if (performExpandedAction(entry.hosted, NSProcessInfo.processInfo.systemUptime)) {
                 writeResult(@{@"version": @1, @"session": state[@"session"] ?: @"", @"items": results,
+                    @"layout": state[@"layout"] ?: @"",
                     @"expires": @(NSDate.date.timeIntervalSince1970 + 1)});
                 return;
             }
@@ -333,6 +334,7 @@ static DockyNativeMenuEntry *createEntry(NSDictionary *item, NSRect destination,
         }
     }
     writeResult(@{@"version": @1, @"session": state[@"session"] ?: @"", @"items": results,
+                   @"layout": state[@"layout"] ?: @"",
                    @"expires": @(NSDate.date.timeIntervalSince1970 + 1)});
 }
 

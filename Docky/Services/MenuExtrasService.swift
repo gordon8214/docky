@@ -4,7 +4,6 @@ import Observation
 
 struct MenuExtra: Identifiable {
     let snapshot: MenuExtraSnapshot
-    let image: NSImage
     var id: String { snapshot.id }
 }
 
@@ -16,7 +15,6 @@ final class MenuExtrasService {
     private(set) var message = "Loading menu extras"
     private(set) var lastActivation = ""
     @ObservationIgnored let backend = MenuExtrasAccessibility()
-    @ObservationIgnored private let captureSession = MenuExtrasLiveCapture()
     @ObservationIgnored private var owners = Set<UUID>()
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var activationTask: Task<Void, Never>?
@@ -26,8 +24,23 @@ final class MenuExtrasService {
     func attach(_ owner: UUID) {
         guard owners.insert(owner).inserted, owners.count == 1,
               !ProcessInfo.processInfo.arguments.contains("--appkit-ui-regression") else { return }
-        let identity = UUID()
-        generation = identity
+        updateEnabledState()
+    }
+
+    func detach(_ owner: UUID) {
+        owners.remove(owner)
+        if owners.isEmpty { stop() }
+    }
+
+    func updateEnabledState() {
+        stop()
+        guard MenuExtrasNativeBridge.shared.enabled, !owners.isEmpty,
+              !ProcessInfo.processInfo.arguments.contains("--appkit-ui-regression") else {
+            message = "Menu extras are off"
+            return
+        }
+        message = "Loading native menu extras"
+        let identity = generation
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, self.generation == identity else { return }
@@ -37,9 +50,7 @@ final class MenuExtrasService {
         }
     }
 
-    func detach(_ owner: UUID) {
-        owners.remove(owner)
-        guard owners.isEmpty else { return }
+    private func stop() {
         let previous = generation
         generation = UUID()
         refreshTask?.cancel()
@@ -48,18 +59,14 @@ final class MenuExtrasService {
         activationTask = nil
         activationIdentity = nil
         items.removeAll()
-        captureSession.stop()
         Task { await backend.clear(session: previous) }
     }
 
     private func refresh(identity: UUID) async {
-        guard AXIsProcessTrusted(),
-              MenuExtrasNativeBridge.shared.enabled || CGPreflightScreenCaptureAccess() else {
-            captureSession.stop()
+        guard MenuExtrasNativeBridge.shared.enabled else { return }
+        guard AXIsProcessTrusted() else {
             items = []
-            let missing = [AXIsProcessTrusted() ? nil : "Accessibility",
-                           CGPreflightScreenCaptureAccess() ? nil : "Screen Recording"].compactMap { $0 }
-            message = "Menu extras require " + missing.joined(separator: " and ")
+            message = "Menu extras require Accessibility access"
             return
         }
         guard let agent = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.MenuBarAgent")
@@ -77,30 +84,8 @@ final class MenuExtrasService {
         var snapshots = await backend.snapshot(agentPID: agent.processIdentifier, displays: displays, session: identity)
         snapshots = retainingNativeItems(in: snapshots, agentPID: agent.processIdentifier, displays: displays)
         guard generation == identity, !Task.isCancelled else { return }
-        if !snapshots.isEmpty, snapshots.allSatisfy({ MenuExtrasNativeBridge.shared.hostedIDs.contains($0.id)
-            || $0.ownerPID == ProcessInfo.processInfo.processIdentifier || $0.id.contains("com.apple.menuextra.clock")
-        }) { captureSession.stop() }
-        var captured: [MenuExtra] = []
-        for display in displays {
-            let extras = snapshots.filter { $0.displayID == display.id }
-            captured += await capture(extras)
-        }
-        let settledSnapshot = await backend.snapshot(
-            agentPID: agent.processIdentifier, displays: displays, session: identity)
-        let settled = retainingNativeItems(in: settledSnapshot, agentPID: agent.processIdentifier, displays: displays)
-        guard generation == identity, !Task.isCancelled else { return }
-        if settled.map(\.frame) != snapshots.map(\.frame) || settled.map(\.id) != snapshots.map(\.id) {
-            // Starting capture adds the system recording indicator and can reflow the bar.
-            // Reuse the continuing stream with the settled geometry before publishing icons.
-            snapshots = settled
-            captured.removeAll()
-            for display in displays {
-                captured += await capture(snapshots.filter { $0.displayID == display.id })
-            }
-        }
-        guard generation == identity, !Task.isCancelled else { return }
-        items = captured
-        message = items.isEmpty ? "No visible menu extras" : "macOS menu extras"
+        items = snapshots.map { MenuExtra(snapshot: $0) }
+        message = items.isEmpty ? "No visible menu extras" : "Native macOS menu extras"
     }
 
     private func retainingNativeItems(in snapshots: [MenuExtraSnapshot], agentPID: pid_t,
@@ -118,48 +103,12 @@ final class MenuExtrasService {
         return (snapshots + retained).sorted { $0.frame.minX < $1.frame.minX }
     }
 
-    private func capture(_ extras: [MenuExtraSnapshot]) async -> [MenuExtra] {
-        guard let first = extras.first else { return [] }
-        if !CGPreflightScreenCaptureAccess() || extras.allSatisfy({
-            MenuExtrasNativeBridge.shared.hostedIDs.contains($0.id)
-                || $0.ownerPID == ProcessInfo.processInfo.processIdentifier
-                || $0.id.contains("com.apple.menuextra.clock")
-        }) {
-            return extras.map { extra in
-                let image = items.first { $0.id == extra.id }?.image
-                    ?? NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: extra.label)
-                    ?? NSImage(size: extra.frame.size)
-                return MenuExtra(snapshot: extra, image: image)
-            }
-        }
-        let region = extras.dropFirst().reduce(first.frame) { $0.union($1.frame) }
-        do {
-            let image = try await captureSession.image(in: region, displayID: first.displayID)
-            let pixels = CGSize(width: image.width, height: image.height)
-            return extras.compactMap { extra in
-                guard let crop = MenuExtraGeometry.crop(frame: extra.frame, region: region, pixels: pixels),
-                      let icon = image.cropping(to: crop) else { return nil }
-                return MenuExtra(snapshot: extra, image: MenuExtraImage.make(icon, size: extra.frame.size))
-            }
-        } catch {
-            NSLog("Menu extras capture failed: %@", error.localizedDescription)
-            let identifiers = Set(extras.map(\.id))
-            return items.filter { identifiers.contains($0.id) }
-        }
-    }
-
-    func activate(_ item: MenuExtraSnapshot, anchor: CGRect, visible: CGRect, relocate: Bool = false) {
-        guard activationTask == nil else { return }
+    func activate(_ item: MenuExtraSnapshot) {
+        guard MenuExtrasNativeBridge.shared.enabled,
+              MenuExtrasNativeBridge.shared.hostedIDs.contains(item.id), activationTask == nil else { return }
         let identity = generation
         let request = UUID()
         activationIdentity = request
-        var popupOwners = [item.ownerPID]
-        if item.id.contains("com.apple.menuextra.") {
-            popupOwners += ["com.apple.controlcenter", "com.apple.systemuiserver"].flatMap { identifier in
-                NSRunningApplication.runningApplications(withBundleIdentifier: identifier).map(\.processIdentifier)
-            }
-        }
-        let owners = popupOwners
         activationTask = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -168,21 +117,13 @@ final class MenuExtrasService {
                     self.activationIdentity = nil
                 }
             }
-            let before = relocate ? await self.backend.popupWindows(ownerPIDs: owners) : []
-            guard self.generation == identity, !Task.isCancelled else { return }
             let result = await self.backend.press(item: item)
             guard self.generation == identity, !Task.isCancelled else { return }
             if result != AXError.success.rawValue {
                 self.lastActivation = "The menu extra could not be activated (AX \(result))"
-                NSLog("Menu extras: %@", self.lastActivation)
                 return
             }
-            self.lastActivation = "Activated \(item.label) at its original menu bar icon"
-            if relocate {
-                self.lastActivation = await self.backend.relocatePopup(
-                    item: item, ownerPIDs: owners, previous: before, anchor: anchor, visible: visible)
-            }
-            NSLog("Menu extras: %@", self.lastActivation)
+            self.lastActivation = "Opened \(item.label)"
         }
     }
 }

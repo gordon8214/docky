@@ -15,7 +15,8 @@ final class NativeSettingsController: NSSplitViewController {
         ("behaviorWidgets", "Widget Behavior"),
         ("hiddenApps", "Hidden Apps"), ("launchpad", "Launchpad"), ("startMenu", "Start Menu"),
         ("windowManagement", "Window Management"), ("actions", "Actions"), ("behaviorLaunch", "Launch"),
-        ("behaviorSystemDock", "System Dock"), ("permissions", "Permissions"), ("updates", "Updates"),
+        ("behaviorSystemDock", "System Dock"), ("menuExtras", "Menu Extras"),
+        ("permissions", "Permissions"), ("updates", "Updates"),
         ("feedback", "Feedback")
     ]
     private let sidebar = NativeSettingsSidebarController()

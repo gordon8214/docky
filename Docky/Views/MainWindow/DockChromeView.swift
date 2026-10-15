@@ -155,8 +155,9 @@ final class DockChromeView: NSView {
                 NSWorkspace.shared.openApplication(at: url,
                                                    configuration: NSWorkspace.OpenConfiguration())
             },
-            .action(MenuExtrasNativeBridge.shared.enabled ? "Turn Off Native Menu Extras"
-                : "Try Native Menu Extras (Experimental)") { MenuExtrasNativeBridge.shared.enabled.toggle() },
+            .action("Show Menu Extras", isOn: MenuExtrasNativeBridge.shared.enabled) {
+                MenuExtrasNativeBridge.shared.enabled.toggle()
+            },
             .action("Taskbar Settings") { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) }
         ]
         ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)

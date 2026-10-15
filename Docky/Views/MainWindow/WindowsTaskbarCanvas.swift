@@ -32,24 +32,19 @@ extension DockCanvasView {
             }
     }
     var windowsExtraTiles: [Tile] {
-        Self.windowsExtraTiles(from: controller.displayTiles, hasMacBattery:
-            BatteriesService.shared.snapshot?.devices.contains { $0.kind == .mac } == true)
+        Self.windowsExtraTiles(from: controller.displayTiles)
     }
-    static func windowsExtraTiles(from source: [Tile], hasMacBattery: Bool) -> [Tile] {
+    static func windowsExtraTiles(from source: [Tile]) -> [Tile] {
         let calendarID = source.first {
             if case .widget(let widget) = $0.content { return widget.kind == .calendar }
             return false
         }?.id
-        let batteryID = hasMacBattery ? source.first {
-            if case .widget(let widget) = $0.content { return widget.kind == .batteries }
-            return false
-        }?.id : nil
         return source.filter {
             switch $0.content {
             case .app(let app): return app.displayedWidget != nil
             case .startMenu, .divider, .spacer, .flexibleSpacer: return false
             case .widget(let widget):
-                return widget.kind != .calendarDate && $0.id != calendarID && $0.id != batteryID
+                return widget.kind != .calendarDate && $0.id != calendarID
             default: return true
             }
         }
@@ -108,10 +103,6 @@ extension DockCanvasView {
             if case .widget(let widget) = $0.content {
                 return widget.kind == .calendar
             }
-            return false
-        }
-        windowsStatus?.batteryTile = controller.displayTiles.first {
-            if case .widget(let widget) = $0.content { return widget.kind == .batteries }
             return false
         }
     }
