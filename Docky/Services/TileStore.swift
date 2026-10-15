@@ -140,6 +140,13 @@ final class TileStore: ObservableObject {
             .store(in: &cancellables)
     }
 
+    #if DEBUG
+        /// A store with no tiles that reads no Dock or Docky state and never rebuilds, so a
+        /// regression check gets the same tile row whatever the Mac running it has pinned.
+        static func makeEmptyForTesting() -> TileStore { TileStore(empty: ()) }
+        private init(empty: Void) {}
+    #endif
+
     isolated deinit {
         if let notificationObserver {
             DistributedNotificationCenter.default().removeObserver(notificationObserver)

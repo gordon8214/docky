@@ -47,6 +47,9 @@
         }
         private static func checkWindowsEmptyDropRegion() {
             let controller = DockCanvasController()
+            // A taskbar with only Start. The shared store holds this Mac's pinned apps, which have
+            // no frames here, so the drop would land after them instead of at the front.
+            controller.store = TileStore.makeEmptyForTesting()
             controller.tileFrames = ["windows:start": CGRect(x: 100, y: 4, width: 40, height: 40)]
             controller.visibleTileFrames = controller.tileFrames
             precondition(controller.isPointInPinnedDropRegion(120))
