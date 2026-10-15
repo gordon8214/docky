@@ -1,10 +1,11 @@
 #if DEBUG
     import AppKit
+    import Carbon
     import Combine
     import Darwin
 
     /// Exercises real window metadata, native selection, capture cancellation,
-    /// the quick-tap path and the ⌘Tab takeover.
+    /// the key above Tab, the quick-tap path and the ⌘Tab takeover.
     /// Expected duration: 15 seconds. External runtime budget: 45 seconds.
     @MainActor
     enum WindowSwitcherRegression {
@@ -36,8 +37,10 @@
             let previews = preferences.showsWindowSwitcherFocusPreview
             let mode = preferences.windowSwitcherPreviewMode
             let replacesCommandTab = preferences.replacesSystemCommandTab
+            let shortcut = preferences.windowSwitcherShortcut
             let keys = ["docky.enablesWindowSwitcher", "docky.showsWindowSwitcherFocusPreview",
-                        "docky.windowSwitcherPreviewMode", "docky.windowSwitcherReplacesCommandTab"]
+                        "docky.windowSwitcherPreviewMode", "docky.windowSwitcherReplacesCommandTab",
+                        "docky.windowSwitcherShortcut"]
             let stored = keys.map { UserDefaults.standard.object(forKey: $0) }
             let frontmost = NSWorkspace.shared.frontmostApplication
             preferences.replacesSystemCommandTab = false
@@ -54,6 +57,7 @@
                 preferences.showsWindowSwitcherFocusPreview = previews
                 preferences.windowSwitcherPreviewMode = mode
                 preferences.replacesSystemCommandTab = replacesCommandTab
+                preferences.windowSwitcherShortcut = shortcut
                 SystemCommandTabService.shared.restore()
                 for (key, value) in zip(keys, stored) {
                     if let value { UserDefaults.standard.set(value, forKey: key) } else {
@@ -64,6 +68,8 @@
             }
             preferences.enablesWindowSwitcher = true
             preferences.showsWindowSwitcherFocusPreview = true
+            // The default ⌥Tab, so a cleared or unusual saved shortcut can't skew the key checks.
+            preferences.windowSwitcherShortcut = KeyboardShortcut(keyCode: 48, modifierFlags: [.option])
             for previewMode in WindowSwitcherPreviewMode.allCases {
                 preferences.windowSwitcherPreviewMode = previewMode
                 window.orderFront(nil)
@@ -73,6 +79,7 @@
             }
             preferences.windowSwitcherPreviewMode = .inPlace
             try checkKeySwallowing(service)
+            try checkGraveKey(service)
             try await checkQuickTap(service)
             try await checkCommandTabOverride(preferences)
         }
@@ -127,6 +134,65 @@
             defer { service.dismiss() }
             try check(service.consumesKeyDown(commandQ), "The open switcher must swallow ⌘Q")
             try check(service.isPresented, "An unhandled key must not close the switcher")
+        }
+
+        /// As in macOS's ⌘Tab, the grave key (`` ` ``) moves back and ⇧ flips
+        /// it. The switcher claims the key only while it is open.
+        private static func checkGraveKey(_ service: WindowSwitcherService) throws {
+            let preferences = DockyPreferences.shared
+            let shortcut = preferences.effectiveWindowSwitcherShortcut
+            let flags = shortcut.carbonModifierFlags
+            let actionKeys = [
+                preferences.switcherMinimizeKeyCode, preferences.switcherCloseKeyCode, preferences.switcherZoomKeyCode
+            ]
+            service.handleHotKeyPress(direction: 1)
+            defer { service.dismiss() }
+            let identifiers = service.windows.map(\.windowIdentifier)
+            guard identifiers.count >= 2, !actionKeys.contains(UInt16(kVK_ANSI_Grave)) else {
+                print("Skipped ` check: it needs two windows and no action key on `")
+                fflush(stdout)
+                return
+            }
+            func selectedIndex() -> Int? {
+                service.selectedWindowIdentifier.flatMap { identifiers.firstIndex(of: $0) }
+            }
+
+            try check(selectedIndex() == 1, "Opening forward must select the second window")
+            service.handleGraveKeyPress(shifted: false)
+            try check(selectedIndex() == 0, "` must move back")
+            service.handleGraveKeyPress(shifted: false)
+            try check(selectedIndex() == identifiers.count - 1, "` must wrap around to the last window")
+            service.handleGraveKeyPress(shifted: true)
+            try check(selectedIndex() == 0, "⇧` must move forward")
+            let grave = try keyEvent(
+                keyCode: UInt16(kVK_ANSI_Grave), characters: "`",
+                modifiers: shortcut.modifierFlags.subtracting(.shift))
+            try check(service.consumesKeyDown(grave), "The open switcher must swallow `")
+            try check(selectedIndex() == identifiers.count - 1, "` reaching the switcher as a key press must move back")
+            try check(!canRegisterGraveHotKey(modifiers: flags), "The open switcher must hold the ` hotkey")
+            try check(!canRegisterGraveHotKey(modifiers: flags | UInt32(shiftKey)),
+                      "The open switcher must hold the ⇧` hotkey")
+
+            service.dismiss()
+            service.handleGraveKeyPress(shifted: false)
+            try check(!service.isPresented && service.selectedWindowIdentifier == nil,
+                      "A ` press queued behind the release must not touch the closed switcher")
+            try check(canRegisterGraveHotKey(modifiers: flags), "A closed switcher must leave ` to other apps")
+            try check(canRegisterGraveHotKey(modifiers: flags | UInt32(shiftKey)),
+                      "A closed switcher must leave ⇧` to other apps")
+            print("Checked the grave key")
+            fflush(stdout)
+        }
+
+        /// Carbon refuses a hotkey that is already registered, so this reports
+        /// whether the switcher currently holds the grave key.
+        private static func canRegisterGraveHotKey(modifiers: UInt32) -> Bool {
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(
+                UInt32(kVK_ANSI_Grave), modifiers, EventHotKeyID(signature: OSType(0x444B5954), id: 1),
+                GetApplicationEventTarget(), 0, &ref)
+            if let ref { UnregisterEventHotKey(ref) }
+            return status == noErr
         }
 
         /// Releasing the shortcut before the reveal delay switches without ever

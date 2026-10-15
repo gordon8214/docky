@@ -68,9 +68,11 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   runtime budget 45 seconds. Requires an unlocked desktop with existing Accessibility
   and screen capture permissions. Checks the reveal delay, selection feedback in
   both preview modes, a real in-place preview, rapid selection changes, dismissal,
-  key swallowing, the quick-tap switch, and the ⌘Tab takeover. The ⌘Tab check is
-  skipped while another Docky is running. Temporarily changed switcher
-  preferences and the frontmost app are restored.
+  key swallowing, the grave key moving the selection, its hotkeys being held
+  only while the switcher is open, the quick-tap switch, and the ⌘Tab takeover.
+  The ⌘Tab check is skipped while another Docky is running, and the grave key
+  check with fewer than two windows or an action key bound to that key. Temporarily
+  changed switcher preferences and the frontmost app are restored.
 
 The integration checks validate native controller layout and lifecycle. They do not
 replace interactive checks for drag sessions, magnification, auto-hide, VoiceOver,
@@ -103,6 +105,11 @@ on dismissal. While it is open, Tab and the arrow keys move the
 selection (↑ and ↓ follow the rows on screen), Delete closes the selected window,
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
+As in macOS's ⌘Tab, ⇧Tab and the grave key (`` ` ``, above Tab on ANSI
+keyboards) move back, and ⇧`` ` `` moves forward. Docky claims the grave key with
+the shortcut's modifiers only while the switcher is open, so the key keeps its
+usual meaning the rest of the time, such as ⌘`` ` `` cycling an app's windows.
+A Close, Minimize or Zoom action bound to the grave key wins over moving back.
 
 Like ⌘Tab, the switcher changes nothing until the shortcut is released.
 "Enable Switcher Preview" in Window Management, off by default, adds a preview

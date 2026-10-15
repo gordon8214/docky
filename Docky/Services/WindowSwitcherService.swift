@@ -6,6 +6,7 @@
 import AppKit
 import Carbon
 import Combine
+import OSLog
 
 struct FocusedWindowPreview {
     let windowIdentifier: String
@@ -51,6 +52,14 @@ final class WindowSwitcherService: ObservableObject {
     private let forwardHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 1)
     private let reverseHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 2)
     private var reverseHotKeyRef: EventHotKeyRef?
+    /// The grave key (`` ` ``, above Tab on ANSI keyboards) with the shortcut's
+    /// modifiers moves back, as in macOS's ⌘Tab, and ⇧ flips it. Registered
+    /// only while the switcher is open, so the key keeps its usual meaning,
+    /// such as cycling an app's windows, the rest of the time.
+    private let graveHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 3)
+    private let shiftGraveHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 4)
+    private var graveHotKeyRefs: [EventHotKeyRef] = []
+    private static let logger = Logger(subsystem: "gt.quintero.Docky", category: "WindowSwitcher")
 
     private var activePreviewMode: WindowSwitcherPreviewMode? {
         // Both preview modes need window captures: in-place shows the live
@@ -83,6 +92,7 @@ final class WindowSwitcherService: ObservableObject {
 
     isolated deinit {
         unregisterHotKey()
+        unregisterGraveHotKeys()
 
         if let hotKeyHandlerRef {
             RemoveEventHandler(hotKeyHandlerRef)
@@ -128,6 +138,7 @@ final class WindowSwitcherService: ObservableObject {
         windows = latestWindows
         freezeWindowPreviews(for: latestWindows)
         isPresented = true
+        registerGraveHotKeys()
         scheduleReveal()
 
         if latestWindows.isEmpty {
@@ -166,7 +177,28 @@ final class WindowSwitcherService: ObservableObject {
         _ = WindowRegistry.shared.focus(selectedWindow)
     }
 
+    /// Handles the grave key, which moves back (or forward with ⇧). It never
+    /// opens the switcher: a press queued behind the release that just closed
+    /// it must not reopen it.
+    func handleGraveKeyPress(shifted: Bool) {
+        guard isPresented, !isContextMenuPresented else { return }
+        moveSelection(delta: shifted ? 1 : -1)
+    }
+
+    /// A shortcut on the grave key already moves both ways through the forward
+    /// and reverse hotkeys, and an action key the user bound to it keeps working.
+    private var graveKeyMovesSelection: Bool {
+        let preferences = DockyPreferences.shared
+        let shortcut = preferences.effectiveWindowSwitcherShortcut
+        let grave = UInt16(kVK_ANSI_Grave)
+        let actionKeys = [
+            preferences.switcherMinimizeKeyCode, preferences.switcherCloseKeyCode, preferences.switcherZoomKeyCode
+        ]
+        return shortcut.isValid && shortcut.keyCode != grave && !actionKeys.contains(grave)
+    }
+
     func dismiss() {
+        unregisterGraveHotKeys()
         cancelFocusedPreview()
         revealTask?.cancel()
         revealTask = nil
@@ -397,13 +429,21 @@ final class WindowSwitcherService: ObservableObject {
         case 51, 117:
             closeSelectedWindow()
             return true
+        case UInt16(kVK_ANSI_Grave) where graveKeyMovesSelection:
+            // The hotkeys claim this key with the shortcut's exact modifiers.
+            // While the overlay is key, a press with an extra modifier, such
+            // as ⌥⌘`, lands here instead. The shortcut's own ⇧ doesn't flip it.
+            let shortcutFlags = DockyPreferences.shared.effectiveWindowSwitcherShortcut.modifierFlags
+            handleGraveKeyPress(shifted: event.modifierFlags.contains(.shift) && !shortcutFlags.contains(.shift))
+            return true
         default:
             break
         }
 
         // User-configurable action keys. Built-in keys above take precedence:
         // if a user rebinds an action onto an arrow, Escape, Return or Delete,
-        // the built-in key wins and the action never fires.
+        // the built-in key wins and the action never fires. The grave key is
+        // the exception: an action bound to it wins.
         let prefs = DockyPreferences.shared
         switch event.keyCode {
         case prefs.switcherMinimizeKeyCode:
@@ -666,10 +706,19 @@ final class WindowSwitcherService: ObservableObject {
                 return OSStatus(eventNotHandledErr)
             }
 
-            let direction = hotKeyID.id == service.reverseHotKeyID.id ? -1 : 1
-
-            Task { @MainActor in
-                service.handleHotKeyPress(direction: direction)
+            switch hotKeyID.id {
+            case service.graveHotKeyID.id, service.shiftGraveHotKeyID.id:
+                let shifted = hotKeyID.id == service.shiftGraveHotKeyID.id
+                Task { @MainActor in
+                    service.handleGraveKeyPress(shifted: shifted)
+                }
+            case service.forwardHotKeyID.id, service.reverseHotKeyID.id:
+                let direction = hotKeyID.id == service.reverseHotKeyID.id ? -1 : 1
+                Task { @MainActor in
+                    service.handleHotKeyPress(direction: direction)
+                }
+            default:
+                return OSStatus(eventNotHandledErr)
             }
             return noErr
         }
@@ -686,6 +735,12 @@ final class WindowSwitcherService: ObservableObject {
 
     private func registerHotKey() {
         unregisterHotKey()
+        // The new shortcut may want the grave key, so release it first. An
+        // open switcher then claims it again with the new modifiers.
+        unregisterGraveHotKeys()
+        defer {
+            if isPresented { registerGraveHotKeys() }
+        }
 
         let preferences = DockyPreferences.shared
         let shortcut = preferences.effectiveWindowSwitcherShortcut
@@ -733,5 +788,35 @@ final class WindowSwitcherService: ObservableObject {
             UnregisterEventHotKey(reverseHotKeyRef)
             self.reverseHotKeyRef = nil
         }
+    }
+
+    private func registerGraveHotKeys() {
+        unregisterGraveHotKeys()
+        guard graveKeyMovesSelection else { return }
+
+        let shortcut = DockyPreferences.shared.effectiveWindowSwitcherShortcut
+        var registrations = [(graveHotKeyID, shortcut.carbonModifierFlags)]
+        // A shortcut that already holds ⇧ leaves no ⇧ to flip with.
+        if !shortcut.modifierFlags.contains(.shift) {
+            registrations.append((shiftGraveHotKeyID, shortcut.carbonModifierFlags | UInt32(shiftKey)))
+        }
+        for (hotKeyID, modifiers) in registrations {
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(
+                UInt32(kVK_ANSI_Grave), modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref
+            )
+            if status == noErr, let ref {
+                graveHotKeyRefs.append(ref)
+            } else {
+                Self.logger.notice("Could not register grave hotkey \(hotKeyID.id): \(status)")
+            }
+        }
+    }
+
+    private func unregisterGraveHotKeys() {
+        for ref in graveHotKeyRefs {
+            UnregisterEventHotKey(ref)
+        }
+        graveHotKeyRefs.removeAll()
     }
 }
