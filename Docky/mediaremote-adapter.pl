@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 # Copyright (c) 2025 Jonas van den Berg
 # This file is licensed under the BSD 3-Clause License.
+# Modified for Docky: adds the stream option --exit-on-stdin-eof.
 
 # For usage information read below or run the script without arguments.
 
@@ -9,6 +10,7 @@ use warnings;
 use DynaLoader;
 use File::Spec;
 use File::Basename;
+use POSIX ();
 
 sub print_help() {
   print <<'HELP';
@@ -55,6 +57,9 @@ OPTIONS:
   stream
     --no-diff: Disable diffing and always dump all metadata
     --debounce=N: Delay in milliseconds to prevent spam (0 by default)
+    --exit-on-stdin-eof: Exit when standard input reaches end-of-file. With
+      the read end of a pipe as standard input, the stream stops once the
+      process holding the write end exits, however it exits
   get, stream
     --micros: Replaces the following time keys with microsecond equivalents
       "duration" -> "durationMicros"
@@ -106,8 +111,6 @@ fail "Provided path is not a framework: $framework_path"
 my $framework = File::Spec->catfile($framework_path, $framework_basename);
 fail "Framework not found at $framework" unless -e $framework;
 
-my $handle = DynaLoader::dl_load_file($framework, 0)
-  or fail "Failed to load framework: $framework";
 my $function_name = shift @ARGV or fail "Missing function name";
 fail "Invalid function name: '$function_name'"
   unless $function_name eq "stream"
@@ -178,6 +181,7 @@ sub set_env_option_value {
 }
 
 my $symbol_name = "adapter_$function_name";
+my $exits_on_stdin_eof = 0;
 if ($function_name eq "send") {
   my $id = shift @ARGV;
   fail "Missing ID for '$function_name' command" unless defined $id;
@@ -187,7 +191,11 @@ if ($function_name eq "send") {
 elsif ($function_name eq "stream") {
   my $options = parse_options(0);
   foreach my $key (keys %{$options}) {
-    if ($key eq "no-diff") {
+    if ($key eq "exit-on-stdin-eof") {
+      fail "Unexpected value for option '$key'" if defined $options->{$key};
+      $exits_on_stdin_eof = 1;
+    }
+    elsif ($key eq "no-diff") {
       set_env_option($options, $key);
     }
     elsif ($key eq "debounce") {
@@ -255,6 +263,28 @@ if (defined shift @ARGV) {
   fail "Too many arguments";
 }
 
+# The stream blocks in a run loop and writes only when now playing information
+# changes, so it can outlive the process reading it indefinitely. A child
+# process blocks on standard input instead and stops the stream once it reaches
+# end-of-file. The kernel closes the write end when its owner exits, even after
+# a crash or SIGKILL. The child forks before the framework loads, so it never
+# inherits CoreFoundation state, which is unsafe to use after a fork.
+if ($exits_on_stdin_eof) {
+  my $stream_pid = $$;
+  my $watcher_pid = fork();
+  fail "Failed to start the standard input watcher: $!" unless defined $watcher_pid;
+  if ($watcher_pid == 0) {
+    close STDOUT;
+    1 while sysread(STDIN, my $buffer, 4096);
+    # A stream that already exited leaves this process reparented, so its
+    # process ID may belong to something else by now.
+    kill 'TERM', $stream_pid if getppid() == $stream_pid;
+    POSIX::_exit(0);
+  }
+}
+
+my $handle = DynaLoader::dl_load_file($framework, 0)
+  or fail "Failed to load framework: $framework";
 my $symbol = DynaLoader::dl_find_symbol($handle, "$symbol_name")
   or fail "Symbol '$symbol_name' not found in $framework";
 DynaLoader::dl_install_xsub("main::$function_name", $symbol);

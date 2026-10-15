@@ -609,6 +609,10 @@ private final class MediaRemoteHelperProcess {
 
     private var process: Process?
     private var outputPipe: Pipe?
+    /// The helper's standard input. The helper exits once its write end
+    /// closes, which happens when Docky exits for any reason, including a
+    /// crash, so the helper never outlives Docky.
+    private var inputPipe: Pipe?
     private var bufferedOutput = Data()
 
     func startIfNeeded() {
@@ -629,15 +633,19 @@ private final class MediaRemoteHelperProcess {
 
         let process = Process()
         let outputPipe = Pipe()
+        let inputPipe = Pipe()
         self.outputPipe = outputPipe
+        self.inputPipe = inputPipe
         process.executableURL = URL(fileURLWithPath: launch.executablePath)
         process.arguments = launch.arguments
+        process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = Pipe()
-        process.terminationHandler = { [weak self] _ in
+        process.terminationHandler = { [weak self] terminatedProcess in
             Self.logger.debug("Helper terminated")
+            let processIdentifier = terminatedProcess.processIdentifier
             DispatchQueue.main.async {
-                self?.handleTermination()
+                self?.handleTermination(processIdentifier: processIdentifier)
             }
         }
 
@@ -663,7 +671,15 @@ private final class MediaRemoteHelperProcess {
             process.terminate()
         }
 
+        closeInputPipe()
         process = nil
+    }
+
+    /// Ends the helper's standard input, which also stops the watcher process
+    /// the helper starts.
+    private func closeInputPipe() {
+        try? inputPipe?.fileHandleForWriting.close()
+        inputPipe = nil
     }
 
     private func installOutputReader() {
@@ -713,9 +729,14 @@ private final class MediaRemoteHelperProcess {
         }
     }
 
-    private func handleTermination() {
+    private func handleTermination(processIdentifier: Int32) {
+        // A helper replaced by `startIfNeeded` reports its exit late; its
+        // replacement keeps running.
+        guard process?.processIdentifier == processIdentifier else { return }
+
         outputPipe?.fileHandleForReading.readabilityHandler = nil
         outputPipe = nil
+        closeInputPipe()
         process = nil
     }
 
@@ -728,7 +749,7 @@ private final class MediaRemoteHelperProcess {
         Self.logger.debug("Using bundled MediaRemote adapter")
         return HelperLaunchConfiguration(
             executablePath: "/usr/bin/perl",
-            arguments: [scriptURL.path, frameworkPath, "stream"]
+            arguments: [scriptURL.path, frameworkPath, "stream", "--exit-on-stdin-eof"]
         )
     }
 }
