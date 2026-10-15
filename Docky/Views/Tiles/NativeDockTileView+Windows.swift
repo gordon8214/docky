@@ -32,7 +32,7 @@ extension NativeDockTileView {
             selected ? WindowsTaskbarStyle.accent(effectiveAppearance).withAlphaComponent(0.2).cgColor : nil
         let cornerRadius = windowsMetrics.cornerRadius
         layer?.cornerRadius = cornerRadius
-        layer?.shadowOpacity = 0
+        shadow = nil
         alphaValue = 1
         pressOverlay.opacity = 0
         hoverBackdrop.image = nil

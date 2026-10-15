@@ -73,9 +73,13 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         addSubview(imageView)
         minimizedAppIcon.imageScaling = .scaleProportionallyUpOrDown
         minimizedAppIcon.wantsLayer = true
-        minimizedAppIcon.layer?.shadowColor = NSColor.black.cgColor
-        minimizedAppIcon.layer?.shadowOpacity = 0.18
-        minimizedAppIcon.layer?.shadowRadius = 4
+        // Through `NSView.shadow`: AppKit resets a backing layer's own shadow
+        // opacity when the view moves into a window.
+        let badgeShadow = NSShadow()
+        badgeShadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
+        badgeShadow.shadowBlurRadius = 4
+        badgeShadow.shadowOffset = CGSize(width: 0, height: -3)
+        minimizedAppIcon.shadow = badgeShadow
         addSubview(minimizedAppIcon)
         pressOverlay.backgroundColor = NSColor.black.cgColor
         pressOverlay.cornerRadius = 10
@@ -183,9 +187,18 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         imageView.layer?.masksToBounds = prefs.effectiveTileClipShape == .circle
         alphaValue = CGFloat(
             interaction.tileBodyOpacity * (interaction.isHovering ? prefs.effectiveTileHoverOpacity : 1))
-        layer?.shadowColor = prefs.effectiveIconShadowColor?.cgColor
-        layer?.shadowRadius = CGFloat(prefs.effectiveIconShadowRadius)
-        layer?.shadowOpacity = prefs.effectiveIconShadowColor == nil ? 0 : Float(prefs.effectiveIconShadowOpacity)
+        // Through `NSView.shadow`. AppKit clips a view with a corner radius to
+        // its bounds unless the view has one, which hid a layer shadow here.
+        let opacity = prefs.effectiveIconShadowOpacity
+        shadow = prefs.effectiveIconShadowColor.flatMap { color in
+            guard opacity > 0 else { return nil }
+            let shadow = NSShadow()
+            shadow.shadowColor = color.withAlphaComponent(color.alphaComponent * opacity)
+            shadow.shadowBlurRadius = prefs.effectiveIconShadowRadius
+            // The tile is flipped, so a positive offset falls downward.
+            shadow.shadowOffset = CGSize(width: 0, height: 3)
+            return shadow
+        }
     }
 
     func updateTileContent() {

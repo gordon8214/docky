@@ -182,6 +182,11 @@ when reopened.
 - At startup the app caps every AX call at 1s with
   `AXUIElementSetMessagingTimeout`. Keep new AX work bounded too.
 - Log through `Logger(subsystem: "gt.quintero.Docky", category: …)`.
+- Give layer-backed views shadows through `NSView.shadow`, not the backing
+  layer's `shadow…` properties. AppKit resets the layer's `shadowOpacity` when
+  the view moves into a window, and clips a view whose layer has a corner
+  radius unless it has an `NSView.shadow`. On a flipped view, a positive
+  offset falls downward.
 - To preview features gated by older OS versions in Debug, run
   `defaults write gt.quintero.Docky DebugPreferredOSVersion <version>` (see
   `FeatureGate`).
