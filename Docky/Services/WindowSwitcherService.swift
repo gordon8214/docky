@@ -18,6 +18,16 @@ struct FocusedWindowPreview {
 final class WindowSwitcherService: ObservableObject {
     static let shared = WindowSwitcherService()
 
+    /// A key whose hotkeys move the selection: the shortcut's key moves
+    /// forward and the grave key moves back, and ⇧ flips either one.
+    enum SelectionKey {
+        case shortcut, grave
+
+        var unshiftedDirection: Int {
+            self == .shortcut ? 1 : -1
+        }
+    }
+
     /// A switcher session is open: the shortcut is held and a window is selected.
     @Published private(set) var isPresented = false
     /// The overlay is on screen. Like Windows Alt+Tab, it appears only after
@@ -46,6 +56,11 @@ final class WindowSwitcherService: ObservableObject {
     private var focusedPreviewTask: Task<Void, Never>?
     private var revealTask: Task<Void, Never>?
     static let revealDelay: Duration = .milliseconds(120)
+    /// Carbon hotkeys never repeat, so holding a key that moves the selection
+    /// repeats it here, after the system's key repeat delay and at its rate,
+    /// as macOS's ⌘Tab does. The task runs until the hotkey's key comes up.
+    private var keyRepeatTask: Task<Void, Never>?
+    private var repeatingKey: SelectionKey?
     /// Supplied by the switcher view, which knows how cards wrap into rows.
     /// Returns the identifier of the card above (`-1`) or below (`1`) the given one.
     var verticalNeighbor: ((String, Int) -> String?)?
@@ -197,7 +212,49 @@ final class WindowSwitcherService: ObservableObject {
         return shortcut.isValid && shortcut.keyCode != grave && !actionKeys.contains(grave)
     }
 
+    /// Starts repeating a held key's move once its hotkey has been handled.
+    /// Each repeat reads ⇧ afresh, so pressing or releasing it mid-hold
+    /// turns around, unless the shortcut itself holds ⇧.
+    func beginKeyRepeat(for key: SelectionKey) {
+        endKeyRepeat()
+        guard isPresented else { return }
+
+        repeatingKey = key
+        keyRepeatTask = Task { [weak self] in
+            var delay = NSEvent.keyRepeatDelay
+            while true {
+                do {
+                    try await Task.sleep(for: .seconds(delay))
+                } catch {
+                    return
+                }
+                guard let self, self.isPresented else { return }
+                if !self.isContextMenuPresented {
+                    self.moveSelection(delta: self.repeatDirection(for: key))
+                }
+                delay = NSEvent.keyRepeatInterval
+            }
+        }
+    }
+
+    /// Stops the repeat when its key comes up, or any repeat when `key` is nil.
+    /// Releasing a key whose repeat another key took over, such as Tab after
+    /// `` ` ``, leaves the newer repeat running.
+    func endKeyRepeat(for key: SelectionKey? = nil) {
+        guard key == nil || key == repeatingKey else { return }
+        keyRepeatTask?.cancel()
+        keyRepeatTask = nil
+        repeatingKey = nil
+    }
+
+    private func repeatDirection(for key: SelectionKey) -> Int {
+        let shortcutFlags = DockyPreferences.shared.effectiveWindowSwitcherShortcut.modifierFlags
+        let flipped = !shortcutFlags.contains(.shift) && NSEvent.modifierFlags.contains(.shift)
+        return flipped ? -key.unshiftedDirection : key.unshiftedDirection
+    }
+
     func dismiss() {
+        endKeyRepeat()
         unregisterGraveHotKeys()
         cancelFocusedPreview()
         revealTask?.cancel()
@@ -683,7 +740,10 @@ final class WindowSwitcherService: ObservableObject {
     private func installHotKeyHandlerIfNeeded() {
         guard hotKeyHandlerRef == nil else { return }
 
-        var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var eventSpecs = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+        ]
         let callback: EventHandlerUPP = { _, event, userData in
             guard let userData else {
                 return OSStatus(eventNotHandledErr)
@@ -706,19 +766,32 @@ final class WindowSwitcherService: ObservableObject {
                 return OSStatus(eventNotHandledErr)
             }
 
+            let key: SelectionKey
             switch hotKeyID.id {
             case service.graveHotKeyID.id, service.shiftGraveHotKeyID.id:
-                let shifted = hotKeyID.id == service.shiftGraveHotKeyID.id
-                Task { @MainActor in
-                    service.handleGraveKeyPress(shifted: shifted)
-                }
+                key = .grave
             case service.forwardHotKeyID.id, service.reverseHotKeyID.id:
-                let direction = hotKeyID.id == service.reverseHotKeyID.id ? -1 : 1
-                Task { @MainActor in
-                    service.handleHotKeyPress(direction: direction)
-                }
+                key = .shortcut
             default:
                 return OSStatus(eventNotHandledErr)
+            }
+
+            guard GetEventKind(event) == UInt32(kEventHotKeyPressed) else {
+                Task { @MainActor in
+                    service.endKeyRepeat(for: key)
+                }
+                return noErr
+            }
+
+            let shifted = hotKeyID.id == service.reverseHotKeyID.id || hotKeyID.id == service.shiftGraveHotKeyID.id
+            Task { @MainActor in
+                switch key {
+                case .grave:
+                    service.handleGraveKeyPress(shifted: shifted)
+                case .shortcut:
+                    service.handleHotKeyPress(direction: shifted ? -1 : 1)
+                }
+                service.beginKeyRepeat(for: key)
             }
             return noErr
         }
@@ -726,14 +799,16 @@ final class WindowSwitcherService: ObservableObject {
         InstallEventHandler(
             GetApplicationEventTarget(),
             callback,
-            1,
-            &eventSpec,
+            eventSpecs.count,
+            &eventSpecs,
             Unmanaged.passUnretained(self).toOpaque(),
             &hotKeyHandlerRef
         )
     }
 
     private func registerHotKey() {
+        // A held key's release never arrives once its hotkey is gone.
+        endKeyRepeat()
         unregisterHotKey()
         // The new shortcut may want the grave key, so release it first. An
         // open switcher then claims it again with the new modifiers.

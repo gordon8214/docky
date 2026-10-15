@@ -83,7 +83,7 @@ bridge and lifecycle tests.
 | `scripts/test_appkit_ui.sh` | `--appkit-ui-regression`; under 15s, 30s cap. Covers every Settings pane, widgets, Windows taskbar, window switcher, menu extras toggle, file browser choice |
 | `scripts/test_dock_system.sh` | `--dock-system-regression`; needs a WindowServer session |
 | `scripts/test_dock_bridge.sh` | Signed build. Temporarily restarts Apple's Dock |
-| `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap. Skips the ⌘Tab takeover check while another Docky runs |
+| `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap. Holds real ⌃⌥⌘Tab key events for about two seconds, so don't type while it runs. Skips the ⌘Tab takeover check while another Docky runs |
 | `scripts/test_window_registry.sh` | Same grants. Under 10s, longer when a window has no AX element; 30s cap plus any watch time. Checks the window list on every Space against WindowServer and CoreGraphics, thumbnails, and AX lookups. `--watch-registry <seconds>` prints live changes; `DOCKY_APP_BINARY` picks another build |
 | `gtimeout 30 python3 scripts/test_dock_lifecycle.py` | Signed build. Kills Dock and the app to check reconnection and watchdog recovery, including handing ⌘Tab back to macOS |
 

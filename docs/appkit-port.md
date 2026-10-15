@@ -73,10 +73,13 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   and screen capture permissions. Checks the reveal delay, selection feedback in
   both preview modes, a real in-place preview, rapid selection changes, dismissal,
   key swallowing, the grave key moving the selection, its hotkeys being held
-  only while the switcher is open, the quick-tap switch, and the ⌘Tab takeover.
-  The ⌘Tab check is skipped while another Docky is running, and the grave key
-  check with fewer than two windows or an action key bound to that key. Temporarily
-  changed switcher preferences and the frontmost app are restored.
+  only while the switcher is open, the quick-tap switch, holding the shortcut to
+  repeat, and the ⌘Tab takeover. The repeat check posts real ⌃⌥⌘Tab key events
+  and holds them for about two seconds, so don't type while it runs. The ⌘Tab check
+  is skipped while another Docky is running, the grave key check with fewer than
+  two windows or an action key bound to that key, and the repeat check with fewer
+  than two windows or key repeat turned off. Temporarily changed switcher
+  preferences and the frontmost app are restored.
 
 The integration checks validate native controller layout and lifecycle. They do not
 replace interactive checks for drag sessions, auto-hide, VoiceOver, permission
@@ -116,9 +119,13 @@ selection (↑ and ↓ follow the rows on screen), Delete closes the selected wi
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
 As in macOS's ⌘Tab, ⇧Tab and the grave key (`` ` ``, above Tab on ANSI
-keyboards) move back, and ⇧`` ` `` moves forward. Docky claims the grave key with
-the shortcut's modifiers only while the switcher is open, so the key keeps its
-usual meaning the rest of the time, such as ⌘`` ` `` cycling an app's windows.
+keyboards) move back, and ⇧`` ` `` moves forward. Holding Tab or the grave key
+keeps moving after the system's key repeat delay, at its repeat rate, and ⇧
+turns the direction around mid-hold. Carbon hotkeys never repeat, so the service
+repeats the move itself until the hotkey's release event arrives. Docky claims
+the grave key with the shortcut's modifiers only while the switcher is open, so
+the key keeps its usual meaning the rest of the time, such as ⌘`` ` `` cycling
+an app's windows.
 A Close, Minimize or Zoom action bound to the grave key wins over moving back.
 
 Like ⌘Tab, the switcher changes nothing until the shortcut is released.

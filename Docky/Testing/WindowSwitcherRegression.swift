@@ -5,7 +5,8 @@
     import Darwin
 
     /// Exercises real window metadata, native selection, capture cancellation,
-    /// the key above Tab, the quick-tap path and the ⌘Tab takeover.
+    /// the key above Tab, the quick-tap path, holding the shortcut to repeat
+    /// and the ⌘Tab takeover.
     /// Expected duration: 15 seconds. External runtime budget: 45 seconds.
     @MainActor
     enum WindowSwitcherRegression {
@@ -81,6 +82,7 @@
             try checkKeySwallowing(service)
             try checkGraveKey(service)
             try await checkQuickTap(service)
+            try await checkKeyRepeat(service)
             try await checkCommandTabOverride(preferences)
         }
 
@@ -208,6 +210,110 @@
                     NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier,
                     "A quick tap must switch to the selected window")
             }
+        }
+
+        /// As in macOS's ⌘Tab, holding the shortcut keeps moving the selection
+        /// after the system's key repeat delay until the key comes up. Real key
+        /// events cover the Carbon hotkey's release, and ⌃⌥⌘Tab keeps a press
+        /// the hotkey misses from typing into another app. The keys are down
+        /// for about two seconds, so typing then can flip or add moves.
+        private static func checkKeyRepeat(_ service: WindowSwitcherService) async throws {
+            let delay = NSEvent.keyRepeatDelay
+            let interval = NSEvent.keyRepeatInterval
+            service.handleHotKeyPress(direction: 1)
+            let windowCount = service.windows.count
+            service.dismiss()
+            guard windowCount >= 2, delay <= 2, interval <= 0.25 else {
+                print("Skipped key repeat check: it needs two windows and key repeat turned on")
+                fflush(stdout)
+                return
+            }
+
+            let preferences = DockyPreferences.shared
+            let shortcut = preferences.windowSwitcherShortcut
+            preferences.windowSwitcherShortcut = KeyboardShortcut(keyCode: 48, modifierFlags: [.control, .option, .command])
+            defer { preferences.windowSwitcherShortcut = shortcut }
+            try await Task.sleep(for: .milliseconds(100))
+
+            let modifiers: [(Int, CGEventFlags)] = [
+                (kVK_Control, .maskControl), (kVK_Option, .maskAlternate), (kVK_Command, .maskCommand)
+            ]
+            var heldFlags: CGEventFlags = []
+            var tabIsDown = false
+            // Synthetic keys stay down until released, even after a failed check.
+            func releaseKeys() {
+                if tabIsDown { postKey(kVK_Tab, down: false, flags: heldFlags) }
+                tabIsDown = false
+                for (keyCode, flag) in modifiers.reversed() where heldFlags.contains(flag) {
+                    heldFlags.remove(flag)
+                    postKey(keyCode, down: false, flags: heldFlags)
+                }
+            }
+            defer { releaseKeys() }
+            for (keyCode, flag) in modifiers {
+                heldFlags.insert(flag)
+                postKey(keyCode, down: true, flags: heldFlags)
+            }
+            postKey(kVK_Tab, down: true, flags: heldFlags)
+            tabIsDown = true
+
+            // A busy Mac can take a moment to deliver the hotkey, and the
+            // repeat delay starts once it arrives.
+            let deadline = ContinuousClock.now + .seconds(1)
+            while !service.isPresented, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try check(service.isPresented, "Holding the shortcut must open the switcher")
+            let identifiers = service.windows.map(\.windowIdentifier)
+            func selectedIndex() -> Int? {
+                service.selectedWindowIdentifier.flatMap { identifiers.firstIndex(of: $0) }
+            }
+            var moves = 0
+            let subscription = service.$selectedWindowIdentifier.dropFirst().sink { _ in moves += 1 }
+            defer { subscription.cancel() }
+
+            try await Task.sleep(for: .seconds(delay / 2))
+            try check(moves == 0 && selectedIndex() == 1, "Holding the shortcut must wait for the key repeat delay")
+            try await Task.sleep(for: .seconds(delay / 2 + interval * 4))
+            try check(moves >= 2, "Holding the shortcut must keep moving the selection")
+            postKey(kVK_Tab, down: false, flags: heldFlags)
+            tabIsDown = false
+            try await Task.sleep(for: .seconds(max(interval * 3, 0.3)))
+            let forward = moves
+            try check(
+                selectedIndex() == (1 + forward) % identifiers.count,
+                "Holding the shortcut must move forward (\(forward) moves to \(String(describing: selectedIndex())) "
+                    + "of \(identifiers.count))")
+            try await Task.sleep(for: .seconds(interval * 4))
+            try check(moves == forward, "Releasing the key must stop the repeat")
+            try check(service.isPresented, "Releasing the key alone must keep the switcher open")
+
+            // The grave key repeats backward, and releasing Tab after ` took
+            // over leaves the grave key repeating. The modifiers stay down, so
+            // a stray modifier event can't close the switcher meanwhile.
+            service.beginKeyRepeat(for: .grave)
+            try await Task.sleep(for: .seconds(delay + interval))
+            service.endKeyRepeat(for: .shortcut)
+            let beforeTabRelease = moves
+            try await Task.sleep(for: .seconds(interval * 3))
+            service.endKeyRepeat(for: .grave)
+            try check(moves > beforeTabRelease, "Releasing Tab after ` took over must leave ` repeating")
+            let back = moves - forward
+            try check(
+                selectedIndex() == ((1 + forward - back) % identifiers.count + identifiers.count) % identifiers.count,
+                "Holding ` must move back")
+
+            releaseKeys()
+            try await Task.sleep(for: .milliseconds(300))
+            try check(!service.isPresented, "Releasing the modifiers must close the switcher")
+            print("Checked key repeat (\(forward) forward, \(back) back)")
+            fflush(stdout)
+        }
+
+        private static func postKey(_ keyCode: Int, down: Bool, flags: CGEventFlags) {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
         }
 
         private static func checkCommandTabOverride(_ preferences: DockyPreferences) async throws {
