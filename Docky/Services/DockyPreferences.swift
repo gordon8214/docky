@@ -1385,6 +1385,46 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Point size of the window title in each window switcher card's header.
+    var windowSwitcherFontSize: CGFloat {
+        didSet {
+            let clampedValue = WindowSwitcherGeometry.clampedFontSize(windowSwitcherFontSize)
+            guard clampedValue != oldValue else {
+                if windowSwitcherFontSize != clampedValue {
+                    windowSwitcherFontSize = clampedValue
+                }
+                return
+            }
+
+            if windowSwitcherFontSize != clampedValue {
+                windowSwitcherFontSize = clampedValue
+                return
+            }
+
+            defaults.set(Double(clampedValue), forKey: Keys.windowSwitcherFontSize)
+        }
+    }
+
+    /// Point size of the app icon in each window switcher card's header.
+    var windowSwitcherIconSize: CGFloat {
+        didSet {
+            let clampedValue = WindowSwitcherGeometry.clampedIconSize(windowSwitcherIconSize)
+            guard clampedValue != oldValue else {
+                if windowSwitcherIconSize != clampedValue {
+                    windowSwitcherIconSize = clampedValue
+                }
+                return
+            }
+
+            if windowSwitcherIconSize != clampedValue {
+                windowSwitcherIconSize = clampedValue
+                return
+            }
+
+            defaults.set(Double(clampedValue), forKey: Keys.windowSwitcherIconSize)
+        }
+    }
+
     /// Single-key (no modifier — switcher's own modifier is already held)
     /// pressed inside the open switcher to minimize the selected window.
     var switcherMinimizeKeyCode: UInt16 {
@@ -1759,6 +1799,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let showsWindowSwitcherFocusPreview = "docky.showsWindowSwitcherFocusPreview"
         static let windowSwitcherPreviewMode = "docky.windowSwitcherPreviewMode"
         static let windowSwitcherSpaceScope = "docky.windowSwitcherSpaceScope"
+        static let windowSwitcherFontSize = "docky.windowSwitcherFontSize"
+        static let windowSwitcherIconSize = "docky.windowSwitcherIconSize"
         static let switcherMinimizeKeyCode = "docky.switcherMinimizeKeyCode"
         static let switcherCloseKeyCode = "docky.switcherCloseKeyCode"
         static let switcherZoomKeyCode = "docky.switcherZoomKeyCode"
@@ -1893,6 +1935,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedShowsWindowSwitcherFocusPreview = defaults.object(forKey: Keys.showsWindowSwitcherFocusPreview) as? Bool
         let storedWindowSwitcherPreviewMode = defaults.string(forKey: Keys.windowSwitcherPreviewMode)
         let storedWindowSwitcherSpaceScope = defaults.string(forKey: Keys.windowSwitcherSpaceScope)
+        let storedWindowSwitcherFontSize = defaults.object(forKey: Keys.windowSwitcherFontSize) as? Double
+        let storedWindowSwitcherIconSize = defaults.object(forKey: Keys.windowSwitcherIconSize) as? Double
         let storedSwitcherMinimizeKeyCode = defaults.object(forKey: Keys.switcherMinimizeKeyCode) as? Int
         let storedSwitcherCloseKeyCode = defaults.object(forKey: Keys.switcherCloseKeyCode) as? Int
         let storedSwitcherZoomKeyCode = defaults.object(forKey: Keys.switcherZoomKeyCode) as? Int
@@ -1986,6 +2030,10 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
         self.windowSwitcherSpaceScope = storedWindowSwitcherSpaceScope.flatMap(WindowSwitcherSpaceScope.init(rawValue:))
             ?? DefaultValues.windowSwitcherSpaceScope
+        self.windowSwitcherFontSize = WindowSwitcherGeometry.clampedFontSize(
+            storedWindowSwitcherFontSize.map { CGFloat($0) } ?? WindowSwitcherGeometry.Metrics.defaultFontSize)
+        self.windowSwitcherIconSize = WindowSwitcherGeometry.clampedIconSize(
+            storedWindowSwitcherIconSize.map { CGFloat($0) } ?? WindowSwitcherGeometry.Metrics.defaultIconSize)
         self.switcherMinimizeKeyCode = storedSwitcherMinimizeKeyCode.map(UInt16.init) ?? DefaultValues.switcherMinimizeKeyCode
         self.switcherCloseKeyCode = storedSwitcherCloseKeyCode.map(UInt16.init) ?? DefaultValues.switcherCloseKeyCode
         self.switcherZoomKeyCode = storedSwitcherZoomKeyCode.map(UInt16.init) ?? DefaultValues.switcherZoomKeyCode
@@ -2119,6 +2167,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode
         windowSwitcherSpaceScope = DefaultValues.windowSwitcherSpaceScope
+        windowSwitcherFontSize = WindowSwitcherGeometry.Metrics.defaultFontSize
+        windowSwitcherIconSize = WindowSwitcherGeometry.Metrics.defaultIconSize
         switcherMinimizeKeyCode = DefaultValues.switcherMinimizeKeyCode
         switcherCloseKeyCode = DefaultValues.switcherCloseKeyCode
         switcherZoomKeyCode = DefaultValues.switcherZoomKeyCode

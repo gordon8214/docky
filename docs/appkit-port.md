@@ -64,7 +64,8 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   grid keyboard navigation, dismissed folder callbacks, file context menus,
   calendar dates, denied-permission controls, initial lyric scrolling, widget reuse,
   badge limits, cached Hidden Apps updates, and the window switcher's cards,
-  selection frame, hover close button, and icon fallback, built from fixture windows.
+  selection frame, hover close button, icon fallback, and header font and icon
+  sizes, built from fixture windows.
   The test entry point bypasses normal startup and exits without installing
   the app or requesting permissions.
 - `scripts/test_window_switcher.sh`: a signed Debug app, normally under 15 seconds,
@@ -98,6 +99,9 @@ cards into centered rows at 85% of the screen width. Each card shows the app
 icon and window title above the thumbnail, a 3-point selection frame in the
 system accent color, and a close button on hover. Each thumbnail has a 1-point translucent border and a
 soft drop shadow. Windows without a capture show their app icon, with neither.
+"Switcher Font Size" (9–24 points, default 12) and "Switcher Icon Size" (12–48,
+default 16) in Window Management size the title and icon. The header grows to
+fit the larger of the two and never shrinks below 24 points.
 The panel has a 1-point edge, stronger than taskbar popups, and a soft shadow.
 Both shadows go through `NSView.shadow`, because AppKit resets a backing
 layer's own shadow opacity.

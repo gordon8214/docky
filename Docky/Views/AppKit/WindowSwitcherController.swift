@@ -28,6 +28,7 @@ final class WindowSwitcherController: NSViewController {
     private(set) var orderedIDs: [String] = []
     private(set) var geometry: WindowSwitcherGeometry?
     private var selectedID: String?
+    private var headerStyle = WindowSwitcherHeaderStyle.standard
 
     override func loadView() {
         let root = WindowSwitcherRootView()
@@ -138,8 +139,12 @@ final class WindowSwitcherController: NSViewController {
         }
         orderedIDs = ids
         self.selectedID = selectedID
+        // Card views outlive one switcher session, so each display picks up
+        // sizes changed in Settings since the last.
+        headerStyle = headerStyle.updatedFromPreferences()
         for (id, cardView) in cardViews {
             cardView.isSelected = id == selectedID
+            cardView.headerStyle = headerStyle
         }
 
         updateGeometry(screenSize: view.bounds.size)
@@ -242,7 +247,8 @@ final class WindowSwitcherController: NSViewController {
         geometryScreenSize = screenSize
         geometry = WindowSwitcherGeometry(
             aspectRatios: orderedIDs.compactMap { cardViews[$0]?.card.aspectRatio },
-            screenSize: screenSize)
+            screenSize: screenSize,
+            headerHeight: headerStyle.height)
     }
 
     private func scrollSelectionToVisible() {

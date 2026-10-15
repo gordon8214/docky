@@ -46,7 +46,9 @@ struct AppKitBrowserRegression {
     private static func testWindowSwitcherGeometry() {
         let screen = CGSize(width: 1440, height: 900)
         let widescreen = 16.0 / 10.0
-        let six = WindowSwitcherGeometry(aspectRatios: Array(repeating: widescreen, count: 6), screenSize: screen)
+        let header = WindowSwitcherGeometry.Metrics.headerHeight
+        let six = WindowSwitcherGeometry(
+            aspectRatios: Array(repeating: widescreen, count: 6), screenSize: screen, headerHeight: header)
         expect(six.thumbnailHeight == 135, "Thumbnails are 15% of the screen height")
         expect(six.cardHeight == 177, "Cards add padding and a header to the thumbnail")
         expect(six.rows == [[0, 1, 2, 3, 4], [5]], "Cards wrap at 85% of the screen width")
@@ -68,19 +70,42 @@ struct AppKitBrowserRegression {
         expect(WindowSwitcherGeometry.thumbnailHeight(screenHeight: 400) == 96, "Thumbnails have a minimum height")
         expect(WindowSwitcherGeometry.thumbnailHeight(screenHeight: 2000) == 160, "Thumbnails have a maximum height")
         expect(
-            WindowSwitcherGeometry.thumbnailFrame(inCardOfSize: CGSize(width: 228, height: 177))
+            WindowSwitcherGeometry.thumbnailFrame(inCardOfSize: CGSize(width: 228, height: 177), headerHeight: header)
                 == CGRect(x: 6, y: 36, width: 216, height: 135),
             "The thumbnail sits below the header")
 
-        let many = WindowSwitcherGeometry(aspectRatios: Array(repeating: widescreen, count: 40), screenSize: screen)
+        expect(WindowSwitcherGeometry.headerHeight(iconSize: 16, textHeight: 15) == 24,
+            "Default sizes keep the 24-point header")
+        expect(WindowSwitcherGeometry.headerHeight(iconSize: 32, textHeight: 15) == 40, "A larger icon grows the header")
+        expect(WindowSwitcherGeometry.headerHeight(iconSize: 16, textHeight: 21.5) == 30,
+            "A larger title grows the header")
+        let tallHeader = WindowSwitcherGeometry(
+            aspectRatios: Array(repeating: widescreen, count: 6), screenSize: screen, headerHeight: 40)
+        expect(tallHeader.cardHeight == six.cardHeight + 16, "Cards grow with their header")
+        expect(tallHeader.rows == six.rows, "A taller header doesn't change the wrapping")
+        expect(
+            WindowSwitcherGeometry.thumbnailFrame(inCardOfSize: CGSize(width: 228, height: 193), headerHeight: 40)
+                == CGRect(x: 6, y: 52, width: 216, height: 135),
+            "The thumbnail moves below a taller header")
+        expect(WindowSwitcherGeometry.clampedIconSize(4) == 12 && WindowSwitcherGeometry.clampedIconSize(100) == 48,
+            "Icon sizes stay in range")
+        expect(WindowSwitcherGeometry.clampedIconSize(20.4) == 20, "Icon sizes are whole points")
+        expect(WindowSwitcherGeometry.clampedFontSize(8) == 9 && WindowSwitcherGeometry.clampedFontSize(30) == 24,
+            "Font sizes stay in range")
+        expect(WindowSwitcherGeometry.clampedIconSize(.infinity) == 16 && WindowSwitcherGeometry.clampedFontSize(.nan) == 12,
+            "Corrupt sizes fall back to the defaults")
+
+        let many = WindowSwitcherGeometry(
+            aspectRatios: Array(repeating: widescreen, count: 40), screenSize: screen, headerHeight: header)
         expect(many.rows.count == 8, "Many windows wrap into many rows")
         expect(many.panelSize.height == 765 && many.contentSize.height == 1496, "Tall content scrolls inside a capped panel")
 
-        let narrow = WindowSwitcherGeometry(aspectRatios: [4, widescreen], screenSize: CGSize(width: 300, height: 900))
+        let narrow = WindowSwitcherGeometry(
+            aspectRatios: [4, widescreen], screenSize: CGSize(width: 300, height: 900), headerHeight: header)
         expect(narrow.rows == [[0], [1]], "Each card gets its own row on a narrow screen")
         expect(narrow.cardFrames[0].width == 231, "A card never exceeds the row width")
 
-        let empty = WindowSwitcherGeometry(aspectRatios: [], screenSize: screen)
+        let empty = WindowSwitcherGeometry(aspectRatios: [], screenSize: screen, headerHeight: header)
         expect(empty.rows.isEmpty && empty.cardFrames.isEmpty, "No windows means no cards")
     }
 

@@ -22,6 +22,37 @@ struct WindowSwitcherCard: Equatable {
     let aspectRatio: CGFloat
 }
 
+/// The header's icon and title sizes, which Settings controls.
+@MainActor
+struct WindowSwitcherHeaderStyle: Equatable {
+    static let standard = Self(
+        iconSize: WindowSwitcherGeometry.Metrics.defaultIconSize,
+        fontSize: WindowSwitcherGeometry.Metrics.defaultFontSize)
+
+    let iconSize: CGFloat
+    let fontSize: CGFloat
+    let font: NSFont
+    /// Fits the icon and one line of the title.
+    let height: CGFloat
+
+    init(iconSize: CGFloat, fontSize: CGFloat) {
+        self.iconSize = WindowSwitcherGeometry.clampedIconSize(iconSize)
+        self.fontSize = WindowSwitcherGeometry.clampedFontSize(fontSize)
+        font = WindowsTaskbarStyle.font(size: self.fontSize)
+        height = WindowSwitcherGeometry.headerHeight(
+            iconSize: self.iconSize, textHeight: NSLayoutManager().defaultLineHeight(for: font))
+    }
+
+    /// The sizes in Settings, reusing this style while they're unchanged.
+    func updatedFromPreferences() -> Self {
+        let preferences = DockyPreferences.shared
+        guard preferences.windowSwitcherIconSize != iconSize || preferences.windowSwitcherFontSize != fontSize else {
+            return self
+        }
+        return Self(iconSize: preferences.windowSwitcherIconSize, fontSize: preferences.windowSwitcherFontSize)
+    }
+}
+
 final class WindowSwitcherCardView: NSView {
     static let selectionBorderWidth: CGFloat = 3
     static let cornerRadius: CGFloat = 8
@@ -38,6 +69,13 @@ final class WindowSwitcherCardView: NSView {
     var onContextMenu: ((WindowSwitcherCardView) -> Void)?
 
     private(set) var card: WindowSwitcherCard
+    var headerStyle = WindowSwitcherHeaderStyle.standard {
+        didSet {
+            guard headerStyle != oldValue else { return }
+            titleField.font = headerStyle.font
+            needsLayout = true
+        }
+    }
     var isSelected = false {
         didSet {
             guard isSelected != oldValue else { return }
@@ -77,7 +115,7 @@ final class WindowSwitcherCardView: NSView {
         layer?.cornerRadius = Self.cornerRadius
 
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        titleField.font = WindowsTaskbarStyle.font(size: 12)
+        titleField.font = headerStyle.font
         titleField.lineBreakMode = .byTruncatingTail
         titleField.maximumNumberOfLines = 1
         titleField.cell?.truncatesLastVisibleLine = true
@@ -139,19 +177,27 @@ final class WindowSwitcherCardView: NSView {
         super.layout()
         typealias Metrics = WindowSwitcherGeometry.Metrics
         let padding = Metrics.cardPadding
-        let headerMidY = padding + Metrics.headerHeight / 2
-        iconView.frame = CGRect(x: padding + 2, y: headerMidY - 8, width: 16, height: 16)
+        let headerMidY = padding + headerStyle.height / 2
+        let iconSize = headerStyle.iconSize
+        // A header with an odd height centers on a half point, so align to
+        // pixels to keep the icon and × sharp on 1x displays.
+        iconView.frame = backingAlignedRect(
+            CGRect(x: padding + 2, y: headerMidY - iconSize / 2, width: iconSize, height: iconSize),
+            options: .alignAllEdgesNearest)
         let closeSize = Self.closeButtonSize
-        closeButton.frame = CGRect(
-            x: bounds.width - padding - closeSize, y: headerMidY - closeSize / 2,
-            width: closeSize, height: closeSize)
+        closeButton.frame = backingAlignedRect(
+            CGRect(
+                x: bounds.width - padding - closeSize, y: headerMidY - closeSize / 2,
+                width: closeSize, height: closeSize),
+            options: .alignAllEdgesNearest)
         let titleX = iconView.frame.maxX + 8
         let titleHeight = ceil(titleField.intrinsicContentSize.height)
         titleField.frame = CGRect(
             x: titleX, y: headerMidY - titleHeight / 2,
             width: max(0, closeButton.frame.minX - 4 - titleX), height: titleHeight)
 
-        thumbnailContainer.frame = WindowSwitcherGeometry.thumbnailFrame(inCardOfSize: bounds.size)
+        thumbnailContainer.frame = WindowSwitcherGeometry.thumbnailFrame(
+            inCardOfSize: bounds.size, headerHeight: headerStyle.height)
         if showsFallbackIcon {
             let size = min(Self.fallbackIconSize, thumbnailContainer.bounds.height)
             thumbnailView.frame = CGRect(

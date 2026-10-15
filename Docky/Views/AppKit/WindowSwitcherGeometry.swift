@@ -13,7 +13,14 @@ import CoreGraphics
 struct WindowSwitcherGeometry: Equatable {
     enum Metrics {
         static let cardPadding: CGFloat = 6
+        /// The header's height at the default icon and font sizes, and its minimum.
         static let headerHeight: CGFloat = 24
+        /// Space above and below the header's icon or title when they outgrow `headerHeight`.
+        static let headerInset: CGFloat = 4
+        static let defaultIconSize: CGFloat = 16
+        static let iconSizeRange: ClosedRange<CGFloat> = 12...48
+        static let defaultFontSize: CGFloat = 12
+        static let fontSizeRange: ClosedRange<CGFloat> = 9...24
         static let headerGap: CGFloat = 6
         static let cardSpacing: CGFloat = 8
         static let panelPadding: CGFloat = 12
@@ -26,6 +33,8 @@ struct WindowSwitcherGeometry: Equatable {
     }
 
     let thumbnailHeight: CGFloat
+    /// Height of each card's icon-and-title header.
+    let headerHeight: CGFloat
     let cardFrames: [CGRect]
     /// Card indices for each row, top to bottom.
     let rows: [[Int]]
@@ -36,12 +45,12 @@ struct WindowSwitcherGeometry: Equatable {
     let panelSize: CGSize
 
     var cardHeight: CGFloat {
-        Self.cardHeight(thumbnailHeight: thumbnailHeight)
+        Self.cardHeight(thumbnailHeight: thumbnailHeight, headerHeight: headerHeight)
     }
 
-    init(aspectRatios: [CGFloat], screenSize: CGSize) {
+    init(aspectRatios: [CGFloat], screenSize: CGSize, headerHeight: CGFloat) {
         let thumbnailHeight = Self.thumbnailHeight(screenHeight: screenSize.height)
-        let cardHeight = Self.cardHeight(thumbnailHeight: thumbnailHeight)
+        let cardHeight = Self.cardHeight(thumbnailHeight: thumbnailHeight, headerHeight: headerHeight)
         let maximumRowWidth = max(
             Metrics.minimumCardWidth,
             screenSize.width * Metrics.screenFraction - Metrics.panelPadding * 2
@@ -82,6 +91,7 @@ struct WindowSwitcherGeometry: Equatable {
         )
 
         self.thumbnailHeight = thumbnailHeight
+        self.headerHeight = headerHeight
         self.cardFrames = frames
         self.rows = rows
         self.contentSize = contentSize
@@ -98,8 +108,26 @@ struct WindowSwitcherGeometry: Equatable {
         )
     }
 
-    static func cardHeight(thumbnailHeight: CGFloat) -> CGFloat {
-        Metrics.cardPadding * 2 + Metrics.headerHeight + Metrics.headerGap + thumbnailHeight
+    /// Whole points, so the icon stays sharp. A corrupt value gets the default.
+    static func clampedIconSize(_ size: CGFloat) -> CGFloat {
+        guard size.isFinite else { return Metrics.defaultIconSize }
+        return min(Metrics.iconSizeRange.upperBound, max(Metrics.iconSizeRange.lowerBound, size.rounded()))
+    }
+
+    /// A corrupt value gets the default.
+    static func clampedFontSize(_ size: CGFloat) -> CGFloat {
+        guard size.isFinite else { return Metrics.defaultFontSize }
+        return min(Metrics.fontSizeRange.upperBound, max(Metrics.fontSizeRange.lowerBound, size))
+    }
+
+    /// The header fits the taller of the icon and the title's line, and never
+    /// shrinks below `Metrics.headerHeight`.
+    static func headerHeight(iconSize: CGFloat, textHeight: CGFloat) -> CGFloat {
+        max(Metrics.headerHeight, ceil(max(iconSize, textHeight)) + Metrics.headerInset * 2)
+    }
+
+    static func cardHeight(thumbnailHeight: CGFloat, headerHeight: CGFloat) -> CGFloat {
+        Metrics.cardPadding * 2 + headerHeight + Metrics.headerGap + thumbnailHeight
     }
 
     static func cardWidth(aspectRatio: CGFloat, thumbnailHeight: CGFloat) -> CGFloat {
@@ -109,8 +137,8 @@ struct WindowSwitcherGeometry: Equatable {
     }
 
     /// The thumbnail's frame inside a card of the given size.
-    static func thumbnailFrame(inCardOfSize size: CGSize) -> CGRect {
-        let top = Metrics.cardPadding + Metrics.headerHeight + Metrics.headerGap
+    static func thumbnailFrame(inCardOfSize size: CGSize, headerHeight: CGFloat) -> CGRect {
+        let top = Metrics.cardPadding + headerHeight + Metrics.headerGap
         return CGRect(
             x: Metrics.cardPadding,
             y: top,
