@@ -57,6 +57,9 @@ final class WorkspaceService: ObservableObject {
     private var attemptedMinimizedWindowPreviewIDs: Set<String> = []
     private var attemptedAppWindowPreviewIDs: Set<String> = []
     private var liveFocusPreviewSession: LiveWindowPreviewSession?
+    private var liveFocusPreviewRequest = UUID()
+    private let previewContentCache = WindowPreviewContentCache()
+    private var capturingWindowPreviewIDs: Set<String> = []
 
     /// A minimized-window capture can miss on its first try — the genie
     /// animation leaves the offscreen content briefly unavailable, or the
@@ -246,16 +249,6 @@ final class WorkspaceService: ObservableObject {
             return appWindowPreviews[window.windowIdentifier]
         }
 
-        if let cgWindowID = window.cgWindowID,
-           let cgImage = CGWindowListCreateImagePrivate(
-               .null,
-               [.optionIncludingWindow],
-               cgWindowID,
-               [.boundsIgnoreFraming, .bestResolution]
-           ) {
-            return makeFullSizeImage(from: cgImage)
-        }
-
         return await captureFullSizeAppWindowImage(for: window) ?? appWindowPreviews[window.windowIdentifier]
     }
 
@@ -264,6 +257,7 @@ final class WorkspaceService: ObservableObject {
         onFrame: @escaping @MainActor (NSImage?) -> Void
     ) async -> Bool {
         stopLiveFocusPreview()
+        let request = liveFocusPreviewRequest
 
         guard PermissionsService.shared.screenCapture == .granted else {
             return false
@@ -271,7 +265,8 @@ final class WorkspaceService: ObservableObject {
 
         do {
             let shareableContent = try await shareableContentIncludingOffscreenWindows()
-            guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
+            guard !Task.isCancelled, request == liveFocusPreviewRequest,
+                  let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
                 return false
             }
 
@@ -280,17 +275,28 @@ final class WorkspaceService: ObservableObject {
                 captureSize: fullSizeCaptureSize(for: shareableWindow.frame.size, screenBounds: window.screenBounds),
                 onFrame: onFrame
             )
-            try await session.start()
             liveFocusPreviewSession = session
+            do {
+                try await session.start()
+            } catch {
+                session.stop()
+                if request == liveFocusPreviewRequest { liveFocusPreviewSession = nil }
+                throw error
+            }
+            guard !Task.isCancelled, request == liveFocusPreviewRequest else {
+                session.stop()
+                if request == liveFocusPreviewRequest { liveFocusPreviewSession = nil }
+                return false
+            }
             return true
         } catch {
             NSLog("[Docky] Live focus preview stream failed for \(window.windowIdentifier): \(error.localizedDescription)")
-            liveFocusPreviewSession = nil
             return false
         }
     }
 
     func stopLiveFocusPreview() {
+        liveFocusPreviewRequest = UUID()
         liveFocusPreviewSession?.stop()
         liveFocusPreviewSession = nil
     }
@@ -724,6 +730,7 @@ final class WorkspaceService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 MainActor.assumeIsolated {
+                    self?.previewContentCache.invalidate()
                     self?.refresh()
                 }
             }
@@ -967,16 +974,9 @@ final class WorkspaceService: ObservableObject {
             return nil
         }
 
-        if let cgWindowID = window.cgWindowID,
-           let cgImage = CGWindowListCreateImagePrivate(
-               .null,
-               [.optionIncludingWindow],
-               cgWindowID,
-               [.boundsIgnoreFraming, .bestResolution]
-           ),
-           isCaptureShapeReasonable(cgImage, expectedFrame: window.frame) {
-            return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
-        }
+        guard !Task.isCancelled,
+              capturingWindowPreviewIDs.insert(window.windowIdentifier).inserted else { return nil }
+        defer { capturingWindowPreviewIDs.remove(window.windowIdentifier) }
 
         do {
             let shareableContent: SCShareableContent
@@ -997,16 +997,6 @@ final class WorkspaceService: ObservableObject {
                     "[Docky] App window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
                 )
                 return nil
-            }
-
-            if let cgImage = CGWindowListCreateImagePrivate(
-                .null,
-                [.optionIncludingWindow],
-                shareableWindow.windowID,
-                [.boundsIgnoreFraming, .bestResolution]
-            ),
-               isCaptureShapeReasonable(cgImage, expectedFrame: window.frame) {
-                return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
             }
 
             let configuration = SCStreamConfiguration()
@@ -1051,7 +1041,7 @@ final class WorkspaceService: ObservableObject {
                 configuration.captureMicrophone = false
             }
             configuration.showsCursor = false
-            configuration.scalesToFit = false
+            configuration.scalesToFit = true
             configuration.ignoreShadowsSingleWindow = true
             configuration.ignoreGlobalClipSingleWindow = true
 
@@ -1076,16 +1066,6 @@ final class WorkspaceService: ObservableObject {
                     "[Docky] Minimized window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
                 )
                 return nil
-            }
-
-            if let cgImage = CGWindowListCreateImagePrivate(
-                .null,
-                [.optionIncludingWindow],
-                shareableWindow.windowID,
-                [.boundsIgnoreFraming, .bestResolution]
-            ),
-               isCaptureShapeReasonable(cgImage, expectedFrame: window.frame) {
-                return makeThumbnail(from: cgImage, maxSize: CGSize(width: 320, height: 200))
             }
 
             let configuration = SCStreamConfiguration()
@@ -1184,55 +1164,22 @@ final class WorkspaceService: ObservableObject {
         return dw < 0.20 && dh < 0.20
     }
 
-    /// Sanity check on a `CGWindowListCreateImagePrivate` result:
-    /// the legacy API will happily hand back a 4-px-tall strip when
-    /// the supplied window ID points at a chrome / overlay window
-    /// rather than the AX element's actual content. If the captured
-    /// CGImage's aspect ratio is more than 3× off from the AX frame
-    /// we discard it and let the call site fall through to the SC
-    /// path.
-    private func isCaptureShapeReasonable(_ cgImage: CGImage, expectedFrame: CGRect?) -> Bool {
-        guard let expectedFrame, expectedFrame.width > 0, expectedFrame.height > 0,
-              cgImage.width > 0, cgImage.height > 0 else {
-            return true
-        }
-        let imageRatio = CGFloat(cgImage.width) / CGFloat(cgImage.height)
-        let frameRatio = expectedFrame.width / expectedFrame.height
-        let ratio = imageRatio / frameRatio
-        return ratio < 3 && ratio > (1.0 / 3.0)
-    }
-
     private func normalizedWindowTitle(_ title: String?) -> String {
         (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func shareableContentIncludingOffscreenWindows() async throws -> SCShareableContent {
-        try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+        try await previewContentCache.current()
     }
 
     private func constrainedCaptureSize(for sourceSize: CGSize) -> CGSize {
-        guard sourceSize.width > 0, sourceSize.height > 0 else {
-            return CGSize(width: 320, height: 200)
-        }
-
-        let maxSize = CGSize(width: 640, height: 400)
-        let scale = min(maxSize.width / sourceSize.width, maxSize.height / sourceSize.height, 1)
-        return CGSize(
-            width: max(1, floor(sourceSize.width * scale)),
-            height: max(1, floor(sourceSize.height * scale))
-        )
+        WindowPreviewCaptureSizing.size(for: sourceSize, maximum: CGSize(width: 640, height: 400))
     }
 
     private func fullSizeCaptureSize(for sourceSize: CGSize, screenBounds: CGRect?) -> CGSize {
-        guard sourceSize.width > 0, sourceSize.height > 0 else {
-            return CGSize(width: 1, height: 1)
-        }
-
-        let scaleFactor = backingScaleFactor(for: screenBounds)
-
-        return CGSize(
-            width: max(1, ceil(sourceSize.width * scaleFactor)),
-            height: max(1, ceil(sourceSize.height * scaleFactor))
+        WindowPreviewCaptureSizing.size(
+            for: sourceSize, scale: backingScaleFactor(for: screenBounds),
+            maximum: CGSize(width: 4096, height: 2304)
         )
     }
 
@@ -1261,6 +1208,7 @@ final class WorkspaceService: ObservableObject {
         contentFilter: SCContentFilter,
         configuration: SCStreamConfiguration
     ) async throws -> CGImage {
+        try Task.checkCancellation()
         return try await withCheckedThrowingContinuation { continuation in
             SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: configuration) { image, error in
                 if let error {
@@ -1332,6 +1280,7 @@ private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
     nonisolated private let ciContext = CIContext(options: nil)
     private let onFrame: @MainActor (NSImage?) -> Void
     private var isStopped = false
+    nonisolated private let frameGate = WindowPreviewFrameGate()
 
     init(
         shareableWindow: SCWindow,
@@ -1348,7 +1297,7 @@ private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
             configuration.captureMicrophone = false
         }
         configuration.showsCursor = false
-        configuration.scalesToFit = false
+        configuration.scalesToFit = true
         configuration.ignoreShadowsSingleWindow = true
         configuration.ignoreGlobalClipSingleWindow = true
 
@@ -1365,11 +1314,16 @@ private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
     func start() async throws {
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: outputQueue)
         try await stream.startCapture()
+        if isStopped {
+            // stop() may have run while startCapture was suspended.
+            try? await stream.stopCapture()
+        }
     }
 
     func stop() {
         guard !isStopped else { return }
         isStopped = true
+        frameGate.stop()
 
         try? stream.removeStreamOutput(self, type: .screen)
         Task {
@@ -1382,21 +1336,29 @@ private final class LiveWindowPreviewSession: NSObject, SCStreamOutput {
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType
     ) {
-        guard outputType == .screen,
-              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+        guard outputType == .screen, sampleBuffer.isValid,
+              let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+              attachments.first?[.status] as? Int == SCFrameStatus.complete.rawValue,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer), frameGate.beginFrame() else {
             return
         }
 
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let rect = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-        guard let cgImage = ciContext.createCGImage(ciImage, from: rect) else {
+        let cgImage = autoreleasepool {
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            let rect = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+            return ciContext.createCGImage(ciImage, from: rect)
+        }
+        guard let cgImage else {
+            frameGate.endFrame()
             return
         }
-
-        let image = NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
-        image.isTemplate = false
-
-        Task { @MainActor in
+        let gate = frameGate
+        Task { @MainActor [weak self] in
+            defer { gate.endFrame() }
+            guard let self, !self.isStopped else { return }
+            let image = NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
+            image.isTemplate = false
             self.onFrame(image)
         }
     }

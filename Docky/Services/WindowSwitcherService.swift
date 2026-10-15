@@ -178,7 +178,8 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     func selectWindow(withIdentifier identifier: String) {
-        guard windows.contains(where: { $0.windowIdentifier == identifier }) else {
+        guard selectedWindowIdentifier != identifier,
+              windows.contains(where: { $0.windowIdentifier == identifier }) else {
             return
         }
 
@@ -480,10 +481,7 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     private func scheduleFocusedPreview(forWindowIdentifier identifier: String) {
-        focusedPreviewTask?.cancel()
-        focusedPreviewTask = nil
-
-        focusedPreview = nil
+        cancelFocusedPreview()
 
         guard usesInPlacePreview,
               isPresented,
@@ -493,14 +491,17 @@ final class WindowSwitcherService: ObservableObject {
         }
 
         focusedPreviewTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
             await self?.runFocusedPreviewLoop(forWindowIdentifier: identifier)
         }
     }
 
     private func runFocusedPreviewLoop(forWindowIdentifier identifier: String) async {
-        guard usesInPlacePreview,
+        guard !Task.isCancelled, usesInPlacePreview,
               isPresented,
               !isContextMenuPresented,
               selectedWindowIdentifier == identifier,
@@ -527,7 +528,7 @@ final class WindowSwitcherService: ObservableObject {
             )
         }
 
-        guard !startedLivePreview else { return }
+        guard !Task.isCancelled, !startedLivePreview else { return }
 
         while !Task.isCancelled {
             guard usesInPlacePreview,
@@ -541,7 +542,8 @@ final class WindowSwitcherService: ObservableObject {
                 return
             }
 
-            if let image = await WorkspaceService.shared.liveFocusPreviewImage(for: currentWindow) {
+            if let image = await WorkspaceService.shared.liveFocusPreviewImage(for: currentWindow),
+               !Task.isCancelled, isPresented, selectedWindowIdentifier == identifier {
                 focusedPreview = FocusedWindowPreview(
                     windowIdentifier: identifier,
                     image: image,

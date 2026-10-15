@@ -171,8 +171,11 @@ class NativeBrowserController: NSViewController, NSCollectionViewDataSource, NSC
     func selectItem(at proposedIndex: Int) {
         guard !displayed.isEmpty else { return }
         let index = min(displayed.count - 1, max(0, proposedIndex))
-        selectionID = displayed[index].id
-        onSelection?(displayed[index].id)
+        let identifier = displayed[index].id
+        if selectionID != identifier {
+            selectionID = identifier
+            onSelection?(identifier)
+        }
         collection.selectionIndexPaths = [IndexPath(item: index, section: 0)]
         table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         if usesList {

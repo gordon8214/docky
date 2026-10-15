@@ -27,6 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     #if DEBUG
     private func runDebugRegressionIfRequested() -> Bool {
+        if ProcessInfo.processInfo.arguments.contains("--window-switcher-regression") {
+            window?.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
+            Task { await WindowSwitcherRegression.run() }
+            return true
+        }
         if ProcessInfo.processInfo.arguments.contains("--menu-extras-probe") {
             window?.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)

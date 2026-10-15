@@ -12,6 +12,8 @@ struct AppKitBrowserRegression {
         testPresentationGeometry()
         testLauncherPages()
         testSearchAndSelection()
+        testSelectionFeedback()
+        testPreviewCaptureBounds()
         testControllerRelease()
         testObservationLifecycle()
         print("AppKit browser and geometry regressions passed")
@@ -132,6 +134,60 @@ struct AppKitBrowserRegression {
         expect(browser.selectionID == "first", "Down selects first result from search field")
         _ = browser.control(browser.search, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:)))
         expect(browser.selectionID == "second", "Down advances selection")
+    }
+
+    @MainActor
+    private static func testSelectionFeedback() {
+        let browser = NativeBrowserController()
+        _ = browser.view
+        let items = [
+            NativeBrowserItem(id: "first", title: "First", activate: {}),
+            NativeBrowserItem(id: "second", title: "Second", activate: {})
+        ]
+        browser.setItems(items)
+        var selections: [String] = []
+        browser.onSelection = { selections.append($0) }
+        for usesList in [false, true] {
+            browser.usesList = usesList
+            browser.selectionID = "first"
+            selections = []
+            for _ in 0..<20 { browser.setItems(items) }
+            expect(selections.isEmpty, "Restoring selection during reload must not feed back into the model")
+            browser.setItems(items.reversed())
+            expect(selections.isEmpty && browser.selectionID == "first", "Reordering must preserve selection without feedback")
+            browser.setItems(items)
+            browser.selectItem(at: 1)
+            expect(selections == ["second"], "Keyboard selection must notify exactly once")
+            browser.selectItem(at: 1)
+            expect(selections == ["second"], "Selecting the current item must not restart its preview")
+            browser.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            expect(selections == ["second", "first"], "A changed table selection must still reach the model")
+            browser.collectionView(browser.collection, didSelectItemsAt: [IndexPath(item: 1, section: 0)])
+            browser.collectionView(browser.collection, didSelectItemsAt: [IndexPath(item: 1, section: 0)])
+            expect(selections == ["second", "first", "second"], "Repeated grid selection must notify once")
+        }
+    }
+
+    @MainActor
+    private static func testPreviewCaptureBounds() {
+        let limit = CGSize(width: 4096, height: 2304)
+        let oversized = WindowPreviewCaptureSizing.size(
+            for: CGSize(width: 100_000, height: 50_000), scale: 2, maximum: limit)
+        expect(oversized == CGSize(width: 4096, height: 2048), "Huge windows must keep a bounded capture size and aspect ratio")
+        expect(WindowPreviewCaptureSizing.size(for: CGSize(width: 800, height: 600), scale: 2, maximum: limit)
+            == CGSize(width: 1600, height: 1200), "Ordinary windows retain Retina resolution")
+        expect(WindowPreviewCaptureSizing.size(for: CGSize(width: CGFloat.infinity, height: 100), maximum: limit)
+            == CGSize(width: 1, height: 1), "Invalid window dimensions must not create oversized buffers")
+        let gate = WindowPreviewFrameGate()
+        expect(gate.beginFrame(), "The first frame may enter the main-actor queue")
+        for _ in 0..<10_000 {
+            expect(!gate.beginFrame(), "A busy UI must not accumulate captured frames")
+        }
+        gate.endFrame()
+        expect(gate.beginFrame(), "Delivering a frame allows the next one")
+        gate.stop()
+        gate.endFrame()
+        expect(!gate.beginFrame(), "A stopped preview must reject late frames")
     }
 
     @MainActor

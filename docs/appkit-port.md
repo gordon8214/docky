@@ -62,6 +62,11 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   badge limits, and cached Hidden Apps updates.
   The test entry point bypasses normal startup and exits without installing
   the app or requesting permissions.
+- `scripts/test_window_switcher.sh`: a signed Debug app, normally under 15 seconds,
+  runtime budget 45 seconds. Requires an unlocked desktop with existing Accessibility
+  and screen capture permissions. Checks selection feedback in both layouts and
+  preview modes, a real in-place preview, rapid selection changes, and dismissal.
+  Temporarily changed switcher preferences and the frontmost app are restored.
 
 The integration checks validate native controller layout and lifecycle. They do not
 replace interactive checks for drag sessions, magnification, auto-hide, VoiceOver,

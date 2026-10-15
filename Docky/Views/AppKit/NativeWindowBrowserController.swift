@@ -5,6 +5,7 @@ final class NativeWindowBrowserController: NativeBrowserController {
     enum Source { case switcher, preview, debug }
     private let source: Source
     private let focusedImage = NSImageView()
+    private var refreshIsScheduled = false
     override func loadView() {
         super.loadView()
         guard source == .switcher else { return }
@@ -16,7 +17,14 @@ final class NativeWindowBrowserController: NativeBrowserController {
     }
     override func viewDidAppear() {
         super.viewDidAppear()
+        if source == .switcher {
+            updateFocusedPreview(WindowSwitcherService.shared.focusedPreview)
+        }
         refresh()
+    }
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        focusedImage.image = nil
     }
     override func viewDidLayout() {
         if source == .switcher {
@@ -31,10 +39,6 @@ final class NativeWindowBrowserController: NativeBrowserController {
             if let preview = WindowSwitcherService.shared.focusedPreview, let window = view.window {
                 let screenRect = window.convertFromScreen(preview.screenBounds)
                 focusedImage.frame = view.convert(screenRect, from: nil)
-                focusedImage.image = preview.image
-                focusedImage.isHidden = false
-            } else {
-                focusedImage.isHidden = true
             }
         }
         super.viewDidLayout()
@@ -55,11 +59,24 @@ final class NativeWindowBrowserController: NativeBrowserController {
             }
         }
         if source == .switcher {
-            let observedPublisher1 = WindowSwitcherService.shared.objectWillChange
+            let service = WindowSwitcherService.shared
             observations.add { [weak self] in
-                observedPublisher1.sink { [weak self] in
-                    DispatchQueue.main.async { self?.refresh() }
+                service.$windows.combineLatest(service.$selectedWindowIdentifier, service.$windowPreviews)
+                    .sink { [weak self] _ in self?.scheduleRefresh() }
+            }
+            observations.add { [weak self] in
+                service.$focusedPreview.receive(on: DispatchQueue.main).sink { [weak self] preview in
+                    self?.updateFocusedPreview(preview)
                 }
+            }
+            observations.add { [weak self] in
+                observeChanges { [weak self] in
+                    _ = DockyPreferences.shared.windowSwitcherLayout
+                    self?.scheduleRefresh()
+                }
+            }
+            observations.add { [weak self] in
+                PermissionsService.shared.$screenCapture.sink { [weak self] _ in self?.scheduleRefresh() }
             }
             onSelection = { WindowSwitcherService.shared.selectWindow(withIdentifier: $0) }
         } else {
@@ -83,6 +100,20 @@ final class NativeWindowBrowserController: NativeBrowserController {
             }
         }
         refresh()
+    }
+    private func scheduleRefresh() {
+        guard !refreshIsScheduled else { return }
+        refreshIsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.refreshIsScheduled = false
+            self.refresh()
+        }
+    }
+    private func updateFocusedPreview(_ preview: FocusedWindowPreview?) {
+        focusedImage.image = preview?.image
+        focusedImage.isHidden = preview == nil
+        view.needsLayout = true
     }
     private func completeWindowActions(_ window: AppWindow) -> [ContextAction] {
         let workspace = WorkspaceService.shared

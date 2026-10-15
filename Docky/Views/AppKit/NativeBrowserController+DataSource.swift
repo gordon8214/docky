@@ -15,7 +15,8 @@ extension NativeBrowserController {
         return item
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        guard let index = indexPaths.first?.item, displayed.indices.contains(index) else { return }
+        guard let index = indexPaths.first?.item, displayed.indices.contains(index),
+              selectionID != displayed[index].id else { return }
         selectionID = displayed[index].id
         onSelection?(displayed[index].id)
     }
@@ -35,7 +36,8 @@ extension NativeBrowserController {
             ], orientation: .horizontal)
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard displayed.indices.contains(table.selectedRow) else { return }
+        guard displayed.indices.contains(table.selectedRow),
+              selectionID != displayed[table.selectedRow].id else { return }
         selectionID = displayed[table.selectedRow].id
         onSelection?(displayed[table.selectedRow].id)
     }
