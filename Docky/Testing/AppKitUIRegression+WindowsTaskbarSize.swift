@@ -189,10 +189,11 @@
             defer { ContextActionMenuPresenter.testInterceptor = nil }
             ContextActionMenuPresenter.testInterceptor = { menu, _, _ in titles = menu.items.map(\.title) }
             handle.mouseDown(with: event(.leftMouseDown, y: top.y, modifiers: .control))
-            precondition(!handle.isDragging && titles.contains("Taskbar Settings"))
+            let settings = String(localized: "Settings...")
+            precondition(!handle.isDragging && titles.contains(settings))
             titles = []
             root.hitTest(top)?.rightMouseDown(with: event(.rightMouseDown, y: top.y))
-            precondition(titles.contains("Taskbar Settings"), "Right-clicking the top edge opens the taskbar menu")
+            precondition(titles.contains(settings), "Right-clicking the top edge opens the taskbar menu")
         }
         private static func checkWindowsTaskbarSizeSetting() async {
             let controller = NativeSettingsPaneController(id: "appearanceTileLayout")

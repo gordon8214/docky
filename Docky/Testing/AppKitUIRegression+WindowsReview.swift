@@ -85,18 +85,27 @@
                 preconditionFailure("Right-click fixture required")
             }
             let held = window.interactionTokens.count
-            var titles: [String] = []
+            var items: [NSMenuItem] = []
             var anchor = CGRect.null
             var anchorView: NSView?
             defer { ContextActionMenuPresenter.testInterceptor = nil }
             ContextActionMenuPresenter.testInterceptor = { menu, rect, view in
                 precondition(window.interactionTokens.count == held + 1, "An open menu must hold the taskbar")
-                titles = menu.items.map(\.title)
+                items = menu.items
                 anchor = rect
                 anchorView = view
             }
             root.hitTest(point)?.rightMouseDown(with: click)
-            precondition(titles.contains("Taskbar Settings"), "Blank canvas clicks must reach the native background menu")
+            precondition(
+                items.contains { $0.title == String(localized: "Settings...") },
+                "Blank canvas clicks must reach the native background menu")
+            // Quit ends the menu, set apart and red like the divider tile's.
+            guard let quit = items.last, items.count >= 2 else { preconditionFailure("Background menu items required") }
+            precondition(
+                quit.title == String(localized: "Quit Docky")
+                    && (quit.representedObject as? ContextAction)?.isDestructive == true
+                    && items[items.count - 2].isSeparatorItem,
+                "The background menu must end with Quit Docky below a divider")
             precondition(
                 anchorView === chrome && abs(anchor.minX - chrome.convert(point, from: nil).x) < 0.001
                     && anchor.height == chrome.bounds.height,

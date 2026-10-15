@@ -157,7 +157,9 @@ final class DockChromeView: NSView {
             .action("Show Menu Extras", isOn: MenuExtrasNativeBridge.shared.enabled) {
                 MenuExtrasNativeBridge.shared.enabled.toggle()
             },
-            .action("Taskbar Settings") { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) }
+            .action(String(localized: "Settings...")) { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) },
+            .divider,
+            .action(String(localized: "Quit Docky"), isDestructive: true) { NSApp.terminate(nil) }
         ]
     }
     override func rightMouseDown(with event: NSEvent) {
