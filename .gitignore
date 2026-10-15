@@ -3,8 +3,9 @@ DerivedData/
 xcuserdata/
 .DS_Store
 
-# Tooling
-.claude/
+# Tooling (.claude/skills links Claude Code to the shared .agents/skills)
+.claude/*
+!.claude/skills
 
 # Python
 __pycache__/

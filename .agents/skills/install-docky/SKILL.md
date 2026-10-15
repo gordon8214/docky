@@ -26,6 +26,6 @@ For an explicitly requested build without installation or launch:
 .agents/skills/install-docky/scripts/install.sh --build-only
 ```
 
-Allow about ten minutes for a first Release build and poll the process with short waits. If it exceeds that estimate, inspect the build log and active compiler/package-resolution processes before continuing.
+Allow about ten minutes for a first Release build: run the installer in the background, or with a timeout that covers that estimate, and poll it with short waits. If it exceeds that estimate, inspect the build log and active compiler/package-resolution processes before continuing.
 
 Report build, installation, and launch separately. On success, include `/Applications/Docky.app` and the verified launched PID. Launch verification confirms the process path; it does not prove permission-dependent Dock behavior or UI interactions.
