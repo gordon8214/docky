@@ -41,7 +41,7 @@ final class DockSettingsService {
     /// hasn't moved the size slider in this build; otherwise returns
     /// the user's value. Override marking happens in `setTileSize`.
     var displayTileSize: CGFloat {
-        if WindowsTaskbarStyle.isActive { return 40 }
+        if WindowsTaskbarStyle.isActive { return WindowsTaskbarStyle.metrics.buttonSize }
         if !DockyPreferences.shared.isAppearanceOverridden(Keys.tileSize),
            let themed = ThemeManager.shared.activeManifest?.behavior?.tileSize,
            themed > 0 {

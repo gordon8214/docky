@@ -52,11 +52,13 @@ extension DockCanvasView {
     func layoutWindowsTaskbar() {
         groupBackdrops.values.forEach { $0.removeFromSuperview() }
         groupBackdrops.removeAll()
+        let metrics = WindowsTaskbarStyle.metrics
+        windowsMetrics = metrics
         let apps = windowsAppTiles
         configureWindowsStatus()
         let geometry = WindowsTaskbarGeometry(
             width: bounds.width, appCount: apps.count,
-            trayWidth: windowsStatus?.preferredWidth ?? 200)
+            trayWidth: windowsStatus?.preferredWidth ?? 200, metrics: metrics)
         let changed = windowsTileIDs != apps.map(\.id)
         let animate = !windowsTileIDs.isEmpty && changed && !WindowsTaskbarStyle.reducesMotion
         let duration =
@@ -83,7 +85,7 @@ extension DockCanvasView {
         // Always host in a clip view so centered-to-overflow changes preserve hierarchy and scroll position.
         configureSectionHost(document, id: sectionID, frame: geometry.apps, scrolling: true, vertical: false)
         document.frame = CGRect(
-            x: 0, y: 0, width: max(geometry.apps.width, geometry.contentWidth), height: 48)
+            x: 0, y: 0, width: max(geometry.apps.width, geometry.contentWidth), height: metrics.height)
         windowsStatus?.frame = geometry.tray
         controller.tileFrames.removeAll(keepingCapacity: true)
         positionWindowsTiles(apps, in: document, oldOrigins: oldOrigins, animate: animate, duration: duration)
@@ -98,6 +100,7 @@ extension DockCanvasView {
             windowsStatus = status
             addSubview(status)
         }
+        windowsStatus?.metrics = windowsMetrics
         windowsStatus?.extraTiles = windowsExtraTiles
         windowsStatus?.calendarTile = controller.displayTiles.first {
             if case .widget(let widget) = $0.content {
@@ -143,7 +146,10 @@ extension DockCanvasView {
                 tileView.removeFromSuperview()
                 document.addSubview(tileView)
             }
-            let target = CGRect(x: CGFloat(index) * 44 + 2, y: 4, width: 40, height: 40)
+            let metrics = windowsMetrics
+            let target = CGRect(
+                x: CGFloat(index) * metrics.pitch + metrics.buttonOffset, y: metrics.inset,
+                width: metrics.buttonSize, height: metrics.buttonSize)
             tileView.frame = target
             if animate, existed, let old = oldOrigins[tile.id], let layer = tileView.layer {
                 let origin = document.convert(old, from: self)
@@ -152,10 +158,10 @@ extension DockCanvasView {
                     offset: offset, removing: duration == WindowsTaskbarStyle.removalDuration)
                 layer.add(motion, forKey: "taskbar-position")
             }
-            tileView.interaction.renderedTileSize = 40
+            tileView.interaction.renderedTileSize = metrics.buttonSize
             configure(tileView, tile: tile, magnification: .inactive)
             if animate, !existed {
-                let entry = WindowsTaskbarStyle.entryAnimation()
+                let entry = WindowsTaskbarStyle.entryAnimation(metrics: metrics)
                 tileView.imageView.layer?.add(entry, forKey: "taskbar-entry")
             }
         }

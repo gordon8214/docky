@@ -39,7 +39,7 @@ extension MainWindow {
     func resolveContentLayout(bounds layoutBounds: CGRect, position: ResolvedDockWindowPosition,
                               horizontalPadding: CGFloat, verticalPadding: CGFloat) -> ContentLayout {
         if WindowsTaskbarStyle.isActive {
-            let size = CGSize(width: layoutBounds.width, height: WindowsTaskbarStyle.height)
+            let size = CGSize(width: layoutBounds.width, height: WindowsTaskbarStyle.metrics.height)
             layout.setContentScale(1)
             layout.setCompactsWidgetsForOverflow(false)
             layout.setChromeSize(size)

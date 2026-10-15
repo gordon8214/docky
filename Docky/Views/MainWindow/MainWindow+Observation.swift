@@ -43,6 +43,7 @@ extension MainWindow {
             _ = dockSettings.tileSize
             _ = dockSettings.largeSize
             _ = dockSettings.magnification
+            _ = preferences.windowsTaskbarHeight
             self.applyCurrentFrame(animated: true, duration: self.tileMutationAnimationDuration)
         }
         .store(in: &cancellables)

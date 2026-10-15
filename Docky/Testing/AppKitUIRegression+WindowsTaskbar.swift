@@ -11,9 +11,13 @@
             let oldPosition = prefs.windowPosition
             let oldSize = settings.tileSize
             let oldMagnification = settings.magnification
+            let oldTaskbarHeight = prefs.windowsTaskbarHeight
             defer {
                 if let oldTheme { manager.setActive(oldTheme) } else { manager.clearActive() }
+                prefs.windowsTaskbarHeight = oldTaskbarHeight
             }
+            // The suite runs against the real defaults, so start from the standard size.
+            prefs.windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
             manager.setActive("windows")
             precondition(WindowsTaskbarStyle.isActive)
             precondition(
@@ -34,6 +38,7 @@
             checkWindowsGeometryAndMotion()
             checkWindowsViews()
             await checkWindowsReviewRegressions()
+            await checkWindowsTaskbarSize()
             manager.clearActive()
             precondition(!WindowsTaskbarStyle.isActive && prefs.effectiveWindowPosition == oldPosition)
             precondition(settings.displayTileSize == oldSize)
@@ -149,7 +154,7 @@
             }
             tile.updateWindowsIndicator()
         }
-        private static func captureWindowsSnapshots(root: DockRootView) {
+        static func captureWindowsSnapshots(root: DockRootView, suffix: String = "") {
             guard ProcessInfo.processInfo.arguments.contains("--windows-taskbar-snapshots") else { return }
             let directory = URL(fileURLWithPath: "/tmp/docky-windows-snapshots", isDirectory: true)
             do {
@@ -166,7 +171,7 @@
                     preconditionFailure("Taskbar PNG required")
                 }
                 do {
-                    try png.write(to: directory.appendingPathComponent("taskbar-\(name).png"))
+                    try png.write(to: directory.appendingPathComponent("taskbar-\(name)\(suffix).png"))
                 } catch { preconditionFailure("Cannot save snapshot: \(error)") }
             }
         }

@@ -61,6 +61,25 @@ func CGSSetWindowAlpha(
     _ alpha: Float
 ) -> Int32
 
+@_silgen_name("CGSSetConnectionProperty") @discardableResult
+func CGSSetConnectionProperty(
+    _ connection: CGSConnectionID,
+    _ targetConnection: CGSConnectionID,
+    _ key: CFString,
+    _ value: CFTypeRef
+) -> Int32
+
+// Docky is an accessory app that is almost never active, and WindowServer
+// ignores cursor changes from background connections. Without this, dragging
+// the Windows taskbar's top edge still resizes it, but the resize cursor never
+// appears. Callers enable it only while the pointer is over that edge.
+@MainActor
+func setsCursorInBackground(_ enabled: Bool) {
+    let connection = CGSMainConnectionID()
+    let value: CFBoolean = enabled ? kCFBooleanTrue : kCFBooleanFalse
+    CGSSetConnectionProperty(connection, connection, "SetsCursorInBackground" as CFString, value)
+}
+
 // MARK: - SkyLight Process Switching (SLPS)
 
 struct ProcessSerialNumber {

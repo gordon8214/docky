@@ -1773,6 +1773,28 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Height of the Windows 11 taskbar, in whole points. Dragging the bar's
+    /// top edge or the Settings field changes it; the bar's buttons, icons,
+    /// and tray scale with it.
+    var windowsTaskbarHeight: CGFloat {
+        didSet {
+            let clampedValue = WindowsTaskbarMetrics.clampedHeight(windowsTaskbarHeight)
+            guard clampedValue != oldValue else {
+                if windowsTaskbarHeight != clampedValue {
+                    windowsTaskbarHeight = clampedValue
+                }
+                return
+            }
+
+            if windowsTaskbarHeight != clampedValue {
+                windowsTaskbarHeight = clampedValue
+                return
+            }
+
+            defaults.set(Double(clampedValue), forKey: Keys.windowsTaskbarHeight)
+        }
+    }
+
     /// Dwell time the pointer must spend at the screen edge before Docky
     /// reveals while a fullscreen app is on the target screen. Mirrors the
     /// macOS Dock's intent-gating behavior in fullscreen.
@@ -3504,6 +3526,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let opensAtLogin = "docky.opensAtLogin"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
         static let autohideAnimationDuration = "docky.autohideAnimationDuration"
+        static let windowsTaskbarHeight = "docky.windowsTaskbarHeight"
         static let fullscreenRevealDelay = "docky.fullscreenRevealDelay"
         static let windowPreviewHoverDelay = "docky.windowPreviewHoverDelay"
         static let windowPreviewLayout = "docky.windowPreviewLayout"
@@ -3744,6 +3767,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedOpensAtLogin = defaults.object(forKey: Keys.opensAtLogin) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
         let storedAutohideAnimationDuration = defaults.object(forKey: Keys.autohideAnimationDuration) as? Double
+        let storedWindowsTaskbarHeight = defaults.object(forKey: Keys.windowsTaskbarHeight) as? Double
         let storedFullscreenRevealDelay = defaults.object(forKey: Keys.fullscreenRevealDelay) as? Double
         let storedWindowPreviewHoverDelay = defaults.object(forKey: Keys.windowPreviewHoverDelay) as? Double
         let storedWindowPreviewLayout = defaults.string(forKey: Keys.windowPreviewLayout)
@@ -3874,6 +3898,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.opensAtLogin = storedOpensAtLogin ?? LaunchAtLoginService.shared.isEnabled
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
         self.autohideAnimationDuration = min(max(storedAutohideAnimationDuration ?? DefaultValues.autohideAnimationDuration, 0), 1)
+        self.windowsTaskbarHeight = WindowsTaskbarMetrics.clampedHeight(
+            storedWindowsTaskbarHeight.map { CGFloat($0) } ?? WindowsTaskbarMetrics.standardHeight)
         self.fullscreenRevealDelay = max(storedFullscreenRevealDelay ?? DefaultValues.fullscreenRevealDelay, 0)
         self.windowPreviewHoverDelay = max(storedWindowPreviewHoverDelay ?? DefaultValues.windowPreviewHoverDelay, 0)
         self.windowPreviewLayout = storedWindowPreviewLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowPreviewLayout
@@ -4057,6 +4083,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         tileVerticalPadding = DefaultValues.tileVerticalPadding
         tileSpacing = DefaultValues.tileSpacing
         tileIconPadding = DefaultValues.tileIconPadding
+        windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
 
         // Tile Hover Effect
         tileHoverOpacity = nil
@@ -4198,6 +4225,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         autohideAnimationDuration = DefaultValues.autohideAnimationDuration
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
+        windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
         windowPreviewHoverDelay = DefaultValues.windowPreviewHoverDelay
         windowPreviewLayout = DefaultValues.windowPreviewLayout
         overflowBehavior = DefaultValues.overflowBehavior

@@ -84,9 +84,13 @@ The right-side tray includes a prototype for actual macOS menu extras. See
 [menu-extra behavior, validation, and native popup findings](menu-extras-prototype.md).
 
 The bundled `windows` theme uses the optional `behavior.taskbarStyle: "windows11"`
-preset. It resolves a bottom, full-width 48-point bar with 40-point buttons,
-24-point icons, and 44-point pitch without rewriting saved placement, size,
-magnification, appearance overrides, or tile order. Additional tiles remain
+preset. It resolves a bottom, full-width bar without rewriting saved placement,
+size, magnification, appearance overrides, or tile order. The bar is 48 points
+tall by default, with 40-point buttons, 24-point icons, and 44-point pitch.
+Dragging its top edge, or the Taskbar Size field in Settings, sets the height
+from 32 to 96 points (`windowsTaskbarHeight`), and `WindowsTaskbarMetrics`
+scales every button, icon, indicator, badge, and tray control with it. Native
+menu extras keep their menu-bar size, so their slots grow but never shrink. Additional tiles remain
 available through the tray overflow; battery details are available in the battery
 context menu. Status controls reflect Mac state and open Mac settings.
 

@@ -2,17 +2,26 @@ import AppKit
 import QuartzCore
 
 extension NativeDockTileView {
+    var windowsMetrics: WindowsTaskbarMetrics { canvas?.windowsMetrics ?? .standard }
     func layoutWindowsTile() {
-        imageView.frame = CGRect(x: (bounds.width - 24) / 2, y: 8, width: 24, height: 24)
+        let metrics = windowsMetrics
+        imageView.frame = CGRect(
+            x: ((bounds.width - metrics.iconSize) / 2).rounded(.down), y: metrics.iconOrigin,
+            width: metrics.iconSize, height: metrics.iconSize)
         imageView.layer?.masksToBounds = false
         hoverBackdrop.frame = bounds
         activeBackdrop.frame = bounds
         pressOverlay.frame = .zero
-        indicator.frame = CGRect(x: (bounds.width - 16) / 2, y: 36, width: 16, height: 3)
-        badge.font = WindowsTaskbarStyle.font(size: 9)
-        let badgeWidth = max(16, badge.intrinsicContentSize.width + 6)
-        badge.frame = CGRect(x: bounds.width - badgeWidth, y: 2, width: badgeWidth, height: 16)
-        content?.frame = bounds.insetBy(dx: 4, dy: 4)
+        let indicatorWidth = metrics.activeIndicatorWidth
+        indicator.frame = CGRect(
+            x: (bounds.width - indicatorWidth) / 2, y: metrics.indicatorY,
+            width: indicatorWidth, height: metrics.indicatorHeight)
+        badge.font = WindowsTaskbarStyle.font(size: metrics.badgeFontSize)
+        badge.layer?.cornerRadius = metrics.badgeHeight / 2
+        let badgeWidth = max(metrics.badgeHeight, badge.intrinsicContentSize.width + metrics.badgePadding)
+        badge.frame = CGRect(
+            x: bounds.width - badgeWidth, y: metrics.badgeY, width: badgeWidth, height: metrics.badgeHeight)
+        content?.frame = bounds.insetBy(dx: metrics.inset, dy: metrics.inset)
     }
     func updateWindowsAppearance() {
         let pressed = TilePressService.shared.pressedTileID == interaction.tile.id && !wasDragging
@@ -21,7 +30,8 @@ extension NativeDockTileView {
             || interaction.isDocumentDropTarget
         layer?.backgroundColor =
             selected ? WindowsTaskbarStyle.accent(effectiveAppearance).withAlphaComponent(0.2).cgColor : nil
-        layer?.cornerRadius = 4
+        let cornerRadius = windowsMetrics.cornerRadius
+        layer?.cornerRadius = cornerRadius
         layer?.shadowOpacity = 0
         alphaValue = 1
         pressOverlay.opacity = 0
@@ -29,8 +39,8 @@ extension NativeDockTileView {
         activeBackdrop.image = nil
         hoverBackdrop.isHidden = false
         activeBackdrop.isHidden = false
-        hoverBackdrop.layer?.cornerRadius = 4
-        activeBackdrop.layer?.cornerRadius = 4
+        hoverBackdrop.layer?.cornerRadius = cornerRadius
+        activeBackdrop.layer?.cornerRadius = cornerRadius
         hoverBackdrop.layer?.backgroundColor =
             WindowsTaskbarStyle.highlight(effectiveAppearance, pressed: pressed).cgColor
         activeBackdrop.layer?.backgroundColor = WindowsTaskbarStyle.highlight(effectiveAppearance).cgColor
@@ -53,22 +63,25 @@ extension NativeDockTileView {
         indicator.isHidden = !interaction.showsRunningIndicator
         indicator.layer?.backgroundColor = nil
         if windowsIndicator.superlayer == nil { indicator.layer?.addSublayer(windowsIndicator) }
-        windowsIndicator.cornerRadius = 1.5
+        windowsIndicator.cornerRadius = windowsMetrics.indicatorHeight / 2
         windowsIndicator.backgroundColor =
             (interaction.isFrontmostTile
             ? WindowsTaskbarStyle.accent(effectiveAppearance)
             : WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.45)).cgColor
-        setWindowsIndicatorWidth(interaction.isFrontmostTile ? 16 : 6)
+        let metrics = windowsMetrics
+        setWindowsIndicatorWidth(
+            interaction.isFrontmostTile ? metrics.activeIndicatorWidth : metrics.inactiveIndicatorWidth)
     }
     func setWindowsIndicatorWidth(_ width: CGFloat) {
         // AppKit manages the host layer with an origin anchor. Animate our own centered layer instead.
+        let metrics = windowsMetrics
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        windowsIndicator.position = CGPoint(x: 8, y: 1.5)
+        windowsIndicator.position = CGPoint(x: metrics.activeIndicatorWidth / 2, y: metrics.indicatorHeight / 2)
         CATransaction.commit()
         WindowsTaskbarStyle.animate(
             windowsIndicator, keyPath: "bounds",
-            to: NSValue(rect: CGRect(x: 0, y: 0, width: width, height: 3)),
+            to: NSValue(rect: CGRect(x: 0, y: 0, width: width, height: metrics.indicatorHeight)),
             duration: 0.12)
     }
 }

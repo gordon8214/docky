@@ -66,7 +66,16 @@ extension MainWindow {
 
         let frame = CGRect(origin: origin, size: size)
         revealTriggerZone = makeRevealTriggerZone(in: screenBounds, frame: frame, position: position)
-        applyFrame(frame, animated: animated, duration: duration)
+        // The taskbar's content lays out at a new size at once, so animating the
+        // window to that size would clip it until the animation finished.
+        let taskbarHeight = WindowsTaskbarStyle.isActive ? contentLayout.size.height : nil
+        let taskbarHeightChanged =
+            taskbarHeight != nil && lastTaskbarHeight != nil && taskbarHeight != lastTaskbarHeight
+        lastTaskbarHeight = taskbarHeight
+        applyFrame(frame, animated: animated && !isResizingTaskbar && !taskbarHeightChanged, duration: duration)
+        // Each published reservation spawns a verification probe and reflows
+        // other apps' windows, so a resize drag publishes once, when it ends.
+        guard !isResizingTaskbar else { return }
         updateReservation(screen: resolvedScreen, bounds: layoutBounds, size: size, position: position)
     }
 
@@ -282,6 +291,9 @@ extension MainWindow {
     }
 
     func targetScreen() -> NSScreen? {
+        // Keep the taskbar on its display while its top edge is dragged, even
+        // when the pointer crosses into a display stacked above it.
+        if isResizingTaskbar, let screen { return screen }
         switch preferences.windowDisplayTarget {
         case .primaryDisplay:
             return NSScreen.screens.first ?? NSScreen.main

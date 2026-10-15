@@ -154,6 +154,7 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         if WindowsTaskbarStyle.isActive { updateWindowsAppearance(); return }
         let prefs = interaction.preferences
         badge.font = .systemFont(ofSize: 10, weight: .semibold)
+        badge.layer?.cornerRadius = 8
         for view in [hoverBackdrop, activeBackdrop, imageView] { view.layer?.removeAllAnimations() }
         let selected =
             interaction.isAppFolderDropTarget || interaction.isTrashDropTarget || interaction.isDocumentDropTarget

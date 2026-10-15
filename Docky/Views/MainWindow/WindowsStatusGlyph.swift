@@ -6,6 +6,9 @@ enum WindowsStatusGlyph {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         context.translateBy(x: rect.minX, y: rect.minY)
+        // The chevron is drawn on an 18-point grid.
+        let scale = rect.width / 18
+        context.scaleBy(x: scale, y: scale)
         color.setStroke()
         let path = NSBezierPath()
         path.lineWidth = 1.2

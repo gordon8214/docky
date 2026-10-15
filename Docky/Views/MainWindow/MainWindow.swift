@@ -207,6 +207,9 @@ final class MainWindow: NSPanel {
     var lastPointerScreenFrame: CGRect?
     var isFullscreenActiveOnTargetScreen = false
     var fullscreenRevealAuthorized = false
+    /// True while the Windows taskbar's top edge is being dragged.
+    var isResizingTaskbar = false
+    var lastTaskbarHeight: CGFloat?
 
     var isFullscreenActive: Bool { isFullscreenActiveOnTargetScreen }
     var permitsPassivePresentation: Bool { !isFullscreenActiveOnTargetScreen || fullscreenRevealAuthorized }
@@ -241,8 +244,8 @@ final class MainWindow: NSPanel {
     ) {
         visibilityState = DockyPreferences.shared.autohidesWindow ? .hidden : .visible
         // Force `.nonactivatingPanel` regardless of what the XIB hands us so
-        // tile clicks never bring Docky to the foreground. Other bits stay
-        // intact (the XIB-supplied mask covers titled/resizable/etc.).
+        // tile clicks never bring Docky to the foreground. The XIB supplies a
+        // borderless mask, and `styleMask` keeps `.resizable` off.
         super.init(
             contentRect: contentRect,
             styleMask: style.union(.nonactivatingPanel),
@@ -306,6 +309,15 @@ final class MainWindow: NSPanel {
         if let localDragRevealMonitor {
             NSEvent.removeMonitor(localDragRevealMonitor)
         }
+    }
+
+    /// Only Docky sizes the dock. ScreenCaptureKit's ReplayKit window-rotation
+    /// lock restores app windows' style masks with `.resizable` added, which
+    /// would let AppKit resize this panel from its edges and swallow drags on
+    /// the Windows taskbar's resize handle.
+    override var styleMask: NSWindow.StyleMask {
+        get { super.styleMask }
+        set { super.styleMask = newValue.subtracting(.resizable) }
     }
 
     override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {

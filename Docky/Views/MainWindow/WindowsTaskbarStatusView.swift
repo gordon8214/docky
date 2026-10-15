@@ -4,6 +4,14 @@ import Combine
 final class WindowsTaskbarStatusView: NSView {
     var extraTiles: [Tile] = [] { didSet { overflow.isHidden = extraTiles.isEmpty } }
     var calendarTile: Tile?
+    var metrics = WindowsTaskbarMetrics.standard {
+        didSet {
+            guard metrics != oldValue else { return }
+            for button in [overflow, clock] { button.metrics = metrics }
+            menuExtras.metrics = metrics
+            needsLayout = true
+        }
+    }
     private let overflow = WindowsStatusButton(glyph: "overflow", label: "Show additional Dock items")
     private let clock = WindowsStatusButton(glyph: "clock", label: "Date and time")
     private let menuExtras = WindowsMenuExtrasView()
@@ -12,7 +20,8 @@ final class WindowsTaskbarStatusView: NSView {
     private var popup: WindowsTaskbarPopup?
     override var isFlipped: Bool { true }
     var preferredWidth: CGFloat {
-        (extraTiles.isEmpty ? 0 : 32) + menuExtras.preferredWidth + 98 + 12
+        (extraTiles.isEmpty ? 0 : metrics.overflowWidth) + menuExtras.preferredWidth + metrics.clockWidth
+            + metrics.margin
     }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -54,13 +63,15 @@ final class WindowsTaskbarStatusView: NSView {
     }
     override func layout() {
         super.layout()
-        var offset: CGFloat = overflow.isHidden ? 0 : 32
-        overflow.frame = CGRect(x: 0, y: 4, width: 32, height: 40)
+        let inset = metrics.inset
+        let height = metrics.buttonSize
+        var offset: CGFloat = overflow.isHidden ? 0 : metrics.overflowWidth
+        overflow.frame = CGRect(x: 0, y: inset, width: metrics.overflowWidth, height: height)
         let extrasWidth = min(menuExtras.preferredWidth,
                               max(0, bounds.width - preferredWidth + menuExtras.preferredWidth))
-        menuExtras.frame = CGRect(x: offset, y: 4, width: extrasWidth, height: 40)
+        menuExtras.frame = CGRect(x: offset, y: inset, width: extrasWidth, height: height)
         offset += extrasWidth
-        clock.frame = CGRect(x: offset, y: 4, width: 98, height: 40)
+        clock.frame = CGRect(x: offset, y: inset, width: metrics.clockWidth, height: height)
     }
     func dismissPopup() {
         popup?.dismiss()
@@ -151,6 +162,7 @@ final class WindowsTaskbarExtraContent: NSView {
 final class WindowsStatusButton: NSView {
     var glyph: String { didSet { needsDisplay = true } }
     var clockText = "" { didSet { needsDisplay = true } }
+    var metrics = WindowsTaskbarMetrics.standard { didSet { needsDisplay = true } }
     var onActivate: (() -> Void)?
     private var hovered = false
     private var pressed = false
@@ -203,21 +215,27 @@ final class WindowsStatusButton: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if hovered || pressed {
             WindowsTaskbarStyle.highlight(effectiveAppearance, pressed: pressed).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+            NSBezierPath(roundedRect: bounds, xRadius: metrics.cornerRadius, yRadius: metrics.cornerRadius).fill()
         }
         let color = WindowsTaskbarStyle.foreground(effectiveAppearance)
         if glyph == "clock" {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .right
+            // Leave room below the text so two lines still fit when the bar is small.
+            let inset = metrics.clockInset
             (clockText as NSString).draw(
-                in: bounds.insetBy(dx: 7, dy: 4),
+                in: CGRect(
+                    x: inset, y: metrics.inset, width: max(0, bounds.width - inset * 2),
+                    height: max(0, bounds.height - metrics.inset)),
                 withAttributes: [
-                    .font: WindowsTaskbarStyle.font(size: 12), .foregroundColor: color,
+                    .font: WindowsTaskbarStyle.font(size: metrics.clockFontSize), .foregroundColor: color,
                     .paragraphStyle: paragraph
                 ])
             return
         }
+        let size = metrics.overflowGlyphSize
         WindowsStatusGlyph.drawOverflow(
-            in: CGRect(x: (bounds.width - 18) / 2, y: 11, width: 18, height: 18), color: color)
+            in: CGRect(x: (bounds.width - size) / 2, y: (bounds.height - size) / 2, width: size, height: size),
+            color: color)
     }
 }

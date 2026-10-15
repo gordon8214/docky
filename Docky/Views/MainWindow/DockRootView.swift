@@ -11,6 +11,7 @@ private struct HiddenDragImageSnapshot {
 final class DockRootView: NSView {
     private let chrome = DockChromeView()
     let canvas = DockCanvasView()
+    let resizeHandle = WindowsTaskbarResizeHandle()
     private var subscriptions = Set<AnyCancellable>()
     private var hiddenDragImageOriginals: [HiddenDragImageSnapshot] = []
     override var isFlipped: Bool { true }
@@ -18,6 +19,7 @@ final class DockRootView: NSView {
         super.init(frame: frameRect)
         addSubview(chrome)
         addSubview(canvas)
+        addSubview(resizeHandle)
         registerForDraggedTypes([.fileURL, .string])
         DockLayoutService.shared.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.needsLayout = true }
@@ -70,6 +72,9 @@ final class DockRootView: NSView {
         chrome.refresh()
         canvas.frame = bounds
         canvas.needsLayout = true
+        resizeHandle.isHidden = !WindowsTaskbarStyle.isActive
+        resizeHandle.frame = CGRect(
+            x: 0, y: 0, width: bounds.width, height: WindowsTaskbarStyle.metrics.resizeHandleHeight)
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true

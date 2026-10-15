@@ -20,6 +20,7 @@ final class DockCanvasView: NSView {
     var windowsStatus: WindowsTaskbarStatusView?
     var windowsTileIDs: [String] = []
     var windowsAnimationTimer: Timer?
+    var windowsMetrics = WindowsTaskbarMetrics.standard
     var groupBackdrops: [String: NSView] = [:]
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }

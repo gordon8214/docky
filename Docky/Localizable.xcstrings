@@ -4457,6 +4457,16 @@
         }
       }
     },
+    "Taskbar Size" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tamaño de la barra de tareas"
+          }
+        }
+      }
+    },
     "Temperature" : {
 
     },

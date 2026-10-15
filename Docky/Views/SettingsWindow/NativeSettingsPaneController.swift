@@ -9,6 +9,8 @@ final class NativeSettingsPaneController: NSViewController {
     let stack = NSStackView()
     var subscriptions = Set<AnyCancellable>()
     var attachment: URL?
+    /// Whether the tile layout pane shows the Windows taskbar's size instead of the tile size.
+    var showsTaskbarSize = false
     init(id: String) {
         self.id = id
         super.init(nibName: nil, bundle: nil)
@@ -41,6 +43,11 @@ final class NativeSettingsPaneController: NSViewController {
             observeChanges { [weak self] in
                 _ = DockyPreferences.shared.hiddenAppBundleIdentifiers
                 self?.rebuild()
+            }.store(in: &subscriptions)
+        } else if id == "appearanceTileLayout" {
+            observeChanges { [weak self] in
+                guard let self, WindowsTaskbarStyle.isActive != self.showsTaskbarSize else { return }
+                self.rebuild()
             }.store(in: &subscriptions)
         }
     }
@@ -126,10 +133,19 @@ final class NativeSettingsPaneController: NSViewController {
     }
     func systemDockAppearanceRows() {
         let settings = DockSettingsService.shared
-        add(
-            NativePreferenceField.number(
-                String(localized: "Tile Size"), get: { Double(settings.tileSize) },
-                set: { settings.setTileSize(CGFloat($0)) }, range: 16...128))
+        showsTaskbarSize = WindowsTaskbarStyle.isActive
+        if showsTaskbarSize {
+            let range = WindowsTaskbarMetrics.heightRange
+            add(
+                NativePreferenceField.number(
+                    String(localized: "Taskbar Size"), \.windowsTaskbarHeight,
+                    range: Double(range.lowerBound)...Double(range.upperBound)))
+        } else {
+            add(
+                NativePreferenceField.number(
+                    String(localized: "Tile Size"), get: { Double(settings.tileSize) },
+                    set: { settings.setTileSize(CGFloat($0)) }, range: 16...128))
+        }
         let checkbox = NSButton(checkboxWithTitle: String(localized: "Magnification"), target: nil, action: nil)
         let row = NativeFormRow(title: "", control: checkbox)
         row.bind(checkbox) { settings.setMagnification(checkbox.state == .on) }

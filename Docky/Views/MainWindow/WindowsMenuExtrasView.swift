@@ -11,7 +11,10 @@ final class WindowsMenuExtrasView: NSView {
     private var nativeInteraction: UUID?
     private weak var interactionWindow: MainWindow?
     override var isFlipped: Bool { true }
-    var preferredWidth: CGFloat { min(448, displayedItems.reduce(0) { $0 + slotWidth($1) }) }
+    var metrics = WindowsTaskbarMetrics.standard { didSet { if metrics != oldValue { needsLayout = true } } }
+    var preferredWidth: CGFloat {
+        min(metrics.menuExtrasMaximumWidth, displayedItems.reduce(0) { $0 + slotWidth($1) })
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -134,18 +137,21 @@ final class WindowsMenuExtrasView: NSView {
         super.layout()
         scroll.frame = bounds
         let extras = displayedItems
-        content.frame = CGRect(x: 0, y: 0, width: extras.reduce(0) { $0 + slotWidth($1) }, height: 40)
+        let height = metrics.buttonSize
+        content.frame = CGRect(x: 0, y: 0, width: extras.reduce(0) { $0 + slotWidth($1) }, height: height)
+        let buttonHeight = metrics.menuExtraButtonHeight
         var offset: CGFloat = 0
         for extra in extras {
             let width = slotWidth(extra)
-            buttons[extra.id]?.frame = CGRect(x: offset, y: 4, width: width, height: 32)
+            buttons[extra.id]?.frame = CGRect(
+                x: offset, y: ((height - buttonHeight) / 2).rounded(.down), width: width, height: buttonHeight)
             offset += width
         }
     }
 
     private func slotWidth(_ extra: MenuExtra) -> CGFloat {
         MenuExtrasNativeBridge.shared.enabled && !extra.id.contains("com.apple.menuextra.")
-            ? max(32, extra.snapshot.frame.width) : 32
+            ? max(metrics.menuExtraSlotWidth, extra.snapshot.frame.width) : metrics.menuExtraSlotWidth
     }
 
     override func viewDidChangeEffectiveAppearance() {

@@ -5,10 +5,10 @@ import QuartzCore
 @MainActor
 enum WindowsTaskbarStyle {
     static var isActive: Bool { ThemeManager.shared.activeManifest?.behavior?.taskbarStyle == "windows11" }
-    static let height: CGFloat = 48
-    static let buttonSize: CGFloat = 40
-    static let iconSize: CGFloat = 24
-    static let pitch: CGFloat = 44
+    /// The user's taskbar size, set by dragging the bar's top edge or from Settings.
+    static var metrics: WindowsTaskbarMetrics {
+        WindowsTaskbarMetrics(height: DockyPreferences.shared.windowsTaskbarHeight)
+    }
     // Source: Windows Taskbar Behavior.mov, insertions at 11.758–12.033 and 16.817–17.075.
     static let layoutDuration: TimeInterval = 0.291667
     static let removalDuration: TimeInterval = 0.233333
@@ -77,7 +77,7 @@ enum WindowsTaskbarStyle {
         return animation
     }
     /// Edge's entrance at 11.933–12.433 seconds includes a delayed, damped bounce.
-    static func entryAnimation() -> CAKeyframeAnimation {
+    static func entryAnimation(metrics: WindowsTaskbarMetrics = .standard) -> CAKeyframeAnimation {
         let samples: [(Double, Double)] = [
             (0, 48), (0.18, 48), (0.191667, 31), (0.208333, 19), (0.225, 12),
             (0.241667, 8), (0.258333, 4), (0.275, 2), (0.291667, 0),
@@ -88,7 +88,7 @@ enum WindowsTaskbarStyle {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
         animation.duration = 0.691667
         animation.keyTimes = samples.map { NSNumber(value: $0.0 / animation.duration) }
-        animation.values = samples.map { NSNumber(value: $0.1) }
+        animation.values = samples.map { NSNumber(value: $0.1 * Double(metrics.scale)) }
         animation.calculationMode = .linear
         return animation
     }
@@ -116,19 +116,70 @@ enum WindowsTaskbarStyle {
     }
 }
 
+/// Taskbar sizes derived from the bar height. Every value matches the fixed
+/// Windows 11 layout at the standard 48-point height and scales with it.
+struct WindowsTaskbarMetrics: Equatable, Sendable {
+    static let standardHeight: CGFloat = 48
+    static let heightRange: ClosedRange<CGFloat> = 32...96
+    static let standard = WindowsTaskbarMetrics(height: standardHeight)
+
+    let height: CGFloat
+
+    init(height: CGFloat) {
+        self.height = Self.clampedHeight(height)
+    }
+
+    /// Whole points within `heightRange`.
+    static func clampedHeight(_ height: CGFloat) -> CGFloat {
+        guard height.isFinite else { return standardHeight }
+        return min(max(height.rounded(), heightRange.lowerBound), heightRange.upperBound)
+    }
+
+    var scale: CGFloat { height / Self.standardHeight }
+    /// Gap between the bar edges and its buttons, and between buttons.
+    var inset: CGFloat { (4 * scale).rounded() }
+    var buttonSize: CGFloat { height - 2 * inset }
+    var pitch: CGFloat { buttonSize + inset }
+    /// Leading offset of the first button inside the apps section.
+    var buttonOffset: CGFloat { (inset / 2).rounded(.down) }
+    var margin: CGFloat { (12 * scale).rounded() }
+    var iconSize: CGFloat { (24 * scale).rounded() }
+    var iconOrigin: CGFloat { ((buttonSize - iconSize) / 2).rounded(.down) }
+    var cornerRadius: CGFloat { 4 * scale }
+    var indicatorY: CGFloat { buttonSize - inset }
+    var indicatorHeight: CGFloat { max(2, (3 * scale).rounded()) }
+    var activeIndicatorWidth: CGFloat { (16 * scale).rounded() }
+    var inactiveIndicatorWidth: CGFloat { (6 * scale).rounded() }
+    var badgeFontSize: CGFloat { 9 * scale }
+    var badgeHeight: CGFloat { (16 * scale).rounded() }
+    var badgeY: CGFloat { (2 * scale).rounded() }
+    var badgePadding: CGFloat { (6 * scale).rounded() }
+    var overflowWidth: CGFloat { (32 * scale).rounded() }
+    var overflowGlyphSize: CGFloat { (18 * scale).rounded() }
+    var clockWidth: CGFloat { (98 * scale).rounded() }
+    var clockFontSize: CGFloat { 12 * scale }
+    var clockInset: CGFloat { (7 * scale).rounded() }
+    // Native menu extras keep their menu-bar size, so their slots grow but never shrink.
+    var menuExtraSlotWidth: CGFloat { max(32, (32 * scale).rounded()) }
+    var menuExtraButtonHeight: CGFloat { min(buttonSize, max(32, (32 * scale).rounded())) }
+    var menuExtrasMaximumWidth: CGFloat { max(448, (448 * scale).rounded()) }
+    /// Height of the top-edge strip that resizes the bar.
+    var resizeHandleHeight: CGFloat { max(4, inset) }
+}
+
 struct WindowsTaskbarGeometry {
     let apps: CGRect
     let tray: CGRect
     let contentWidth: CGFloat
     var scrolls: Bool { contentWidth > apps.width }
-    init(width: CGFloat, appCount: Int, trayWidth: CGFloat) {
+    init(width: CGFloat, appCount: Int, trayWidth: CGFloat, metrics: WindowsTaskbarMetrics = .standard) {
         let available = max(0, width)
         let trayLength = min(available, max(0, trayWidth))
-        tray = CGRect(x: available - trayLength, y: 0, width: trayLength, height: 48)
-        contentWidth = CGFloat(max(0, appCount)) * 44
-        let limit = max(0, tray.minX - 12)
-        let length = min(contentWidth, max(0, limit - 12))
-        let origin = max(12, min((available - contentWidth) / 2, limit - length))
-        apps = CGRect(x: min(origin, limit), y: 0, width: length, height: 48)
+        tray = CGRect(x: available - trayLength, y: 0, width: trayLength, height: metrics.height)
+        contentWidth = CGFloat(max(0, appCount)) * metrics.pitch
+        let limit = max(0, tray.minX - metrics.margin)
+        let length = min(contentWidth, max(0, limit - metrics.margin))
+        let origin = max(metrics.margin, min((available - contentWidth) / 2, limit - length))
+        apps = CGRect(x: min(origin, limit), y: 0, width: length, height: metrics.height)
     }
 }

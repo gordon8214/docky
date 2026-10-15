@@ -12,7 +12,9 @@ including any edge gap. Magnification headroom and expanded presentations do
 not increase this reservation. Autohide and fullscreen reserve nothing, even
 during a temporary reveal. Layout reads physical screen bounds and the display
 menu-bar height, never its own reduced `NSScreen.visibleFrame`. Top placement
-retains menu-bar clearance.
+retains menu-bar clearance. While the Windows taskbar's top edge is dragged,
+the bar resizes without publishing; the new reservation is published once, when
+the drag ends.
 
 ## Private ABI verified on macOS 27.0.1 (26A434)
 
