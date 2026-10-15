@@ -16,7 +16,6 @@ final class DockRootView: NSView {
     override var isFlipped: Bool { true }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        WindowsTaskbarMenu.install()
         addSubview(chrome)
         addSubview(canvas)
         registerForDraggedTypes([.fileURL, .string])

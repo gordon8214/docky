@@ -7,8 +7,8 @@
             checkWindowsSavedContent()
             checkWindowsEmptyDropRegion()
             let root = DockRootView(frame: CGRect(x: 0, y: 0, width: 1000, height: 48))
-            let window = NSWindow(contentRect: root.frame, styleMask: .borderless,
-                                  backing: .buffered, defer: false)
+            let window = WindowsReviewWindow(contentRect: root.frame, styleMask: .borderless,
+                                             backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.contentView = root
             root.layoutSubtreeIfNeeded()
@@ -17,7 +17,6 @@
                 window.contentView = nil
                 window.close()
             }
-            await checkWindowsMenuNavigation(anchor: root)
             checkWindowsPopupOverflow(anchor: root)
             checkWindowsBackgroundMenu(root: root)
             checkWindowsLayoutCleanup(root: root)
@@ -56,52 +55,8 @@
             precondition(controller.dockDrag.destinationSection == .pinned)
             controller.dockDrag.clear()
         }
-        private static func checkWindowsMenuNavigation(anchor: NSView) async {
-            var invoked = 0
-            let menu = WindowsMenuContent(actions: [
-                .action("Close", isDestructive: true) {},
-                .submenu("Submenu", children: [.action("Child") {}]), .action("Other") {}
-            ])
-            menu.onAction = { _, _ in invoked += 1 }
-            menu.select(0)
-            menu.keyDown(with: windowsKey(124))
-            precondition(invoked == 0, "Right Arrow must not activate a leaf action")
-            menu.keyDown(with: windowsKey(36))
-            precondition(invoked == 1)
-            menu.select(1)
-            menu.keyDown(with: windowsKey(124))
-            precondition(invoked == 2, "Right Arrow must open submenus")
-            guard let row = menu.subviews.compactMap({ $0 as? WindowsMenuRow }).dropFirst().first else {
-                preconditionFailure("Submenu row required")
-            }
-            row.mouseEntered(with: windowsKey(0))
-            menu.keyDown(with: windowsKey(125))
-            row.mouseExited(with: windowsKey(0))
-            try? await Task.sleep(for: .milliseconds(350))
-            precondition(invoked == 2, "Canceled hover must not open a stale submenu")
-            let popup = WindowsTaskbarPopup(content: menu, size: menu.desiredSize)
-            popup.present(from: anchor)
-            precondition(popup.panel.firstResponder === menu)
-            menu.select(0)
-            popup.panel.sendEvent(windowsKey(124, window: popup.panel))
-            precondition(invoked == 2, "Responder delivery must preserve safe arrow behavior")
-            popup.dismiss()
-        }
         private static func checkWindowsPopupOverflow(anchor: NSView) {
-            let preview = FilePreviewMenuItemView(url: URL(fileURLWithPath: "/tmp/docky-review.txt"))
-            let menu = WindowsMenuContent(actions: [.customView(preview)] + (0..<120).map { index in
-                .action("Window \(index)") {}
-            })
-            precondition(menu.desiredSize.width >= preview.frame.width + 16)
-            let popup = WindowsTaskbarPopup(content: menu, size: menu.desiredSize)
-            popup.present(from: anchor)
-            popup.panel.contentView?.layoutSubtreeIfNeeded()
             let visible = anchor.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            precondition(popup.panel.frame.height <= visible.height)
-            menu.select(119)
-            guard let last = menu.subviews.last else { preconditionFailure("Last menu row required") }
-            precondition(!last.visibleRect.isEmpty, "Keyboard must reach the last oversized-menu row")
-            popup.dismiss()
             let extras = WindowsTaskbarExtraContent(tiles: (0..<120).map {
                 Tile(id: "extra:\($0)", content: .spacer)
             })
@@ -115,16 +70,35 @@
             overflow.dismiss()
         }
         private static func checkWindowsBackgroundMenu(root: DockRootView) {
-            let hit = root.hitTest(CGPoint(x: 10, y: 10))
-            var titles: [String] = []
-            let oldPresenter = ContextActionMenuPresenter.customPresenter
-            defer { ContextActionMenuPresenter.customPresenter = oldPresenter }
-            ContextActionMenuPresenter.customPresenter = { actions, _, _ in
-                titles = actions.map(\.title)
-                return true
+            guard let window = root.window as? WindowsReviewWindow,
+                let chrome = root.subviews.first(where: { $0 is DockChromeView }) else {
+                preconditionFailure("Taskbar window and chrome required")
             }
-            hit?.rightMouseDown(with: windowsKey(0))
-            precondition(titles.contains("Taskbar Settings"), "Blank canvas clicks must reach the background menu")
+            // The root fills the window, so one point serves the hit test and the event.
+            let point = CGPoint(x: 10, y: 10)
+            guard let click = NSEvent.mouseEvent(
+                with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else {
+                preconditionFailure("Right-click fixture required")
+            }
+            let held = window.interactionTokens.count
+            var titles: [String] = []
+            var anchor = CGRect.null
+            var anchorView: NSView?
+            defer { ContextActionMenuPresenter.testInterceptor = nil }
+            ContextActionMenuPresenter.testInterceptor = { menu, rect, view in
+                precondition(window.interactionTokens.count == held + 1, "An open menu must hold the taskbar")
+                titles = menu.items.map(\.title)
+                anchor = rect
+                anchorView = view
+            }
+            root.hitTest(point)?.rightMouseDown(with: click)
+            precondition(titles.contains("Taskbar Settings"), "Blank canvas clicks must reach the native background menu")
+            precondition(
+                anchorView === chrome && abs(anchor.minX - chrome.convert(point, from: nil).x) < 0.001
+                    && anchor.height == chrome.bounds.height,
+                "The background menu must open at the pointer")
+            precondition(window.interactionTokens.count == held, "Closing a menu must release the taskbar hold")
         }
         private static func checkWindowsLayoutCleanup(root: DockRootView) {
             let backdrop = NSView()
@@ -232,6 +206,19 @@
                 preconditionFailure("Keyboard fixture required")
             }
             return event
+        }
+    }
+
+    /// Counts taskbar visibility holds so menu checks can prove each hold is released.
+    private final class WindowsReviewWindow: NSWindow, DockWindowInteractionHolding {
+        private(set) var interactionTokens: Set<UUID> = []
+        func beginInteraction() -> UUID? {
+            let token = UUID()
+            interactionTokens.insert(token)
+            return token
+        }
+        func endInteraction(_ token: UUID?) {
+            if let token { interactionTokens.remove(token) }
         }
     }
 #endif

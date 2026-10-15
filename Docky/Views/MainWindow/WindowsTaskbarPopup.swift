@@ -47,7 +47,7 @@ final class WindowsTaskbarPopup {
         panel.initialFirstResponder = content
         panel.contentView = root
     }
-    func present(from anchor: NSView, submenu: Bool = false, monitors: Bool = true) {
+    func present(from anchor: NSView, monitors: Bool = true) {
         guard let sourceWindow = anchor.window else { return }
         let source = sourceWindow.convertToScreen(anchor.convert(anchor.bounds, to: nil))
         let visible = sourceWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? source
@@ -55,8 +55,6 @@ final class WindowsTaskbarPopup {
                           height: min(panel.frame.height, visible.height))
         panel.setContentSize(size)
         var origin = CGPoint(x: source.midX - size.width / 2, y: source.maxY + 8)
-        if submenu { origin = CGPoint(x: source.maxX + 2, y: source.maxY - size.height) }
-        if submenu, origin.x + size.width > visible.maxX { origin.x = source.minX - size.width - 2 }
         origin.x = max(visible.minX, min(origin.x, visible.maxX - size.width))
         origin.y = max(visible.minY, min(origin.y, visible.maxY - size.height))
         panel.setFrameOrigin(origin)

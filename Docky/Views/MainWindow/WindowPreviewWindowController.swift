@@ -319,9 +319,12 @@ extension WindowPreviewWindowController {
         previousFirstResponder = nil
     }
     func contextMenuPresentationChanged(_ presented: Bool, sourceTileID: String) {
+        // Native menus run their action before reporting the close, and the action may
+        // already have dismissed this preview, so always clear the flag on close.
+        if !presented { WindowPreviewService.shared.setContextMenuPresented(false) }
         guard currentTileID == sourceTileID else { return }
-        WindowPreviewService.shared.setContextMenuPresented(presented)
         if presented {
+            WindowPreviewService.shared.setContextMenuPresented(true)
             pendingDismissTask?.cancel()
             pendingDismissTask = nil
         } else { requestDismiss(sourceTileID: sourceTileID) }

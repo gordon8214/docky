@@ -147,9 +147,8 @@ final class DockChromeView: NSView {
             imageLayer.setAffineTransform(.identity)
         }
     }
-    override func rightMouseDown(with event: NSEvent) {
-        guard WindowsTaskbarStyle.isActive else { super.rightMouseDown(with: event); return }
-        let actions: [ContextAction] = [
+    private var windowsBackgroundActions: [ContextAction] {
+        [
             .action("Activity Monitor") {
                 let url = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
                 NSWorkspace.shared.openApplication(at: url,
@@ -160,7 +159,14 @@ final class DockChromeView: NSView {
             },
             .action("Taskbar Settings") { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) }
         ]
-        ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        guard WindowsTaskbarStyle.isActive else { super.rightMouseDown(with: event); return }
+        // Anchor at the pointer so the menu opens where the bar was clicked, not mid-bar.
+        let point = convert(event.locationInWindow, from: nil)
+        ContextActionMenuPresenter.popUpMenu(
+            actions: windowsBackgroundActions, from: self,
+            anchorRect: CGRect(x: point.x, y: bounds.minY, width: 1, height: bounds.height))
     }
     static func roundedPath(in rect: CGRect, radii: [CGFloat]) -> CGPath {
         let path = CGMutablePath()

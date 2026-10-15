@@ -114,10 +114,8 @@
                 precondition(tile.mouseDownPoint == nil && tile.canceledMouseSession)
             }
             captureWindowsSnapshots(root: root)
-            let row = WindowsMenuContent(actions: [
-                .action("Test") {}, .submenu("Submenu", children: [.action("Child") {}])
-            ])
-            let popup = WindowsTaskbarPopup(content: row, size: row.desiredSize)
+            let label = NSTextField(labelWithString: "Test")
+            let popup = WindowsTaskbarPopup(content: label, size: CGSize(width: 220, height: 48))
             guard let anchor = root.canvas.tiles.values.first else {
                 preconditionFailure("Start tile required")
             }

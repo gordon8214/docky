@@ -123,109 +123,49 @@ struct ContextAction: Identifiable {
 }
 
 enum ContextActionMenuPresenter {
-    @MainActor static var customPresenter: (([ContextAction], NSView, @escaping (Bool) -> Void) -> Bool)?
+    #if DEBUG
+    /// Regression-harness seam: receives the built native menu and its anchor rectangle in
+    /// place of modal tracking, while the presentation and autohide hold are active.
+    @MainActor static var testInterceptor: ((NSMenu, NSRect, NSView) -> Void)?
+    #endif
     @MainActor
     final class Coordinator: NSObject {
-        private weak var anchorView: NSView?
-        private var eventMonitor: Any?
-        private var actionProvider: (NSEvent.ModifierFlags) -> [ContextAction]
-        private var preferredEdge: NSRectEdge
-        private var onPresentationChanged: (Bool) -> Void
+        private weak var interactionWindow: (any DockWindowInteractionHolding)?
+        private let preferredEdge: NSRectEdge
+        private let onPresentationChanged: (Bool) -> Void
         private var isInterruptingAutohide = false
         private var interactionToken: UUID?
 
-        init(
-            actionProvider: @escaping (NSEvent.ModifierFlags) -> [ContextAction],
-            preferredEdge: NSRectEdge,
-            onPresentationChanged: @escaping (Bool) -> Void
-        ) {
-            self.actionProvider = actionProvider
+        init(preferredEdge: NSRectEdge, onPresentationChanged: @escaping (Bool) -> Void) {
             self.preferredEdge = preferredEdge
             self.onPresentationChanged = onPresentationChanged
             super.init()
         }
 
-        func update(
-            actionProvider: @escaping (NSEvent.ModifierFlags) -> [ContextAction],
-            preferredEdge: NSRectEdge,
-            onPresentationChanged: @escaping (Bool) -> Void
-        ) {
-            self.actionProvider = actionProvider
-            self.preferredEdge = preferredEdge
-            self.onPresentationChanged = onPresentationChanged
-        }
-
-        func installIfNeeded(for anchorView: NSView) {
-            self.anchorView = anchorView
-
-            // The monitor is installed regardless of whether the menu has
-            // entries. This runs on every view update, and asking the
-            // provider here built the whole menu each time just to discard
-            // it. `handleContextClick` builds it on demand and lets the
-            // click through when it turns out empty.
-            guard eventMonitor == nil else { return }
-            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) {
-                [weak self] event in
-                self?.handleContextClick(event) ?? event
-            }
-        }
-
-        func uninstall() {
-            if let eventMonitor {
-                NSEvent.removeMonitor(eventMonitor)
-            }
-
-            endAutohideInterruption()
-            eventMonitor = nil
-            anchorView = nil
-        }
-
-        private func handleContextClick(_ event: NSEvent) -> NSEvent? {
-            guard let view = anchorView, let window = view.window, event.window === window else {
-                return event
-            }
-
-            let isRightClick = event.type == .rightMouseDown
-            let isControlClick = event.type == .leftMouseDown && event.modifierFlags.contains(.control)
-            guard isRightClick || isControlClick else {
-                return event
-            }
-
-            let location = view.convert(event.locationInWindow, from: nil)
-            guard view.bounds.contains(location) else {
-                return event
-            }
-
-            let actions = actionProvider(event.modifierFlags)
-            guard !actions.isEmpty else {
-                return event
-            }
-
-            if ContextActionMenuPresenter.customPresenter?(actions, view, onPresentationChanged) != true {
-                let menu = buildMenu(actions: actions)
-                popUpCartouche(menu: menu, in: view)
-            }
-            return nil
-        }
-
-        private func popUpCartouche(menu: NSMenu, in view: NSView) {
+        private func popUpCartouche(menu: NSMenu, in view: NSView, anchorRect: NSRect?) {
             onPresentationChanged(true)
             defer { onPresentationChanged(false) }
             beginAutohideInterruption(for: view)
             defer { endAutohideInterruption() }
 
+            let anchorRect = anchorRect ?? view.bounds
+            #if DEBUG
+            if let interceptor = ContextActionMenuPresenter.testInterceptor {
+                interceptor(menu, anchorRect, view)
+                return
+            }
+            #endif
             let selector = NSSelectorFromString("_popUpMenuRelativeToRect:inView:preferredEdge:")
             if menu.responds(to: selector) {
                 typealias Fn = @convention(c) (NSMenu, Selector, NSRect, NSView?, NSRectEdge) -> Void
                 let imp = menu.method(for: selector)
                 let fn = unsafeBitCast(imp, to: Fn.self)
-                fn(menu, selector, view.bounds, view, preferredEdge)
+                fn(menu, selector, anchorRect, view, preferredEdge)
                 return
             }
 
             menu.update()
             let anchor: NSPoint
-            let anchorRect = view.bounds
             switch preferredEdge {
             case .minX:
                 anchor = NSPoint(x: anchorRect.minX, y: anchorRect.midY)
@@ -243,13 +183,18 @@ enum ContextActionMenuPresenter {
 
         private func beginAutohideInterruption(for view: NSView) {
             guard !isInterruptingAutohide else { return }
-            interactionToken = (view.window as? any DockWindowInteractionHolding)?.beginInteraction()
+            // End the hold on the window that issued the token: the anchor can
+            // leave its window while the menu tracks.
+            interactionWindow = view.window as? any DockWindowInteractionHolding
+            interactionToken = interactionWindow?.beginInteraction()
             isInterruptingAutohide = true
         }
 
         private func endAutohideInterruption() {
             guard isInterruptingAutohide else { return }
-            (anchorView?.window as? any DockWindowInteractionHolding)?.endInteraction(interactionToken)
+            interactionWindow?.endInteraction(interactionToken)
+            interactionWindow = nil
+            interactionToken = nil
             isInterruptingAutohide = false
         }
 
@@ -347,42 +292,30 @@ private final class LazyMenuController: NSObject, NSMenuDelegate {
     }
 }
 
-final class AnchorView: NSView {}
-
 extension ContextActionMenuPresenter {
-    /// Imperative entry point for popping the same context menu the
-    /// right-click handler would show, anchored to an arbitrary NSView
-    /// (typically the background view of a SwiftUI "more" button). The
-    /// menu build, autohide interruption, and private
+    /// Shows `actions` as a native Dock-style menu anchored to `anchorView`.
+    /// The menu build, autohide interruption, and private
     /// `_popUpMenuRelativeToRect:` call are delegated to a transient
-    /// Coordinator so the visual is byte-identical to the right-click
-    /// path.
+    /// Coordinator. `anchorRect`, in `anchorView` coordinates, narrows the
+    /// anchor to part of the view, such as the pointer location on a wide bar.
     @MainActor static func popUpMenu(
         actions: [ContextAction],
         from anchorView: NSView,
+        anchorRect: NSRect? = nil,
         preferredEdge: NSRectEdge = .maxY,
         onPresentationChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         guard !actions.isEmpty else { return }
-        if customPresenter?(actions, anchorView, onPresentationChanged) == true { return }
-        let coordinator = Coordinator(
-            actionProvider: { _ in actions },
-            preferredEdge: preferredEdge,
-            onPresentationChanged: onPresentationChanged
-        )
-        coordinator.presentMenu(actions: actions, from: anchorView)
+        // A visible or pending Windows tooltip would otherwise linger beside the menu while it tracks.
+        WindowsTaskbarTooltip.shared.dismiss()
+        let coordinator = Coordinator(preferredEdge: preferredEdge, onPresentationChanged: onPresentationChanged)
+        coordinator.presentMenu(actions: actions, from: anchorView, anchorRect: anchorRect)
     }
 }
 
 extension ContextActionMenuPresenter.Coordinator {
-    /// Exposed for `ContextActionMenuPresenter.popUpMenu` so a button
-    /// can imperatively show the menu without going through the
-    /// right-click event monitor.
-    fileprivate func presentMenu(actions: [ContextAction], from anchorView: NSView) {
-        let menu = NSMenu()
-        for action in actions {
-            addMenuItem(for: action, to: menu)
-        }
-        popUpCartouche(menu: menu, in: anchorView)
+    /// Builds and tracks the menu for `ContextActionMenuPresenter.popUpMenu`.
+    fileprivate func presentMenu(actions: [ContextAction], from anchorView: NSView, anchorRect: NSRect?) {
+        popUpCartouche(menu: buildMenu(actions: actions), in: anchorView, anchorRect: anchorRect)
     }
 }
