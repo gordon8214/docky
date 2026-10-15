@@ -104,3 +104,91 @@ final class WindowPreviewFrameGate: Sendable {
         state.withLock { $0.stopped = true }
     }
 }
+
+/// Orders thumbnail captures without ever evicting a cached image: windows
+/// with no thumbnail first, then thumbnails invalidated by a resize or focus
+/// change, then stale ones (expired or retitled). Within each group, windows
+/// go in the order given. Stale refreshes start at most every `staleInterval`,
+/// and each window's stale thumbnail is recaptured at most every
+/// `minimumRecaptureInterval`, so a window retitling itself constantly can't
+/// monopolize captures.
+struct WindowPreviewRefreshQueue {
+    enum Priority: Int, Comparable {
+        case missing
+        case invalidated
+        case stale
+
+        static func < (lhs: Priority, rhs: Priority) -> Bool { lhs.rawValue < rhs.rawValue }
+    }
+
+    enum Step: Equatable {
+        case capture(String, Priority)
+        case wait(until: ContinuousClock.Instant)
+        case idle
+    }
+
+    let staleInterval: Duration
+    let minimumRecaptureInterval: Duration
+    private(set) var queued: [String: Priority] = [:]
+    private var lastAttempt: [String: ContinuousClock.Instant] = [:]
+    private var lastStaleCapture: ContinuousClock.Instant?
+
+    init(staleInterval: Duration, minimumRecaptureInterval: Duration) {
+        self.staleInterval = staleInterval
+        self.minimumRecaptureInterval = minimumRecaptureInterval
+    }
+
+    var hasUrgentWork: Bool { queued.values.contains { $0 < .stale } }
+
+    /// Queues `identifier`, keeping the more urgent priority when it's queued.
+    mutating func enqueue(_ identifier: String, _ priority: Priority) {
+        if let existing = queued[identifier], existing <= priority { return }
+        queued[identifier] = priority
+    }
+
+    mutating func remove(_ identifier: String) {
+        queued.removeValue(forKey: identifier)
+    }
+
+    /// Forgets windows that no longer exist.
+    mutating func retain(_ identifiers: Set<String>) {
+        queued = queued.filter { identifiers.contains($0.key) }
+        lastAttempt = lastAttempt.filter { identifiers.contains($0.key) }
+    }
+
+    mutating func removeAll() {
+        queued.removeAll()
+        lastAttempt.removeAll()
+        lastStaleCapture = nil
+    }
+
+    /// The next capture among `order`, which lists the windows that may be
+    /// captured now. Dequeues and records the capture it returns. Queued
+    /// windows missing from `order` wait for a later call.
+    mutating func next(in order: [String], now: ContinuousClock.Instant) -> Step {
+        var best: (identifier: String, priority: Priority)?
+        var earliestEligible: ContinuousClock.Instant?
+        for identifier in order {
+            guard let priority = queued[identifier] else { continue }
+            if priority == .stale, let last = lastAttempt[identifier], now < last + minimumRecaptureInterval {
+                let eligible = last + minimumRecaptureInterval
+                earliestEligible = min(earliestEligible ?? eligible, eligible)
+                continue
+            }
+            if best == nil || priority < best!.priority {
+                best = (identifier, priority)
+                if priority == .missing { break }
+            }
+        }
+        guard let best else {
+            return earliestEligible.map { .wait(until: $0) } ?? .idle
+        }
+        if best.priority == .stale, let lastStaleCapture, now < lastStaleCapture + staleInterval {
+            return .wait(until: lastStaleCapture + staleInterval)
+        }
+        queued.removeValue(forKey: best.identifier)
+        lastAttempt[best.identifier] = now
+        if best.priority == .stale { lastStaleCapture = now }
+        return .capture(best.identifier, best.priority)
+    }
+}

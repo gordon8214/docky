@@ -101,6 +101,10 @@
             try check(
                 browser.cardViews[selected]?.isSelected == true,
                 "The selected window's card must show the selection frame")
+            if mode == .instantFocus, let window = service.windows.first(where: { $0.windowIdentifier == selected }) {
+                try check(service.defersSelectionFocus == !window.isOnActiveSpace,
+                          "Instant Focus must wait for release only for windows on other Spaces")
+            }
             // Let the in-place stream start, then rapidly cancel and replace it.
             if mode == .inPlace {
                 try await Task.sleep(for: .seconds(2))

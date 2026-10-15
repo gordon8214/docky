@@ -103,6 +103,17 @@
                   + "in \(started.duration(to: .now))")
             fflush(stdout)
 
+            // An invalidated thumbnail stays cached until its replacement lands.
+            if let window = registry.visible.first, let before = workspace.appWindowPreview(for: window) {
+                registry.previewInvalidations.send(window.windowIdentifier)
+                await Task.yield()
+                try check(workspace.appWindowPreview(for: window) != nil,
+                          "An invalidated thumbnail must stay until it's replaced")
+                await waitUntil(seconds: 3) { workspace.appWindowPreview(for: window) !== before }
+                try check(workspace.appWindowPreview(for: window) !== before,
+                          "An invalidated thumbnail must be recaptured")
+            }
+
             // AX elements: the background lookup's remote-token scan reaches
             // visible windows on other Spaces. Minimized windows are left out,
             // because AX's own window list already includes them.

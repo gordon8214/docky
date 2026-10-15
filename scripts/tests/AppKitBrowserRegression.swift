@@ -15,6 +15,7 @@ struct AppKitBrowserRegression {
         testSearchAndSelection()
         testSelectionFeedback()
         testPreviewCaptureBounds()
+        testPreviewRefreshQueue()
         testWindowServerRules()
         testControllerRelease()
         testObservationLifecycle()
@@ -239,6 +240,40 @@ struct AppKitBrowserRegression {
         gate.stop()
         gate.endFrame()
         expect(!gate.beginFrame(), "A stopped preview must reject late frames")
+    }
+
+    private static func testPreviewRefreshQueue() {
+        var queue = WindowPreviewRefreshQueue(staleInterval: .milliseconds(500), minimumRecaptureInterval: .seconds(5))
+        let start = ContinuousClock.now
+        let order = ["front", "middle", "back", "elsewhere"]
+        queue.enqueue("back", .stale)
+        queue.enqueue("middle", .invalidated)
+        queue.enqueue("front", .stale)
+        queue.enqueue("elsewhere", .missing)
+        queue.enqueue("middle", .stale)
+        expect(queue.queued["middle"] == .invalidated, "Queuing keeps the more urgent priority")
+        expect(queue.next(in: order, now: start) == .capture("elsewhere", .missing), "Missing thumbnails come first")
+        expect(queue.next(in: order, now: start) == .capture("middle", .invalidated), "Invalidated thumbnails come next")
+        expect(queue.next(in: order, now: start) == .capture("front", .stale), "Stale thumbnails follow the given order")
+        expect(queue.next(in: order, now: start + .milliseconds(100)) == .wait(until: start + .milliseconds(500)),
+               "Stale refreshes are paced")
+        expect(queue.next(in: order, now: start + .milliseconds(500)) == .capture("back", .stale),
+               "The next stale refresh starts once the pace allows")
+
+        queue.enqueue("front", .stale)
+        expect(queue.next(in: order, now: start + .seconds(1)) == .wait(until: start + .seconds(5)),
+               "One window's stale thumbnail refreshes at most every 5 seconds")
+        queue.enqueue("middle", .missing)
+        expect(queue.next(in: order, now: start + .seconds(1)) == .capture("middle", .missing),
+               "Backoff doesn't delay a window without a thumbnail")
+        expect(queue.next(in: order, now: start + .seconds(5)) == .capture("front", .stale),
+               "A stale window refreshes again after its backoff")
+
+        queue.enqueue("hidden", .missing)
+        expect(queue.next(in: order, now: start + .seconds(6)) == .idle, "Windows that can't be captured now wait")
+        expect(queue.hasUrgentWork, "Waiting windows stay queued")
+        queue.retain(["front"])
+        expect(queue.queued.isEmpty && !queue.hasUrgentWork, "Closed windows leave the queue")
     }
 
     /// Tag, attribute and packet values recorded from macOS 27.0.1 (26A434).

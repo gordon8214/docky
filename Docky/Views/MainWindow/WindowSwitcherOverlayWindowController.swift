@@ -19,6 +19,12 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             return true
         }
 
+        // Instant Focus waits for release before focusing a window on another
+        // Space, so the switcher shows which window is selected meanwhile.
+        if WindowSwitcherService.shared.defersSelectionFocus {
+            return true
+        }
+
         // Instant Focus brings each selected window forward instead, which
         // needs captures; without Screen Recording the switcher stays visible.
         guard preferences.showsWindowSwitcherFocusPreview,
@@ -140,6 +146,15 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
 
         PermissionsService.shared.$screenCapture
             .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshOverlayPresentation()
+            }
+            .store(in: &cancellables)
+
+        WindowSwitcherService.shared.$defersSelectionFocus
+            .removeDuplicates()
+            .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.refreshOverlayPresentation()

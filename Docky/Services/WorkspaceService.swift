@@ -81,16 +81,27 @@ final class WorkspaceService: ObservableObject {
     /// back to the switcher.
     private let postFocusPreviewCaptureDelay: Duration = .milliseconds(250)
 
-    /// Backstop refresh interval for app-window thumbnails. Title-change
-    /// invalidation handles the common case (browsers, IDEs); this catches
-    /// content-only changes (editor scroll, in-page navigation) where the
-    /// title stays put but the cached thumb no longer represents the window.
+    /// Backstop refresh interval for app-window thumbnails. Title changes
+    /// handle the common case (browsers, IDEs); this catches content-only
+    /// changes (editor scroll, in-page navigation) where the title stays put
+    /// but the cached thumb no longer represents the window.
     private let appWindowPreviewTTL: TimeInterval = 120
     private struct PreviewMetadata {
         let capturedAt: Date
         let capturedTitle: String
     }
     private var appWindowPreviewMetadata: [String: PreviewMetadata] = [:]
+
+    /// Pending thumbnail captures. Stale and invalidated thumbnails stay
+    /// cached until their replacement arrives, and stale ones refresh a
+    /// couple per second at most, so expiry never blanks every thumbnail at
+    /// once or bursts captures.
+    private var previewRefreshQueue = WindowPreviewRefreshQueue(
+        staleInterval: .milliseconds(500),
+        minimumRecaptureInterval: .seconds(5)
+    )
+    private var previewRefreshTask: Task<Void, Never>?
+    private var previewRefreshGeneration = 0
 
     private init() {
         refresh()
@@ -353,6 +364,7 @@ final class WorkspaceService: ObservableObject {
                 capturedAt: Date(),
                 capturedTitle: window.windowTitle
             )
+            self.previewRefreshQueue.remove(window.windowIdentifier)
 
             // The window is no longer minimized; drop any stale minimized
             // thumbnail so it doesn't linger once the window is back up.
@@ -775,24 +787,18 @@ final class WorkspaceService: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Drops the cached app-window preview for a single window so the
-    /// next refresh pass re-captures it. Used by registry-driven
-    /// invalidations (resize, focus-out) which know more than the TTL
-    /// does about when a cached image stopped being representative.
+    /// Recaptures one window's thumbnail ahead of stale ones, keeping the
+    /// cached image until the new one arrives. Used by registry-driven
+    /// invalidations (resize, focus-out), which know more than the TTL does
+    /// about when a cached image stopped being representative. Windows
+    /// without a thumbnail are already queued.
     private func invalidateAppWindowPreview(windowIdentifier: String) {
-        guard PermissionsService.shared.screenCapture == .granted else {
+        guard PermissionsService.shared.screenCapture == .granted,
+              appWindowPreviews[windowIdentifier] != nil else {
             return
         }
-        var didChange = false
-        if appWindowPreviews.removeValue(forKey: windowIdentifier) != nil {
-            didChange = true
-        }
-        appWindowPreviewMetadata.removeValue(forKey: windowIdentifier)
-        attemptedAppWindowPreviewIDs.remove(windowIdentifier)
-        guard didChange else { return }
-        // Same source set as `refreshWindowDerivedState`, so minimized
-        // windows' previews survive the eviction pass.
-        refreshAppWindowPreviews(for: WindowRegistry.shared.switchable(includeMinimized: true))
+        previewRefreshQueue.enqueue(windowIdentifier, .invalidated)
+        startPreviewRefreshesIfNeeded()
     }
 
     /// Debug-only: clear the "already attempted" set so every visible
@@ -901,94 +907,107 @@ final class WorkspaceService: ObservableObject {
             }
             appWindowPreviewMetadata.removeAll()
             attemptedAppWindowPreviewIDs = []
+            previewRefreshQueue.removeAll()
+            previewRefreshTask?.cancel()
+            previewRefreshTask = nil
             return
         }
 
         let activeWindowIdentifiers = Set(windows.map(\.windowIdentifier))
-        let windowsByIdentifier = DataIntegrityReporter.makeDictionary(
-            windows.map { ($0.windowIdentifier, $0) },
-            site: "WorkspaceService.refreshAppWindowPreviews.windowsByIdentifier"
-        )
-        var updatedPreviews = appWindowPreviews
-        var didChange = false
-        let now = Date()
-
-        for windowIdentifier in updatedPreviews.keys where !activeWindowIdentifiers.contains(windowIdentifier) {
-            updatedPreviews.removeValue(forKey: windowIdentifier)
-            appWindowPreviewMetadata.removeValue(forKey: windowIdentifier)
-            didChange = true
-        }
-
-        // Evict cached previews whose source window's title changed or
-        // whose age exceeded the TTL — the cached image is no longer
-        // representative. Minimized windows are exempt: we can't
-        // refresh their capture anyway, and a stale thumbnail beats no
-        // thumbnail when showing them in the switcher/preview UI.
-        let staleIdentifiers: [String] = appWindowPreviewMetadata.compactMap { id, metadata in
-            guard let window = windowsByIdentifier[id] else { return nil }
-            if window.isMinimized { return nil }
-            let titleChanged = metadata.capturedTitle != window.windowTitle
-            let expired = now.timeIntervalSince(metadata.capturedAt) > appWindowPreviewTTL
-            return (titleChanged || expired) ? id : nil
-        }
-        for identifier in staleIdentifiers {
-            updatedPreviews.removeValue(forKey: identifier)
-            appWindowPreviewMetadata.removeValue(forKey: identifier)
-            attemptedAppWindowPreviewIDs.remove(identifier)
-            didChange = true
-        }
-
-        attemptedAppWindowPreviewIDs = attemptedAppWindowPreviewIDs.intersection(activeWindowIdentifiers)
-        var windowsToCapture: [AppWindow] = []
-
-        // Windows on other Spaces wait until they're shown when the switcher
-        // and previews only list the active Space.
-        let capturesOtherSpaces = DockyPreferences.shared.windowSwitcherSpaceScope == .allSpaces
-        for window in windows {
-            // SkyLight captures minimized windows too, once; the TTL above
-            // never evicts their previews.
-            guard capturesOtherSpaces || window.isOnActiveSpace,
-                  updatedPreviews[window.windowIdentifier] == nil,
-                  !attemptedAppWindowPreviewIDs.contains(window.windowIdentifier) else {
-                continue
+        let removed = appWindowPreviews.keys.filter { !activeWindowIdentifiers.contains($0) }
+        if !removed.isEmpty {
+            var updatedPreviews = appWindowPreviews
+            for windowIdentifier in removed {
+                updatedPreviews.removeValue(forKey: windowIdentifier)
+                appWindowPreviewMetadata.removeValue(forKey: windowIdentifier)
             }
-
-            attemptedAppWindowPreviewIDs.insert(window.windowIdentifier)
-            windowsToCapture.append(window)
-        }
-
-        if didChange {
             appWindowPreviews = updatedPreviews
         }
+        attemptedAppWindowPreviewIDs = attemptedAppWindowPreviewIDs.intersection(activeWindowIdentifiers)
+        previewRefreshQueue.retain(activeWindowIdentifiers)
 
-        captureAppWindowPreviewsIfNeeded(for: windowsToCapture)
+        let now = Date()
+        for window in windows {
+            let identifier = window.windowIdentifier
+            if appWindowPreviews[identifier] == nil {
+                // One attempt per window; a failed capture isn't retried
+                // until `forceRefreshWindowPreviews`.
+                guard attemptedAppWindowPreviewIDs.insert(identifier).inserted else { continue }
+                previewRefreshQueue.enqueue(identifier, .missing)
+            } else if !window.isMinimized, let metadata = appWindowPreviewMetadata[identifier],
+                      metadata.capturedTitle != window.windowTitle
+                        || now.timeIntervalSince(metadata.capturedAt) > appWindowPreviewTTL {
+                // Minimized windows keep their last thumbnail; their content
+                // rarely changes while minimized.
+                previewRefreshQueue.enqueue(identifier, .stale)
+            }
+        }
+        startPreviewRefreshesIfNeeded()
     }
 
-    private func captureAppWindowPreviewsIfNeeded(for windows: [AppWindow]) {
-        guard !windows.isEmpty else {
-            return
+    private func startPreviewRefreshesIfNeeded() {
+        guard previewRefreshTask == nil, !previewRefreshQueue.queued.isEmpty else { return }
+        previewRefreshGeneration += 1
+        let generation = previewRefreshGeneration
+        previewRefreshTask = Task { [weak self] in
+            await self?.runPreviewRefreshes()
+            // A canceled worker must not clear its replacement.
+            guard let self, self.previewRefreshGeneration == generation else { return }
+            self.previewRefreshTask = nil
         }
+    }
 
-        Task { [weak self] in
-            guard let self else { return }
+    /// Windows whose thumbnails may be captured now, in capture order:
+    /// active-Space windows first, each group in MRU order. Windows on other
+    /// Spaces wait until they're shown when the switcher and previews only
+    /// list the active Space.
+    private func previewRefreshCandidates() -> [AppWindow] {
+        let windows = WindowRegistry.shared.switchable(includeMinimized: true)
+        let onActiveSpace = windows.filter(\.isOnActiveSpace)
+        guard DockyPreferences.shared.windowSwitcherSpaceScope == .allSpaces else { return onActiveSpace }
+        return onActiveSpace + windows.filter { !$0.isOnActiveSpace }
+    }
 
-            for window in windows {
-                guard self.appWindowPreviews[window.windowIdentifier] == nil,
-                      let preview = await self.captureAppWindowPreview(for: window) else {
+    /// Captures queued thumbnails one at a time. New thumbnails are published
+    /// in batches at most every 250 ms; replacements as soon as they land.
+    /// Exits when nothing it may capture is queued.
+    private func runPreviewRefreshes() async {
+        var captured: [String: NSImage] = [:]
+        var lastPublish = ContinuousClock.now
+        func publish() {
+            guard !captured.isEmpty else { return }
+            appWindowPreviews.merge(captured) { _, new in new }
+            captured.removeAll()
+            lastPublish = .now
+        }
+        defer { publish() }
+
+        while !Task.isCancelled {
+            let candidates = previewRefreshCandidates()
+            switch previewRefreshQueue.next(in: candidates.map(\.windowIdentifier), now: .now) {
+            case .idle:
+                return
+            case .wait(let until):
+                publish()
+                // Short naps, so a newly queued window doesn't wait out a
+                // stale window's backoff.
+                let nap = min(until, ContinuousClock.now + .milliseconds(250))
+                do { try await Task.sleep(until: nap, clock: .continuous) } catch { return }
+            case .capture(let identifier, let priority):
+                guard let window = candidates.first(where: { $0.windowIdentifier == identifier }),
+                      let preview = await captureAppWindowPreview(for: window),
+                      WindowRegistry.shared.windows.contains(where: { $0.id == window.id }) else {
                     continue
                 }
-
-                guard self.appWindowPreviews[window.windowIdentifier] == nil else {
-                    continue
-                }
-
-                var updatedPreviews = self.appWindowPreviews
-                updatedPreviews[window.windowIdentifier] = preview
-                self.appWindowPreviews = updatedPreviews
-                self.appWindowPreviewMetadata[window.windowIdentifier] = PreviewMetadata(
+                captured[identifier] = preview
+                appWindowPreviewMetadata[identifier] = PreviewMetadata(
                     capturedAt: Date(),
                     capturedTitle: window.windowTitle
                 )
+                if priority != .missing || !previewRefreshQueue.hasUrgentWork
+                    || lastPublish.duration(to: .now) >= .milliseconds(250) {
+                    publish()
+                }
             }
         }
     }

@@ -28,6 +28,13 @@ final class WindowSwitcherService: ObservableObject {
     @Published private(set) var selectedWindowIdentifier: String?
     @Published private(set) var isContextMenuPresented = false
     @Published private(set) var focusedPreview: FocusedWindowPreview?
+    /// Instant Focus leaves a window on another Space unfocused until the
+    /// shortcut is released, since focusing it would switch Spaces on every
+    /// selection. The switcher stays visible while such a window is selected.
+    @Published private(set) var defersSelectionFocus = false
+    /// The window Instant Focus last brought forward, which needs no focus on
+    /// release.
+    private var instantlyFocusedIdentifier: String?
 
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandlerRef: EventHandlerRef?
@@ -148,9 +155,11 @@ final class WindowSwitcherService: ObservableObject {
             return
         }
 
+        let alreadyFocused = usesInstantFocusPreview
+            && instantlyFocusedIdentifier == selectedWindow.windowIdentifier
         dismiss()
 
-        guard !usesInstantFocusPreview else {
+        guard !alreadyFocused else {
             return
         }
 
@@ -165,6 +174,8 @@ final class WindowSwitcherService: ObservableObject {
         isPresented = false
         isContextMenuPresented = false
         selectedWindowIdentifier = nil
+        defersSelectionFocus = false
+        instantlyFocusedIdentifier = nil
         // Defer the windows/previews wipe past the overlay's fade-out
         // (0.18s in WindowSwitcherOverlayWindowController) so the chrome
         // keeps rendering its last frame and doesn't flash to the
@@ -543,6 +554,14 @@ final class WindowSwitcherService: ObservableObject {
             return
         }
 
+        // `confirmSelection` focuses windows on other Spaces on release.
+        guard window.isOnActiveSpace else {
+            defersSelectionFocus = true
+            return
+        }
+
+        defersSelectionFocus = false
+        instantlyFocusedIdentifier = identifier
         _ = WorkspaceService.shared.focus(window: window)
     }
 

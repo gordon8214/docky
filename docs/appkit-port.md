@@ -100,6 +100,10 @@ selection (↑ and ↓ follow the rows on screen), Delete closes the selected wi
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
 
+In Instant Focus mode, selecting a window on another Space doesn't focus it,
+because that would switch Spaces on every selection. The switcher stays visible
+while such a window is selected, and releasing the shortcut switches to it.
+
 The switcher and hover window previews list windows from every Space, including
 fullscreen Spaces. "Show Windows From" in Window Management limits both to the
 Spaces currently shown, like Windows 11's "Only on the desktop I'm using". The

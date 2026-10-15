@@ -120,6 +120,13 @@ of those, and on every window of an unsigned test app on another Space. The
 live focus preview still streams through ScreenCaptureKit for windows on the
 active Space, and polls SkyLight captures for the rest.
 
+Cached thumbnails are never evicted while their window exists.
+`WindowPreviewRefreshQueue` captures windows without a thumbnail first, then
+thumbnails invalidated by a resize or focus change, then stale ones (older than
+120 s or retitled). Stale refreshes start at most every 500 ms, and each
+window's at most every 5 s, so the old image shows until its replacement
+arrives.
+
 Connection notifications, registered with `SLSRegisterConnectionNotifyProc`,
 arrive on the main thread while AppKit pumps events. Window events need
 `SLSRequestNotificationsForWindows` for the window first. Each request replaces
