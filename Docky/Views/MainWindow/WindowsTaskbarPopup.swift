@@ -76,7 +76,7 @@ final class WindowsTaskbarPopup {
                     self.dismiss()
                     return nil
                 }
-                if event.type != .keyDown, !(event.window is WindowsTaskbarPanel) { self.dismiss() }
+                if event.type != .keyDown, !Self.keepsPresented(forClickIn: event.window) { self.dismiss() }
                 return event
             }
             let outsideEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
@@ -92,6 +92,13 @@ final class WindowsTaskbarPopup {
             context.timingFunction = WindowsTaskbarStyle.timingFunction
             panel.animator().alphaValue = 1
         }
+    }
+    /// Whether a click in the window leaves the popup open: the window is a taskbar popup, or one
+    /// that a popup presented and AppKit attached as its child, such as the folder stack popover or
+    /// fan of an overflow tile. Dismissing for those would close them before the click landed.
+    static func keepsPresented(forClickIn window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return sequence(first: window, next: \.parent).contains { $0 is WindowsTaskbarPanel }
     }
     func dismiss() {
         guard isPresented else { return }

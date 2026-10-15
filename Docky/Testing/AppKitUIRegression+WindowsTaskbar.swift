@@ -124,6 +124,18 @@
                 preconditionFailure("Start tile required")
             }
             popup.present(from: anchor)
+            // A folder stack or fan opened from an overflow tile is a child window of the popup,
+            // and clicking in it must not dismiss the popup out from under it.
+            let presented = NSPanel(
+                contentRect: CGRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
+                backing: .buffered, defer: false)
+            popup.panel.addChildWindow(presented, ordered: .above)
+            precondition(WindowsTaskbarPopup.keepsPresented(forClickIn: popup.panel))
+            precondition(WindowsTaskbarPopup.keepsPresented(forClickIn: presented))
+            precondition(!WindowsTaskbarPopup.keepsPresented(forClickIn: window))
+            precondition(!WindowsTaskbarPopup.keepsPresented(forClickIn: nil))
+            popup.panel.removeChildWindow(presented)
+            presented.close()
             popup.dismiss()
             precondition(!popup.panel.isVisible)
             root.canvas.clearWindowsTaskbar()

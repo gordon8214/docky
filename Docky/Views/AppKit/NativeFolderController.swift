@@ -38,6 +38,7 @@ final class NativeFolderController: NativeBrowserController {
         let openFolderButton = NativeActionButton("", symbol: "folder") { [weak self] in
             guard let url = self?.folder?.url else { return }
             Task { await FileBrowserService.shared.openFolder(url) }
+            self?.onClose?()
         }
         let openFolderTitle = FileBrowserService.shared.current.openInTitle
         openFolderButton.setAccessibilityLabel(openFolderTitle)
