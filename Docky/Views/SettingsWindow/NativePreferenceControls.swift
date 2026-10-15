@@ -139,27 +139,36 @@ enum NativePreferenceField {
         }
         return row
     }
+    /// A shortcut recorder. While `override` returns a shortcut, the row shows
+    /// that one instead and can't be edited.
     static func shortcut(
         _ title: String,
-        _ key: ReferenceWritableKeyPath<DockyPreferences, KeyboardShortcut>
+        _ key: ReferenceWritableKeyPath<DockyPreferences, KeyboardShortcut>,
+        overriddenBy override: (@MainActor () -> KeyboardShortcut?)? = nil
     ) -> NSView {
-        let button = NativeShortcutRecorderButton(key: key)
-        return NativeFormRow(
-            title: title, control: button,
-            accessories: [
-                NativeActionButton(String(localized: "Clear")) { DockyPreferences.shared[keyPath: key] = .empty }
-            ])
+        let button = NativeShortcutRecorderButton(key: key, overriddenBy: override)
+        let clear = NativeActionButton(String(localized: "Clear")) { DockyPreferences.shared[keyPath: key] = .empty }
+        let row = NativeFormRow(title: title, control: button, accessories: [clear])
+        if let override {
+            row.observe { [weak clear] in clear?.isEnabled = override() == nil }
+        }
+        return row
     }
 }
 
 final class NativeShortcutRecorderButton: NSButton {
     private let key: ReferenceWritableKeyPath<DockyPreferences, KeyboardShortcut>
+    private let overriddenBy: (@MainActor () -> KeyboardShortcut?)?
     private var recording = false
     private var keyMonitor: Any?
     private var subscriptions = Set<AnyCancellable>()
     override var acceptsFirstResponder: Bool { true }
-    init(key: ReferenceWritableKeyPath<DockyPreferences, KeyboardShortcut>) {
+    init(
+        key: ReferenceWritableKeyPath<DockyPreferences, KeyboardShortcut>,
+        overriddenBy: (@MainActor () -> KeyboardShortcut?)? = nil
+    ) {
         self.key = key
+        self.overriddenBy = overriddenBy
         super.init(frame: .zero)
         bezelStyle = .rounded
         target = self
@@ -167,7 +176,10 @@ final class NativeShortcutRecorderButton: NSButton {
         observeChanges { [weak self] in
             guard let self else { return }
             let value = DockyPreferences.shared[keyPath: self.key]
-            if !self.recording { self.title = value.displayString }
+            let overridden = self.overriddenBy?()
+            self.isEnabled = overridden == nil
+            if overridden != nil { self.stopRecording() }
+            if !self.recording { self.title = (overridden ?? value).displayString }
         }.store(in: &subscriptions)
     }
     required init?(coder: NSCoder) { nil }

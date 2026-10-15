@@ -10,7 +10,6 @@ import Observation
 final class WindowSwitcherOverlayWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
     private var cancellables: Set<AnyCancellable> = []
-    private let animationDuration: TimeInterval = 0.18
     private let preferences = DockyPreferences.shared
 
     private var showsOverlayUI: Bool {
@@ -20,14 +19,11 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             return true
         }
 
-        // List layout always needs the overlay — it's the only thing the user
-        // sees, since there are no window thumbnails behind it.
-        if WindowSwitcherService.shared.resolvedLayout == .list {
-            return true
-        }
-
+        // Instant Focus brings each selected window forward instead, which
+        // needs captures; without Screen Recording the switcher stays visible.
         guard preferences.showsWindowSwitcherFocusPreview,
-            preferences.windowSwitcherPreviewMode == .instantFocus
+            preferences.windowSwitcherPreviewMode == .instantFocus,
+            PermissionsService.shared.screenCapture == .granted
         else {
             return true
         }
@@ -39,7 +35,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         self.mainWindow = mainWindow
 
         let overlayWindow = WindowSwitcherOverlayWindow()
-        let contentController = NativeWindowBrowserController(source: .switcher)
+        let contentController = WindowSwitcherController()
         overlayWindow.contentViewController = contentController
 
         super.init(window: overlayWindow)
@@ -57,11 +53,12 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
     }
 
     private func observeOverlayPresentation() {
-        WindowSwitcherService.shared.$isPresented
+        WindowSwitcherService.shared.$isRevealed
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isPresented in
+            .sink { [weak self] isRevealed in
                 guard let self else { return }
-                if isPresented {
+                if isRevealed {
                     self.presentOverlay()
                 } else {
                     self.dismissOverlay()
@@ -93,6 +90,8 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         }
 
         updateFrame()
+        // Appear at once. The service's reveal delay already keeps a quick
+        // tap from flashing the switcher, so a fade-in would only add lag.
         window.alphaValue = 1
         window.ignoresMouseEvents = false
         window.makeKeyAndOrderFront(nil)
@@ -106,7 +105,8 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         }
 
         animateWindowAlpha(to: 0) { [weak self] in
-            guard let self, let window = self.window else { return }
+            // A new session may have revealed the switcher during the fade.
+            guard let self, let window = self.window, !WindowSwitcherService.shared.isRevealed else { return }
 
             window.ignoresMouseEvents = true
             window.orderOut(nil)
@@ -138,12 +138,6 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         }
         .store(in: &cancellables)
 
-        observeChanges { [weak self] in
-            _ = DockyPreferences.shared.windowSwitcherLayout
-            self?.refreshOverlayPresentation()
-        }
-        .store(in: &cancellables)
-
         PermissionsService.shared.$screenCapture
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -162,7 +156,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
     }
 
     private func refreshOverlayPresentation() {
-        guard WindowSwitcherService.shared.isPresented else {
+        guard WindowSwitcherService.shared.isRevealed else {
             configureHiddenWindowState()
             return
         }
@@ -188,8 +182,8 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = WindowsTaskbarStyle.reducesMotion ? 0 : WindowsTaskbarStyle.popupDuration
+            context.timingFunction = WindowsTaskbarStyle.timingFunction
             window.animator().alphaValue = alphaValue
         } completionHandler: {
             Task { @MainActor in

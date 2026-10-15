@@ -20,7 +20,16 @@ private struct WatchdogState {
     let ownerPID: pid_t
     let sessionID: String
     let snapshot: [String: Any]
+    let commandTabOverrideActive: Bool
 }
+
+// The Dock's ⌘Tab (1) and ⇧⌘Tab (2) symbolic hotkeys. Docky turns them off
+// while its window switcher replaces ⌘Tab. The setting is global to the login
+// session, so it stays off after Docky dies unless something turns it back on.
+private let commandTabSymbolicHotKeys: [Int32] = [1, 2]
+
+@_silgen_name("CGSSetSymbolicHotKeyEnabled") @discardableResult
+private func CGSSetSymbolicHotKeyEnabled(_ hotKey: Int32, _ isEnabled: Bool) -> CGError
 
 let arguments = CommandLine.arguments
 #if DEBUG
@@ -67,6 +76,11 @@ guard stateMatches(), let state = readState() else {
     exit(0)
 }
 
+if state.commandTabOverrideActive {
+    for hotKey in commandTabSymbolicHotKeys {
+        CGSSetSymbolicHotKeyEnabled(hotKey, true)
+    }
+}
 restoreSnapshot(state.snapshot)
 clearDockySnapshot()
 restartDock()
@@ -95,7 +109,8 @@ private func readState() -> WatchdogState? {
         active: boolValue(plist["active"]) ?? false,
         ownerPID: pid_t(intValue(plist["ownerPID"]) ?? 0),
         sessionID: plist["sessionID"] as? String ?? "",
-        snapshot: snapshot
+        snapshot: snapshot,
+        commandTabOverrideActive: boolValue(plist["commandTabOverrideActive"]) ?? false
     )
 }
 

@@ -35,6 +35,25 @@ func CGSCopyManagedDisplaySpaces(_ connection: CGSConnectionID) -> Unmanaged<CFA
 @_silgen_name("_AXUIElementGetWindow") @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> AXError
 
+// WindowServer symbolic hotkeys that the Dock consumes for its app switcher:
+// ⌘Tab (1) and ⇧⌘Tab (2). WindowServer matches them in its symbolic-hotkey
+// layer ahead of every Carbon hotkey, so a `RegisterEventHotKey` for ⌘Tab
+// never fires while they are enabled. Docky turns them off while its window
+// switcher replaces ⌘Tab and back on when it stops. The setting is global to
+// the login session and outlives the process that changed it, which is why
+// the watchdog re-enables them after a crash. ⌘` (27) is not consumed by any
+// system process, so it is left alone.
+enum SystemSymbolicHotKey: Int32, CaseIterable {
+    case commandTab = 1
+    case commandShiftTab = 2
+}
+
+@_silgen_name("CGSSetSymbolicHotKeyEnabled") @discardableResult
+func CGSSetSymbolicHotKeyEnabled(_ hotKey: Int32, _ isEnabled: Bool) -> CGError
+
+@_silgen_name("CGSIsSymbolicHotKeyEnabled")
+func CGSIsSymbolicHotKeyEnabled(_ hotKey: Int32) -> Bool
+
 @_silgen_name("CGSSetWindowBackgroundBlurRadius")
 func CGSSetWindowBackgroundBlurRadius(
     _ connection: CGSConnectionID,

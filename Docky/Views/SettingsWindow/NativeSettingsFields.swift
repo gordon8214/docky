@@ -217,6 +217,7 @@ enum NativeSettingsFields {
         let zoomKey = NativeKeyRecorderButton(key: \.switcherZoomKeyCode)
         return [
             NativePreferenceField.boolean("Enable Window Switcher", \.enablesWindowSwitcher),
+            NativePreferenceField.boolean("Replace macOS ⌘Tab", \.replacesSystemCommandTab),
             NativePreferenceField.boolean("Enable Switcher Preview", \.showsWindowSwitcherFocusPreview),
             NativeFormRow(
                 title: String(localized: "Close Window"), control: closeKey),
@@ -229,11 +230,11 @@ enum NativeSettingsFields {
             NativePreferenceField.choice(
                 "Layout", \.windowPreviewLayout, values: WindowSwitcherLayout.allCases, name: { $0.title }),
             NativePreferenceField.choice(
-                "Layout", \.windowSwitcherLayout, values: WindowSwitcherLayout.allCases, name: { $0.title }),
-            NativePreferenceField.choice(
                 "Preview Mode", \.windowSwitcherPreviewMode, values: WindowSwitcherPreviewMode.allCases,
                 name: { $0.title }),
-            NativePreferenceField.shortcut("Window Switcher Shortcut", \.windowSwitcherShortcut)
+            NativePreferenceField.shortcut(
+                "Window Switcher Shortcut", \.windowSwitcherShortcut,
+                overriddenBy: { DockyPreferences.shared.replacesSystemCommandTab ? .commandTab : nil })
         ]
     }
 

@@ -79,11 +79,11 @@ bridge and lifecycle tests.
 
 | Script | Notes |
 | --- | --- |
-| `scripts/test_appkit_ui.sh` | `--appkit-ui-regression`; under 15s, 30s cap. Covers every Settings pane, widgets, Windows taskbar, menu extras toggle |
+| `scripts/test_appkit_ui.sh` | `--appkit-ui-regression`; under 15s, 30s cap. Covers every Settings pane, widgets, Windows taskbar, window switcher, menu extras toggle |
 | `scripts/test_dock_system.sh` | `--dock-system-regression`; needs a WindowServer session |
 | `scripts/test_dock_bridge.sh` | Signed build. Temporarily restarts Apple's Dock |
-| `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap |
-| `gtimeout 30 python3 scripts/test_dock_lifecycle.py` | Signed build. Kills Dock and the app to check reconnection and watchdog recovery |
+| `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap. Skips the ⌘Tab takeover check while another Docky runs |
+| `gtimeout 30 python3 scripts/test_dock_lifecycle.py` | Signed build. Kills Dock and the app to check reconnection and watchdog recovery, including handing ⌘Tab back to macOS |
 
 Add `--windows-taskbar-snapshots` to `--appkit-ui-regression` to also write
 light and dark renders to `/tmp/docky-windows-snapshots`. These suites don't
@@ -164,8 +164,12 @@ when reopened.
   frames. `DockCanvasController` drives it and holds layout and drag state
   separately from the views.
 - Tile behavior lives in the `DockTileInteraction` struct. Pure geometry is in
-  `Dock*Geometry.swift`, which is why the standalone test scripts can compile
-  it on its own.
+  `Dock*Geometry.swift` and `WindowSwitcherGeometry.swift`, which is why the
+  standalone test scripts can compile it on its own.
+- The window switcher (`WindowSwitcherService` + `WindowSwitcherController`)
+  looks and behaves like Windows 11 Alt+Tab in every theme. "Replace macOS ⌘Tab"
+  turns off the system ⌘Tab through `SystemCommandTabService`. See
+  `docs/appkit-port.md`.
 - Large types are split into `Type+Concern.swift` extensions.
 
 ## Conventions

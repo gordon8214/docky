@@ -8,6 +8,7 @@ struct AppKitBrowserRegression {
     static func main() {
         _ = NSApplication.shared
         testGeometry()
+        testWindowSwitcherGeometry()
         testDropTargets()
         testPresentationGeometry()
         testLauncherPages()
@@ -38,6 +39,47 @@ struct AppKitBrowserRegression {
         expect(DockAxisGeometry.insertionIndex(at: 100, frames: frames, vertical: false) == 2, "Drop after final tile")
         let scrolled = frames.map { $0.offsetBy(dx: -60, dy: 0) }
         expect(DockAxisGeometry.insertionIndex(at: 10, frames: scrolled, vertical: false) == 1, "Scrolling changes insertion coordinates")
+    }
+
+    private static func testWindowSwitcherGeometry() {
+        let screen = CGSize(width: 1440, height: 900)
+        let widescreen = 16.0 / 10.0
+        let six = WindowSwitcherGeometry(aspectRatios: Array(repeating: widescreen, count: 6), screenSize: screen)
+        expect(six.thumbnailHeight == 135, "Thumbnails are 15% of the screen height")
+        expect(six.cardHeight == 177, "Cards add padding and a header to the thumbnail")
+        expect(six.rows == [[0, 1, 2, 3, 4], [5]], "Cards wrap at 85% of the screen width")
+        expect(six.cardFrames[0] == CGRect(x: 12, y: 12, width: 228, height: 177), "First card sits inside the panel padding")
+        expect(six.cardFrames[5] == CGRect(x: 484, y: 197, width: 228, height: 177), "A short last row is centered")
+        expect(six.contentSize == CGSize(width: 1196, height: 386), "The panel hugs its widest row")
+        expect(six.panelSize == six.contentSize, "Short content doesn't scroll")
+        expect(six.neighbor(of: 5, direction: -1) == 2, "Up moves to the nearest card above")
+        expect(six.neighbor(of: 0, direction: 1) == 5, "Down moves to the nearest card below")
+        expect(six.neighbor(of: 5, direction: 1) == nil, "Down stops at the last row")
+        expect(six.neighbor(of: 3, direction: -1) == nil, "Up stops at the first row")
+
+        let wide = WindowSwitcherGeometry.cardWidth(aspectRatio: 4, thumbnailHeight: 135)
+        expect(wide == 336, "Very wide windows are capped at 2.4:1")
+        let portrait = WindowSwitcherGeometry.cardWidth(aspectRatio: 0.5, thumbnailHeight: 135)
+        expect(portrait == 160, "Narrow windows keep room for the title")
+        let invalid = WindowSwitcherGeometry.cardWidth(aspectRatio: .nan, thumbnailHeight: 135)
+        expect(invalid == 228, "Unknown aspect ratios fall back to 16:10")
+        expect(WindowSwitcherGeometry.thumbnailHeight(screenHeight: 400) == 96, "Thumbnails have a minimum height")
+        expect(WindowSwitcherGeometry.thumbnailHeight(screenHeight: 2000) == 160, "Thumbnails have a maximum height")
+        expect(
+            WindowSwitcherGeometry.thumbnailFrame(inCardOfSize: CGSize(width: 228, height: 177))
+                == CGRect(x: 6, y: 36, width: 216, height: 135),
+            "The thumbnail sits below the header")
+
+        let many = WindowSwitcherGeometry(aspectRatios: Array(repeating: widescreen, count: 40), screenSize: screen)
+        expect(many.rows.count == 8, "Many windows wrap into many rows")
+        expect(many.panelSize.height == 765 && many.contentSize.height == 1496, "Tall content scrolls inside a capped panel")
+
+        let narrow = WindowSwitcherGeometry(aspectRatios: [4, widescreen], screenSize: CGSize(width: 300, height: 900))
+        expect(narrow.rows == [[0], [1]], "Each card gets its own row on a narrow screen")
+        expect(narrow.cardFrames[0].width == 231, "A card never exceeds the row width")
+
+        let empty = WindowSwitcherGeometry(aspectRatios: [], screenSize: screen)
+        expect(empty.rows.isEmpty && empty.cardFrames.isEmpty, "No windows means no cards")
     }
 
     @MainActor

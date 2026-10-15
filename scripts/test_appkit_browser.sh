@@ -19,7 +19,9 @@ gtimeout 45 xcrun swiftc -swift-version 6 -parse-as-library \
     "$project_root/Docky/Views/AppKit/NativeBrowserController.swift" \
     "$project_root/Docky/Views/AppKit/NativeBrowserController+DataSource.swift" \
     "$project_root/Docky/Views/AppKit/NativeLaunchpadGridLayout.swift" \
+    "$project_root/Docky/Views/AppKit/WindowSwitcherGeometry.swift" \
     "$project_root/Docky/Views/Tiles/ContextActionPopover.swift" \
+    "$project_root/scripts/tests/AppKitBrowserStubs.swift" \
     "$project_root/scripts/tests/AppKitBrowserRegression.swift" \
     -o "$test_directory/appkit-regression"
 gtimeout 15 "$test_directory/appkit-regression"

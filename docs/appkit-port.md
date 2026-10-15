@@ -50,7 +50,8 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
 - `scripts/test_launchpad_scan.sh`: compilation 30 seconds, runtime 10 seconds.
 - `scripts/test_appkit_browser.sh`: compilation 45 seconds, runtime 15 seconds.
   Covers all Dock edges, screen coordinates, scroll-adjusted drop insertion,
-  target rejection, Launchpad page geometry, search keys, and controller release.
+  target rejection, Launchpad page geometry, window switcher rows and ↑/↓
+  navigation, search keys, and controller release.
 - `scripts/test_appkit_compatibility.sh`: compilation 45 seconds, runtime 15 seconds.
   Covers Settings history and legacy widget kind, span, and opaque-settings encoding.
 - `scripts/test_appkit_ui.sh`: a previously built Debug app, runtime 30 seconds;
@@ -59,14 +60,17 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   release. Also covers isolated Launchpad folder mutations and drop indexes,
   grid keyboard navigation, dismissed folder callbacks, file context menus,
   calendar dates, denied-permission controls, initial lyric scrolling, widget reuse,
-  badge limits, and cached Hidden Apps updates.
+  badge limits, cached Hidden Apps updates, and the window switcher's cards,
+  selection frame, hover close button, and icon fallback, built from fixture windows.
   The test entry point bypasses normal startup and exits without installing
   the app or requesting permissions.
 - `scripts/test_window_switcher.sh`: a signed Debug app, normally under 15 seconds,
   runtime budget 45 seconds. Requires an unlocked desktop with existing Accessibility
-  and screen capture permissions. Checks selection feedback in both layouts and
-  preview modes, a real in-place preview, rapid selection changes, and dismissal.
-  Temporarily changed switcher preferences and the frontmost app are restored.
+  and screen capture permissions. Checks the reveal delay, selection feedback in
+  both preview modes, a real in-place preview, rapid selection changes, dismissal,
+  key swallowing, the quick-tap switch, and the ⌘Tab takeover. The ⌘Tab check is
+  skipped while another Docky is running. Temporarily changed switcher
+  preferences and the frontmost app are restored.
 
 The integration checks validate native controller layout and lifecycle. They do not
 replace interactive checks for drag sessions, magnification, auto-hide, VoiceOver,
@@ -77,6 +81,36 @@ motion, and reduced transparency.
 Before finalizing, run `git diff --check`, search app sources for SwiftUI imports and
 hosting adapters, and inspect the main app and its app-owned helper binaries with
 `otool -L` for SwiftUI linkage.
+
+## Window switcher
+
+The window switcher looks and behaves like the Windows 11 Alt+Tab switcher in
+every theme. `WindowSwitcherController` centers an acrylic panel
+(`WindowsTaskbarPopupChrome`) of window cards on the dock's screen.
+`WindowSwitcherGeometry` gives every thumbnail one height (15% of the screen,
+96–160 points), takes each card's width from its window's aspect ratio, and wraps
+cards into centered rows at 85% of the screen width. Each card shows the app
+icon and window title above the thumbnail, a 3-point selection frame, and a
+close button on hover. Windows without a capture show their app icon.
+
+Pressing and releasing the shortcut within 120 ms switches to the previous window
+without showing the switcher. After that delay it appears at once and fades out
+on dismissal. While it is open, Tab and the arrow keys move the
+selection (↑ and ↓ follow the rows on screen), Delete closes the selected window,
+Return or releasing the modifier switches, Escape or a click outside the panel
+cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
+
+"Replace macOS ⌘Tab" in Window Management makes ⌘Tab the shortcut.
+`SystemCommandTabService` turns off WindowServer's ⌘Tab (1) and ⇧⌘Tab (2)
+symbolic hotkeys with `CGSSetSymbolicHotKeyEnabled`. The Dock matches those
+ahead of every Carbon hotkey, so Docky's own ⌘Tab hotkey can't fire while they
+are on. Docky only turns them off while its ⌘Tab hotkey is registered and
+Accessibility is granted. The setting outlives the process, so Docky turns them
+back on when it quits, from an exit handler, and on its next launch after a
+crash. The watchdog also turns them back on after a forced termination, because
+the visibility state file records the override. Debug regressions never take
+⌘Tab unless a check needs it and no other Docky is running.
+`scripts/test_dock_lifecycle.py` checks the watchdog path.
 
 ## Windows 11 taskbar
 

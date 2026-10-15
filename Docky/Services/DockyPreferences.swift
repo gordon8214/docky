@@ -2516,6 +2516,22 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Whether ⌘Tab opens Docky's window switcher instead of the macOS app
+    /// switcher. `SystemCommandTabService` turns the system's ⌘Tab and ⇧⌘Tab
+    /// hotkeys off while this is on.
+    var replacesSystemCommandTab: Bool {
+        didSet {
+            guard replacesSystemCommandTab != oldValue else { return }
+            defaults.set(replacesSystemCommandTab, forKey: Keys.replacesSystemCommandTab)
+        }
+    }
+
+    /// The shortcut the switcher actually listens for: ⌘Tab while it replaces
+    /// the macOS app switcher, otherwise the recorded `windowSwitcherShortcut`.
+    var effectiveWindowSwitcherShortcut: KeyboardShortcut {
+        replacesSystemCommandTab ? KeyboardShortcut.commandTab : windowSwitcherShortcut
+    }
+
     /// Whether the window switcher should preview the selected window in place after a short hold.
     var showsWindowSwitcherFocusPreview: Bool {
         didSet {
@@ -2532,9 +2548,9 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Layout for the window switcher overlay. `.auto` resolves to `.list` when
-    /// screen-recording permission is missing (so users without thumbnails get a
-    /// usable switcher) and `.thumbnails` otherwise.
+    /// Former layout choice for the window switcher overlay. The Windows 11–style
+    /// switcher always shows thumbnail cards, so nothing reads this any more. It
+    /// stays so stored preferences, profiles and Settings history still decode.
     var windowSwitcherLayout: WindowSwitcherLayout {
         didSet {
             guard windowSwitcherLayout != oldValue else { return }
@@ -3589,6 +3605,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let enablesWindowSwitcher = "docky.enablesWindowSwitcher"
         static let includesMinimizedWindows = "docky.includesMinimizedWindows"
         static let windowSwitcherShortcut = "docky.windowSwitcherShortcut"
+        static let replacesSystemCommandTab = "docky.windowSwitcherReplacesCommandTab"
         static let showsWindowSwitcherFocusPreview = "docky.showsWindowSwitcherFocusPreview"
         static let windowSwitcherPreviewMode = "docky.windowSwitcherPreviewMode"
         static let windowSwitcherLayout = "docky.windowSwitcherLayout"
@@ -3701,6 +3718,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let enablesWindowSwitcher = true
         static let includesMinimizedWindows = true
         static let windowSwitcherShortcut = KeyboardShortcut(keyCode: 48, modifierFlags: [.option])
+        static let replacesSystemCommandTab = false
         static let showsWindowSwitcherFocusPreview = true
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
         static let windowSwitcherLayout: WindowSwitcherLayout = .auto
@@ -3830,6 +3848,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedEnablesWindowSwitcher = defaults.object(forKey: Keys.enablesWindowSwitcher) as? Bool
         let storedIncludesMinimizedWindows = defaults.object(forKey: Keys.includesMinimizedWindows) as? Bool
         let storedWindowSwitcherShortcut = defaults.data(forKey: Keys.windowSwitcherShortcut)
+        let storedReplacesSystemCommandTab = defaults.object(forKey: Keys.replacesSystemCommandTab) as? Bool
         let storedShowsWindowSwitcherFocusPreview = defaults.object(forKey: Keys.showsWindowSwitcherFocusPreview) as? Bool
         let storedWindowSwitcherPreviewMode = defaults.string(forKey: Keys.windowSwitcherPreviewMode)
         let storedWindowSwitcherLayout = defaults.string(forKey: Keys.windowSwitcherLayout)
@@ -3986,6 +4005,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.enablesWindowSwitcher = storedEnablesWindowSwitcher ?? DefaultValues.enablesWindowSwitcher
         self.includesMinimizedWindows = storedIncludesMinimizedWindows ?? DefaultValues.includesMinimizedWindows
         self.windowSwitcherShortcut = Self.decodeKeyboardShortcut(from: storedWindowSwitcherShortcut) ?? DefaultValues.windowSwitcherShortcut
+        self.replacesSystemCommandTab = storedReplacesSystemCommandTab ?? DefaultValues.replacesSystemCommandTab
         self.showsWindowSwitcherFocusPreview = storedShowsWindowSwitcherFocusPreview ?? DefaultValues.showsWindowSwitcherFocusPreview
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
         self.windowSwitcherLayout = storedWindowSwitcherLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowSwitcherLayout
@@ -4274,6 +4294,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         enablesWindowSwitcher = DefaultValues.enablesWindowSwitcher
         includesMinimizedWindows = DefaultValues.includesMinimizedWindows
         windowSwitcherShortcut = DefaultValues.windowSwitcherShortcut
+        replacesSystemCommandTab = DefaultValues.replacesSystemCommandTab
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode
         windowSwitcherLayout = DefaultValues.windowSwitcherLayout

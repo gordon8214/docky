@@ -90,12 +90,17 @@ enum DockBridgeRegression {
                 guard ContinuousClock.now < deadline else { throw failure("Reservation did not become ready") }
                 try await Task.sleep(for: .milliseconds(100))
             }
+            // Take ⌘Tab as well, so the forced termination also checks that the
+            // watchdog hands it back to macOS. No other Docky is running here.
+            SystemCommandTabService.shared.permitsOverride = true
+            SystemCommandTabService.shared.setOverridden(true)
             print("Dock bridge crash fixture ready")
             fflush(stdout)
             // Stay in AppKit's event loop. The lifecycle script will restart
             // Apple Dock, then SIGKILL this process to exercise both recoveries.
         } catch {
             WindowReservationService.shared.stop()
+            SystemCommandTabService.shared.restore()
             visibility.restore()
             fatalError("Dock bridge fixture failed: \(error.localizedDescription)")
         }

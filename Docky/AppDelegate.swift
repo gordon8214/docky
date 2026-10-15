@@ -27,6 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     #if DEBUG
     private func runDebugRegressionIfRequested() -> Bool {
+        let regressionFlags = [
+            "--window-switcher-regression", "--menu-extras-probe", "--dock-bridge-crash-fixture",
+            "--dock-bridge-regression", "--dock-system-regression", "--appkit-ui-regression"
+        ]
+        if ProcessInfo.processInfo.arguments.contains(where: regressionFlags.contains) {
+            SystemCommandTabService.shared.permitsOverride = false
+        }
         if ProcessInfo.processInfo.arguments.contains("--window-switcher-regression") {
             window?.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)
@@ -267,6 +274,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         WindowReservationService.shared.stop()
+        SystemCommandTabService.shared.restore()
         if SystemDockVisibilityService.shared.hasSnapshot {
             SystemDockVisibilityService.shared.restore()
         }

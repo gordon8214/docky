@@ -36,6 +36,7 @@ final class SystemDockVisibilityService {
     private let defaults = UserDefaults.standard
     private let sessionID = UUID().uuidString.lowercased()
     private var isWatchdogLaunchPendingOrRunning = false
+    private var commandTabOverrideActive = false
 
     private init() {}
 
@@ -44,6 +45,7 @@ final class SystemDockVisibilityService {
         let ownerPID: pid_t
         let sessionID: String
         let snapshot: [String: Any]?
+        let commandTabOverrideActive: Bool
     }
 
     var sessionIdentity: String { sessionID }
@@ -55,17 +57,29 @@ final class SystemDockVisibilityService {
     }
 
     func setReservationOwnership(active: Bool) {
+        updateOwnedState(key: "reservationOwnerActive", value: active, description: "reservation ownership")
+    }
+
+    /// Records whether Docky has turned off the system ⌘Tab hotkeys, so the
+    /// watchdog (or the next launch) can turn them back on if Docky dies
+    /// without restoring them.
+    func setCommandTabOverride(active: Bool) {
+        commandTabOverrideActive = active
+        updateOwnedState(key: "commandTabOverrideActive", value: active, description: "Command-Tab override")
+    }
+
+    private func updateOwnedState(key: String, value: Bool, description: String) {
         guard ownsSession, let stateFileURL else { return }
         do {
             let data = try Data(contentsOf: stateFileURL)
             guard var state = try PropertyListSerialization.propertyList(from: data, format: nil)
                 as? [String: Any] else { return }
-            state["reservationOwnerActive"] = active
+            state[key] = value
             let updated = try PropertyListSerialization.data(fromPropertyList: state, format: .xml, options: 0)
             try updated.write(to: stateFileURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateFileURL.path)
         } catch {
-            NSLog("[Docky] Could not update reservation ownership: \(error.localizedDescription)")
+            NSLog("[Docky] Could not update \(description): \(error.localizedDescription)")
         }
     }
 
@@ -77,6 +91,12 @@ final class SystemDockVisibilityService {
         let state = readVisibilityState()
         let hasStaleActiveState = state?.active == true && !isProcessRunning(state?.ownerPID ?? 0)
         let hasLegacySnapshot = state?.active != true && hasSnapshot
+
+        if hasStaleActiveState, state?.commandTabOverrideActive == true {
+            for hotKey in SystemSymbolicHotKey.allCases {
+                CGSSetSymbolicHotKeyEnabled(hotKey.rawValue, true)
+            }
+        }
 
         guard hasStaleActiveState || hasLegacySnapshot else {
             return
@@ -185,7 +205,8 @@ final class SystemDockVisibilityService {
                 "reservationOwnerActive": true,
                 "ownerPID": Int(ProcessInfo.processInfo.processIdentifier),
                 "sessionID": sessionID,
-                "snapshot": serializedSnapshot(snapshot)
+                "snapshot": serializedSnapshot(snapshot),
+                "commandTabOverrideActive": commandTabOverrideActive
             ]
             let data = try PropertyListSerialization.data(
                 fromPropertyList: state,
@@ -228,7 +249,8 @@ final class SystemDockVisibilityService {
             active: boolValue(plist["active"]) ?? false,
             ownerPID: pid_t(intValue(plist["ownerPID"]) ?? 0),
             sessionID: plist["sessionID"] as? String ?? "",
-            snapshot: snapshot
+            snapshot: snapshot,
+            commandTabOverrideActive: boolValue(plist["commandTabOverrideActive"]) ?? false
         )
     }
 

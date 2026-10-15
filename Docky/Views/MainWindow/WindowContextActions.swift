@@ -44,3 +44,39 @@ func windowMenuContextActions(
         ]),
     ]
 }
+
+/// The full right-click menu for a window card: focus and close, the Window
+/// menu actions above, then the owning app's Focus, Hide and Quit.
+@MainActor
+func windowCardContextActions(
+    for window: AppWindow,
+    onClosed: @escaping () -> Void,
+    dismiss: @escaping () -> Void
+) -> [ContextAction] {
+    let workspace = WorkspaceService.shared
+    return [
+        .action(String(localized: "Focus Window")) {
+            _ = workspace.focus(window: window)
+            dismiss()
+        },
+        .action(String(localized: "Close Window"), isDestructive: true) {
+            guard workspace.close(window: window) else { return }
+            onClosed()
+        },
+        .divider
+    ] + windowMenuContextActions(for: window, dismiss: dismiss) + [
+        .divider,
+        .action(String(localized: "Focus App")) {
+            workspace.activateOrOpen(bundleIdentifier: window.bundleIdentifier)
+            dismiss()
+        },
+        .action(String(localized: "Hide App")) {
+            workspace.hide(bundleIdentifier: window.bundleIdentifier)
+            dismiss()
+        },
+        .action(String(localized: "Quit")) {
+            workspace.quit(bundleIdentifier: window.bundleIdentifier)
+            dismiss()
+        }
+    ]
+}

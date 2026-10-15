@@ -119,6 +119,11 @@ final class WindowsTaskbarPopupChrome: NSView {
     private let material = NSVisualEffectView()
     private let tint = CALayer()
     private var transparencyObservation: AnyCancellable?
+    /// How strongly the tint covers the blurred backdrop. Popups stay nearly
+    /// opaque; the window switcher lets more of the desktop show through.
+    var tintAlpha: CGFloat = 0.94 {
+        didSet { updatePalette() }
+    }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
@@ -150,7 +155,7 @@ final class WindowsTaskbarPopupChrome: NSView {
         let opaque = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         material.isHidden = opaque
         let color = WindowsTaskbarStyle.background(effectiveAppearance)
-        tint.backgroundColor = color.withAlphaComponent(opaque ? 1 : 0.94).cgColor
+        tint.backgroundColor = color.withAlphaComponent(opaque ? 1 : tintAlpha).cgColor
         layer?.borderColor =
             WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.12).cgColor
     }

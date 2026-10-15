@@ -12,6 +12,7 @@ struct KeyboardShortcut: Codable, Equatable {
     let modifierFlagsRawValue: UInt
 
     static let empty = KeyboardShortcut(keyCode: 0, modifierFlags: [])
+    static let commandTab = KeyboardShortcut(keyCode: 48, modifierFlags: [.command])
 
     init(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) {
         self.keyCode = keyCode

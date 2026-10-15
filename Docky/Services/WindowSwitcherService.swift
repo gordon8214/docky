@@ -17,7 +17,12 @@ struct FocusedWindowPreview {
 final class WindowSwitcherService: ObservableObject {
     static let shared = WindowSwitcherService()
 
+    /// A switcher session is open: the shortcut is held and a window is selected.
     @Published private(set) var isPresented = false
+    /// The overlay is on screen. Like Windows Alt+Tab, it appears only after
+    /// the shortcut has been held for `revealDelay`, so a quick tap switches
+    /// to the previous window without flashing the switcher.
+    @Published private(set) var isRevealed = false
     @Published private(set) var windows: [AppWindow] = []
     @Published private(set) var windowPreviews: [String: NSImage] = [:]
     @Published private(set) var selectedWindowIdentifier: String?
@@ -31,22 +36,22 @@ final class WindowSwitcherService: ObservableObject {
     private var globalFlagsMonitor: Any?
     private var cancellables: Set<AnyCancellable> = []
     private var focusedPreviewTask: Task<Void, Never>?
+    private var revealTask: Task<Void, Never>?
+    static let revealDelay: Duration = .milliseconds(120)
+    /// Supplied by the switcher view, which knows how cards wrap into rows.
+    /// Returns the identifier of the card above (`-1`) or below (`1`) the given one.
+    var verticalNeighbor: ((String, Int) -> String?)?
     private let forwardHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 1)
     private let reverseHotKeyID = EventHotKeyID(signature: OSType(0x444B5957), id: 2)
     private var reverseHotKeyRef: EventHotKeyRef?
 
-    var resolvedLayout: WindowSwitcherLayout {
-        let canCapture = PermissionsService.shared.screenCapture == .granted
-        return DockyPreferences.shared.windowSwitcherLayout.resolved(canCaptureThumbnails: canCapture)
-    }
-
     private var activePreviewMode: WindowSwitcherPreviewMode? {
-        // Both preview modes are thumbnail-mode features: in-place needs the
-        // captured image to show behind the switcher, and instant-focus's
-        // "see the real window come forward" UX fights with the list overlay.
-        // In list mode the list itself is the preview substitute.
+        // Both preview modes need window captures: in-place shows the live
+        // window behind the switcher, and instant-focus hides the switcher and
+        // relies on the windows themselves, which only makes sense alongside
+        // thumbnails.
         guard DockyPreferences.shared.showsWindowSwitcherFocusPreview,
-              resolvedLayout == .thumbnails else {
+              PermissionsService.shared.screenCapture == .granted else {
             return nil
         }
 
@@ -63,7 +68,7 @@ final class WindowSwitcherService: ObservableObject {
 
     private init() {
         installHotKeyHandlerIfNeeded()
-        registerHotKey(shortcut: DockyPreferences.shared.windowSwitcherShortcut)
+        registerHotKey()
         installEventMonitors()
         subscribeToPreferences()
         observeWindowPreviews()
@@ -115,6 +120,7 @@ final class WindowSwitcherService: ObservableObject {
         windows = latestWindows
         freezeWindowPreviews(for: latestWindows)
         isPresented = true
+        scheduleReveal()
 
         if latestWindows.isEmpty {
             // Show the chrome with a "No windows available" message
@@ -152,6 +158,9 @@ final class WindowSwitcherService: ObservableObject {
 
     func dismiss() {
         cancelFocusedPreview()
+        revealTask?.cancel()
+        revealTask = nil
+        isRevealed = false
         isPresented = false
         isContextMenuPresented = false
         selectedWindowIdentifier = nil
@@ -175,6 +184,20 @@ final class WindowSwitcherService: ObservableObject {
             windows.firstIndex { $0.windowIdentifier == window.windowIdentifier }
         } ?? 0
         selectWindow(at: currentIndex + delta)
+    }
+
+    /// Moves to the card in the row above (`-1`) or below (`1`). Stays put at
+    /// the first or last row, like Windows Alt+Tab.
+    func moveSelectionVertically(direction: Int) {
+        guard let selectedWindowIdentifier else { return }
+        guard let verticalNeighbor else {
+            moveSelection(delta: direction)
+            return
+        }
+
+        if let neighbor = verticalNeighbor(selectedWindowIdentifier, direction) {
+            selectWindow(withIdentifier: neighbor)
+        }
     }
 
     func selectWindow(withIdentifier identifier: String) {
@@ -216,9 +239,14 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     func closeSelectedWindow() {
-        guard let window = selectedWindow else { return }
+        guard let selectedWindowIdentifier else { return }
+        closeWindow(withIdentifier: selectedWindowIdentifier)
+    }
+
+    func closeWindow(withIdentifier identifier: String) {
+        guard let window = windows.first(where: { $0.windowIdentifier == identifier }) else { return }
         if WorkspaceService.shared.close(window: window) {
-            removeWindow(withIdentifier: window.windowIdentifier)
+            removeWindow(withIdentifier: identifier)
         }
     }
 
@@ -243,6 +271,8 @@ final class WindowSwitcherService: ObservableObject {
             return
         }
 
+        // Closing another card from its × button leaves the selection alone.
+        guard selectedWindowIdentifier == identifier else { return }
         let nextIndex = min(removedIndex, windows.count - 1)
         selectWindow(withIdentifier: windows[nextIndex].windowIdentifier)
     }
@@ -257,15 +287,15 @@ final class WindowSwitcherService: ObservableObject {
 
     private func subscribeToPreferences() {
         observeChanges { [weak self] in
-            let shortcut = DockyPreferences.shared.windowSwitcherShortcut
-            self?.registerHotKey(shortcut: shortcut)
+            _ = DockyPreferences.shared.effectiveWindowSwitcherShortcut
+            self?.registerHotKey()
         }
         .store(in: &cancellables)
 
         observeChanges { [weak self] in
             let isEnabled = DockyPreferences.shared.enablesWindowSwitcher
             guard let self else { return }
-            self.registerHotKey(shortcut: DockyPreferences.shared.windowSwitcherShortcut)
+            self.registerHotKey()
             if !isEnabled {
                 self.dismiss()
             }
@@ -275,7 +305,6 @@ final class WindowSwitcherService: ObservableObject {
         observeChanges { [weak self] in
             _ = DockyPreferences.shared.showsWindowSwitcherFocusPreview
             _ = DockyPreferences.shared.windowSwitcherPreviewMode
-            _ = DockyPreferences.shared.windowSwitcherLayout
             self?.refreshSelectionPresentation()
         }
         .store(in: &cancellables)
@@ -293,6 +322,7 @@ final class WindowSwitcherService: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateGlobalEventMonitors()
+                self?.registerHotKey()
             }
             .store(in: &cancellables)
     }
@@ -308,44 +338,8 @@ final class WindowSwitcherService: ObservableObject {
 
     private func installEventMonitors() {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isPresented else {
-                return event
-            }
-
-            switch event.keyCode {
-            case 53:
-                self.dismiss()
-                return nil
-            case 36, 76:
-                self.confirmSelection()
-                return nil
-            case 123, 126:
-                self.moveSelection(delta: -1)
-                return nil
-            case 124, 125:
-                self.moveSelection(delta: 1)
-                return nil
-            default:
-                break
-            }
-
-            // User-configurable action keys. Navigation cases above take
-            // precedence — if a user rebinds an action onto an arrow / Escape /
-            // Return key, the built-in nav wins and the action never fires.
-            let prefs = DockyPreferences.shared
-            switch event.keyCode {
-            case prefs.switcherMinimizeKeyCode:
-                self.minimizeSelectedWindow()
-                return nil
-            case prefs.switcherCloseKeyCode:
-                self.closeSelectedWindow()
-                return nil
-            case prefs.switcherZoomKeyCode:
-                self.zoomSelectedWindow()
-                return nil
-            default:
-                return event
-            }
+            guard let self, self.consumesKeyDown(event) else { return event }
+            return nil
         }
 
         localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -354,6 +348,64 @@ final class WindowSwitcherService: ObservableObject {
         }
 
         updateGlobalEventMonitors()
+    }
+
+    /// Handles a key pressed while the switcher is open and returns whether
+    /// Docky should swallow it. Every key is swallowed, handled or not: with ⌘
+    /// held for ⌘Tab, an unhandled ⌘Q or ⌘H would otherwise reach Docky's own
+    /// menu and quit or hide Docky.
+    func consumesKeyDown(_ event: NSEvent) -> Bool {
+        guard isPresented, !isContextMenuPresented else { return false }
+        handleKeyDown(event)
+        return true
+    }
+
+    /// Returns whether the key did something.
+    @discardableResult
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        switch event.keyCode {
+        case 53:
+            dismiss()
+            return true
+        case 36, 76:
+            confirmSelection()
+            return true
+        case 123:
+            moveSelection(delta: -1)
+            return true
+        case 124:
+            moveSelection(delta: 1)
+            return true
+        case 126:
+            moveSelectionVertically(direction: -1)
+            return true
+        case 125:
+            moveSelectionVertically(direction: 1)
+            return true
+        case 51, 117:
+            closeSelectedWindow()
+            return true
+        default:
+            break
+        }
+
+        // User-configurable action keys. Built-in keys above take precedence:
+        // if a user rebinds an action onto an arrow, Escape, Return or Delete,
+        // the built-in key wins and the action never fires.
+        let prefs = DockyPreferences.shared
+        switch event.keyCode {
+        case prefs.switcherMinimizeKeyCode:
+            minimizeSelectedWindow()
+            return true
+        case prefs.switcherCloseKeyCode:
+            closeSelectedWindow()
+            return true
+        case prefs.switcherZoomKeyCode:
+            zoomSelectedWindow()
+            return true
+        default:
+            return false
+        }
     }
 
     private func updateGlobalEventMonitors() {
@@ -375,7 +427,7 @@ final class WindowSwitcherService: ObservableObject {
         guard isPresented else { return }
         guard !isContextMenuPresented else { return }
 
-        let requiredFlags = DockyPreferences.shared.windowSwitcherShortcut.modifierFlags
+        let requiredFlags = DockyPreferences.shared.effectiveWindowSwitcherShortcut.modifierFlags
         let activeFlags = flags.intersection(KeyboardShortcut.supportedModifierFlags)
         guard !requiredFlags.isEmpty, !activeFlags.isSuperset(of: requiredFlags) else {
             return
@@ -387,13 +439,26 @@ final class WindowSwitcherService: ObservableObject {
     private func dismissIfShortcutReleased(flags: NSEvent.ModifierFlags) {
         guard isPresented else { return }
 
-        let requiredFlags = DockyPreferences.shared.windowSwitcherShortcut.modifierFlags
+        let requiredFlags = DockyPreferences.shared.effectiveWindowSwitcherShortcut.modifierFlags
         let activeFlags = flags.intersection(KeyboardShortcut.supportedModifierFlags)
         guard !requiredFlags.isEmpty, !activeFlags.isSuperset(of: requiredFlags) else {
             return
         }
 
         dismiss()
+    }
+
+    private func scheduleReveal() {
+        revealTask?.cancel()
+        revealTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.revealDelay)
+            } catch {
+                return
+            }
+            guard let self, self.isPresented else { return }
+            self.isRevealed = true
+        }
     }
 
     private func selectWindow(at index: Int) {
@@ -599,21 +664,33 @@ final class WindowSwitcherService: ObservableObject {
         )
     }
 
-    private func registerHotKey(shortcut: KeyboardShortcut) {
+    private func registerHotKey() {
         unregisterHotKey()
 
-        guard DockyPreferences.shared.enablesWindowSwitcher,
+        let preferences = DockyPreferences.shared
+        let shortcut = preferences.effectiveWindowSwitcherShortcut
+        guard preferences.enablesWindowSwitcher,
               shortcut.isValid else {
+            SystemCommandTabService.shared.setOverridden(false)
             return
         }
 
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             UInt32(shortcut.keyCode),
             shortcut.carbonModifierFlags,
             forwardHotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
+        )
+
+        // Take ⌘Tab from the system only while Docky's own hotkey is registered
+        // and Accessibility is granted. Without Accessibility the switcher can't
+        // open, and the user would be left with no ⌘Tab at all.
+        SystemCommandTabService.shared.setOverridden(
+            preferences.replacesSystemCommandTab
+                && status == noErr
+                && PermissionsService.shared.accessibility == .granted
         )
 
         RegisterEventHotKey(
