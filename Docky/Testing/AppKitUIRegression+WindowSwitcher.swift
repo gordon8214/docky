@@ -239,6 +239,29 @@
             preferences.windowSwitcherIconSize = 20
             await Task.yield()
             require(iconField.doubleValue == 20, "Preference changes update the field")
+
+            // Typed sizes save without Return: when the field loses focus,
+            // and when Settings closes mid-edit.
+            let settings = SettingsWindowController()
+            guard let settingsWindow = settings.window, let contentView = settingsWindow.contentView,
+                  let iconRow = iconField.superview, let fontRow = fontField.superview else {
+                restore()
+                preconditionFailure("Settings needs a window for the size fields")
+            }
+            for (index, row) in [iconRow, fontRow].enumerated() {
+                row.frame = CGRect(x: 0, y: CGFloat(index) * 40, width: 420, height: 32)
+                contentView.addSubview(row)
+            }
+            func type(_ text: String, into field: NSTextField) {
+                require(settingsWindow.makeFirstResponder(field), "The size field takes focus")
+                field.currentEditor()?.string = text
+            }
+            type("30", into: iconField)
+            settingsWindow.makeFirstResponder(nil)
+            require(preferences.windowSwitcherIconSize == 30, "Leaving the field saves the typed icon size")
+            type("14", into: fontField)
+            settings.close()
+            require(preferences.windowSwitcherFontSize == 14, "Closing Settings saves the typed font size")
         }
 
         private static func switcherFixtureCards() -> [WindowSwitcherCard] {

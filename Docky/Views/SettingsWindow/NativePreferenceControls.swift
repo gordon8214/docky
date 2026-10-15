@@ -86,6 +86,8 @@ enum NativePreferenceField {
         formatter.maximum = NSNumber(value: range.upperBound)
         formatter.maximumFractionDigits = 3
         field.formatter = formatter
+        // Commit when the field loses focus, not only on Return.
+        field.cell?.sendsActionOnEndEditing = true
         field.widthAnchor.constraint(equalToConstant: 100).isActive = true
         let row = NativeFormRow(title: title, control: field)
         row.bind(field) { set(min(range.upperBound, max(range.lowerBound, field.doubleValue))) }
@@ -101,6 +103,7 @@ enum NativePreferenceField {
         formatter.minimum = NSNumber(value: range.lowerBound)
         formatter.maximum = NSNumber(value: range.upperBound)
         field.formatter = formatter
+        field.cell?.sendsActionOnEndEditing = true
         field.widthAnchor.constraint(equalToConstant: 100).isActive = true
         let enable = NSButton(checkboxWithTitle: String(localized: "Override"), target: nil, action: nil)
         let row = NativeFormRow(title: title, control: field, accessories: [enable])

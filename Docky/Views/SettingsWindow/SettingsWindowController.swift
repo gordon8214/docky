@@ -29,6 +29,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // End any edit in progress, so a number typed without pressing Return
+        // still saves.
+        window?.makeFirstResponder(nil)
         onClose?()
     }
 }
