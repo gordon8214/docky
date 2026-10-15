@@ -145,9 +145,9 @@ extension DockSystemRegression {
     }
 
     private static func checkPreferenceMigration() {
-        let suite = "DockyRegression-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Could not create isolated defaults") }
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = RegressionDefaults("DockyRegression")
+        defer { suite.remove() }
+        let defaults = suite.defaults
         for key in ["docky.hidesSystemDock", "docky.hidesDuringFullscreen", "docky.maximizedWindowBehavior"] {
             defaults.set(false, forKey: key)
         }

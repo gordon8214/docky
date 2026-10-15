@@ -3,11 +3,9 @@
 
     extension AppKitUIRegression {
         static func checkLaunchpadEditing() {
-            let suite = "docky.review-regression." + UUID().uuidString
-            guard let defaults = UserDefaults(suiteName: suite) else {
-                preconditionFailure("Isolated defaults required")
-            }
-            defer { defaults.removePersistentDomain(forName: suite) }
+            let suite = RegressionDefaults("docky.review-regression")
+            defer { suite.remove() }
+            let defaults = suite.defaults
             let service = LaunchpadLayoutService(defaults: defaults)
             service.seedIfEmpty([.app(bundleID: "A"), .app(bundleID: "B"), .app(bundleID: "C"), .app(bundleID: "D")])
             let controller = NativeLaunchpadController(layoutService: service)

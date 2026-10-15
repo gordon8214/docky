@@ -46,13 +46,12 @@
             print("Windows 11 taskbar regressions passed")
         }
         private static func checkWindowsArchiveRoundTrip() {
-            let identifier = "docky.windows-export." + UUID().uuidString
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(identifier)
-            guard let defaults = UserDefaults(suiteName: identifier) else {
-                preconditionFailure("Isolated export defaults required")
-            }
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("docky.windows-export." + UUID().uuidString)
+            let suite = RegressionDefaults("docky.windows-export")
+            let defaults = suite.defaults
             defer {
-                defaults.removePersistentDomain(forName: identifier)
+                suite.remove()
                 try? FileManager.default.removeItem(at: directory)
             }
             do {

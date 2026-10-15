@@ -4,12 +4,11 @@
 
     extension AppKitUIRegression {
         static func checkThemeWidgetRemoval() async {
-            let suite = "docky.theme-widget-regression." + UUID().uuidString
-            guard let defaults = UserDefaults(suiteName: suite) else {
-                preconditionFailure("Isolated defaults required")
-            }
-            defer { defaults.removePersistentDomain(forName: suite) }
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+            let suite = RegressionDefaults("docky.theme-widget-regression")
+            defer { suite.remove() }
+            let defaults = suite.defaults
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("docky.theme-widget-regression." + UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: directory) }
             let fixture = directory.appendingPathComponent("fixture-search")
             do {
