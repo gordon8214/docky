@@ -7,8 +7,13 @@ import AppKit
 import Combine
 import Observation
 
+/// Shows and hides the switcher without animation. The overlay orders in or
+/// out in the same call that reveals or dismisses the switcher, and its cards
+/// are built during the reveal delay, so the reveal has little left to lay out
+/// or draw.
 final class WindowSwitcherOverlayWindowController: NSWindowController {
     private weak var mainWindow: MainWindow?
+    private let contentController: WindowSwitcherController
     private var cancellables: Set<AnyCancellable> = []
     private let preferences = DockyPreferences.shared
 
@@ -42,6 +47,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
 
         let overlayWindow = WindowSwitcherOverlayWindow()
         let contentController = WindowSwitcherController()
+        self.contentController = contentController
         overlayWindow.contentViewController = contentController
 
         super.init(window: overlayWindow)
@@ -59,15 +65,31 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
     }
 
     private func observeOverlayPresentation() {
-        WindowSwitcherService.shared.$isRevealed
+        let service = WindowSwitcherService.shared
+        // The hop to the main queue lets the press pick its first selection
+        // before the cards are drawn.
+        service.$isPresented
             .removeDuplicates()
+            .filter { $0 }
             .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.prepareOverlay()
+            }
+            .store(in: &cancellables)
+
+        // No hop here: the service publishes on the main actor, so the overlay
+        // appears and disappears within the call that changes `isRevealed`.
+        // Dismissing therefore hides it before `confirmSelection` focuses the
+        // chosen window. `@Published` sends before it stores, so these calls must
+        // not read `isRevealed`.
+        service.$isRevealed
+            .removeDuplicates()
             .sink { [weak self] isRevealed in
                 guard let self else { return }
                 if isRevealed {
                     self.presentOverlay()
                 } else {
-                    self.dismissOverlay()
+                    self.hideOverlay()
                 }
             }
             .store(in: &cancellables)
@@ -87,36 +109,35 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             .store(in: &cancellables)
     }
 
+    /// Builds this session's cards while the overlay is hidden. `viewWillAppear`
+    /// still refreshes them, for selection moves and thumbnails that arrive
+    /// during the delay and for reveals that come without this step.
+    private func prepareOverlay() {
+        let service = WindowSwitcherService.shared
+        guard service.isPresented, !service.isRevealed, showsOverlayUI else { return }
+
+        updateFrame()
+        contentController.prepareForReveal()
+    }
+
     private func presentOverlay() {
         guard let window else { return }
 
         guard showsOverlayUI else {
-            configureHiddenWindowState()
+            hideOverlay()
             return
         }
 
-        updateFrame()
         // Appear at once. The service's reveal delay already keeps a quick
         // tap from flashing the switcher, so a fade-in would only add lag.
-        window.alphaValue = 1
-        window.ignoresMouseEvents = false
+        updateFrame()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func dismissOverlay() {
-        guard showsOverlayUI else {
-            configureHiddenWindowState()
-            return
-        }
-
-        animateWindowAlpha(to: 0) { [weak self] in
-            // A new session may have revealed the switcher during the fade.
-            guard let self, let window = self.window, !WindowSwitcherService.shared.isRevealed else { return }
-
-            window.ignoresMouseEvents = true
-            window.orderOut(nil)
-        }
+    /// Disappears at once: a fade-out would only delay the switch.
+    private func hideOverlay() {
+        window?.orderOut(nil)
     }
 
     private func prepareOverlayWindow() {
@@ -125,7 +146,7 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
         updateFrame()
         window.collectionBehavior = preferences.windowSpaceBehavior.collectionBehavior(
             includesFullScreenAuxiliary: true)
-        configureHiddenWindowState()
+        hideOverlay()
     }
 
     private func observeSpaceBehavior() {
@@ -162,49 +183,20 @@ final class WindowSwitcherOverlayWindowController: NSWindowController {
             .store(in: &cancellables)
     }
 
-    private func configureHiddenWindowState() {
-        guard let window else { return }
-
-        window.alphaValue = 0
-        window.ignoresMouseEvents = true
-        window.orderOut(nil)
-    }
-
     private func refreshOverlayPresentation() {
         guard WindowSwitcherService.shared.isRevealed else {
-            configureHiddenWindowState()
+            hideOverlay()
             return
         }
 
-        if showsOverlayUI {
-            presentOverlay()
-        } else {
-            configureHiddenWindowState()
-        }
+        presentOverlay()
     }
 
     private func updateFrame() {
         guard let window else { return }
         let screenFrame = mainWindow?.screen?.frame ?? NSScreen.main?.frame ?? .zero
-        guard !screenFrame.isEmpty else { return }
+        guard !screenFrame.isEmpty, window.frame != screenFrame else { return }
         window.setFrame(screenFrame, display: window.isVisible)
-    }
-
-    private func animateWindowAlpha(to alphaValue: CGFloat, completion: (@MainActor () -> Void)? = nil) {
-        guard let window else {
-            completion?()
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = WindowsTaskbarStyle.reducesMotion ? 0 : WindowsTaskbarStyle.popupDuration
-            context.timingFunction = WindowsTaskbarStyle.timingFunction
-            window.animator().alphaValue = alphaValue
-        } completionHandler: {
-            Task { @MainActor in
-                completion?()
-            }
-        }
     }
 }
 
@@ -216,6 +208,11 @@ private final class WindowSwitcherOverlayWindow: NSWindow {
         backgroundColor = .clear
         hasShadow = false
         level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
+        // No system animation when the window orders in or out.
+        animationBehavior = .none
+        // Set explicitly so the clear area outside the panel takes clicks,
+        // which cancel the switcher. A hidden window gets no events anyway.
+        ignoresMouseEvents = false
     }
 
     override var canBecomeKey: Bool { true }

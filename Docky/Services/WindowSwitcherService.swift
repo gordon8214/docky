@@ -256,28 +256,23 @@ final class WindowSwitcherService: ObservableObject {
     }
 
     func dismiss() {
-        endKeyRepeat()
-        unregisterGraveHotKeys()
-        cancelFocusedPreview()
+        // The overlay orders out as `isRevealed` changes. Doing that first
+        // hides it before the hotkey and capture cleanup below.
         revealTask?.cancel()
         revealTask = nil
         isRevealed = false
+        endKeyRepeat()
+        unregisterGraveHotKeys()
+        cancelFocusedPreview()
         isPresented = false
         isContextMenuPresented = false
         selectedWindowIdentifier = nil
         defersSelectionFocus = false
         instantlyFocusedIdentifier = nil
-        // Defer the windows/previews wipe past the overlay's fade-out
-        // (0.18s in WindowSwitcherOverlayWindowController) so the chrome
-        // keeps rendering its last frame and doesn't flash to the
-        // "No windows available" card mid-dismiss. The next show pass
-        // overwrites both arrays anyway, so this only matters as a
-        // visual cushion.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, !self.isPresented else { return }
-            self.windows = []
-            self.windowPreviews = [:]
-        }
+        // The overlay ordered out when `isRevealed` changed, without a fade,
+        // so emptying the list can't flash the "No windows available" card.
+        windows = []
+        windowPreviews = [:]
     }
 
     func moveSelection(delta: Int) {

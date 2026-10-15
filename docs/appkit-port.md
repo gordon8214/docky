@@ -116,9 +116,12 @@ Both shadows go through `NSView.shadow`, because AppKit resets a backing
 layer's own shadow opacity.
 
 Pressing and releasing the shortcut within 120 ms switches to the previous window
-without showing the switcher. After that delay it appears at once and fades out
-on dismissal. While it is open, Tab and the arrow keys move the
-selection (↑ and ↓ follow the rows on screen), Delete closes the selected window,
+without showing the switcher. After that delay it appears at once. It also
+disappears at once, without a fade: releasing the shortcut or pressing Return
+hides it before focusing the chosen window. The overlay builds its cards during
+the delay, while it is still hidden, so the reveal has little left to lay out or
+draw. While it is open, Tab and the arrow keys move the selection (↑ and ↓
+follow the rows on screen), Delete closes the selected window,
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
 As in macOS's ⌘Tab, ⇧Tab and the grave key (`` ` ``, above Tab on ANSI

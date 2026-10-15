@@ -128,6 +128,8 @@
             let changes = mode == .instantFocus ? 2 : 30
             for _ in 0..<changes { service.moveSelection(delta: 1) }
             service.dismiss()
+            try check(service.windows.isEmpty && service.windowPreviews.isEmpty,
+                      "Dismissing must drop the session's windows and thumbnails at once")
             try await Task.sleep(for: .milliseconds(300))
             try check(!service.isPresented && !service.isRevealed && service.focusedPreview == nil,
                       "Dismissed switchers must not receive stale capture frames")

@@ -81,8 +81,11 @@ final class WindowSwitcherController: NSViewController {
         service.verticalNeighbor = { [weak self] identifier, direction in
             self?.verticalNeighbor(of: identifier, direction: direction)
         }
+        // `viewWillAppear` refreshes right after starting the session, so the
+        // values the publishers send on subscribing need no second pass.
         observations.add { [weak self] in
             service.$windows.combineLatest(service.$selectedWindowIdentifier, service.$windowPreviews)
+                .dropFirst()
                 .sink { [weak self] _ in self?.scheduleRefresh() }
         }
         observations.add { [weak self] in
@@ -101,6 +104,8 @@ final class WindowSwitcherController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         updateFocusedPreview(WindowSwitcherService.shared.focusedPreview)
+        // The window wasn't visible when `viewWillAppear` laid out the cards.
+        updateHoveredCard(atWindowPoint: view.window?.mouseLocationOutsideOfEventStream)
     }
 
     override func viewDidDisappear() {
@@ -177,8 +182,20 @@ final class WindowSwitcherController: NSViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.refreshIsScheduled = false
+            // A hidden switcher catches up in `prepareForReveal` or
+            // `viewWillAppear`. Refreshing it now would only redraw cards no
+            // one sees, or drop them all once a dismissal empties the list.
+            guard self.view.window?.isVisible == true else { return }
             self.refresh()
         }
+    }
+
+    /// Builds and lays out the cards while the window is still hidden. Core
+    /// Animation draws them when this turn of the run loop commits, so a later
+    /// reveal has little left to do.
+    func prepareForReveal() {
+        refresh()
+        view.layoutSubtreeIfNeeded()
     }
 
     func refresh() {
