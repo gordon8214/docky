@@ -61,26 +61,7 @@ final class DockChromeView: NSView {
         super.layout()
         guard let layer else { return }
         if WindowsTaskbarStyle.isActive {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.mask = nil
-            windowsMaterial.frame = bounds
-            tint.zPosition = 1
-            windowsEdge.zPosition = 2
-            tint.frame = bounds
-            let color = WindowsTaskbarStyle.background(effectiveAppearance)
-            tint.backgroundColor = color.withAlphaComponent(
-                NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : color.alphaComponent).cgColor
-            tint.isHidden = false
-            imageLayer.isHidden = true
-            border.isHidden = true
-            borderGradient.isHidden = true
-            windowsEdge.isHidden = false
-            windowsEdge.frame = CGRect(
-                x: 0, y: 0, width: bounds.width, height: 1 / (window?.backingScaleFactor ?? 2))
-            let edgeColor = WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.12)
-            windowsEdge.backgroundColor = edgeColor.cgColor
-            CATransaction.commit()
+            layoutWindowsChrome(layer)
             return
         }
         tint.zPosition = 0
@@ -123,6 +104,28 @@ final class DockChromeView: NSView {
         border.isHidden = preferences.effectiveWindowBorderColor == nil
         CATransaction.commit()
     }
+    private func layoutWindowsChrome(_ layer: CALayer) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.mask = nil
+        windowsMaterial.frame = bounds
+        tint.zPosition = 1
+        windowsEdge.zPosition = 2
+        tint.frame = bounds
+        let color = WindowsTaskbarStyle.background(effectiveAppearance)
+        tint.backgroundColor = color.withAlphaComponent(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : color.alphaComponent).cgColor
+        tint.isHidden = false
+        imageLayer.isHidden = true
+        border.isHidden = true
+        borderGradient.isHidden = true
+        windowsEdge.isHidden = false
+        windowsEdge.frame = CGRect(
+            x: 0, y: 0, width: bounds.width, height: 1 / (window?.backingScaleFactor ?? 2))
+        let edgeColor = WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.12)
+        windowsEdge.backgroundColor = edgeColor.cgColor
+        CATransaction.commit()
+    }
     private func configureBackgroundImage(_ preferences: DockyPreferences) {
         imageLayer.frame = bounds
         imageLayer.contents = backgroundImage
@@ -152,6 +155,8 @@ final class DockChromeView: NSView {
                 NSWorkspace.shared.openApplication(at: url,
                                                    configuration: NSWorkspace.OpenConfiguration())
             },
+            .action(MenuExtrasNativeBridge.shared.enabled ? "Turn Off Native Menu Extras"
+                : "Try Native Menu Extras (Experimental)") { MenuExtrasNativeBridge.shared.enabled.toggle() },
             .action("Taskbar Settings") { (NSApp.delegate as? AppDelegate)?.showSettingsWindow(nil) }
         ]
         ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)

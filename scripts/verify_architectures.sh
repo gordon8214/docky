@@ -28,3 +28,6 @@ verify_binary "Contents/MacOS/Docky" arm64
 verify_binary "Contents/Library/LoginItems/DockyDockWatchdog.app/Contents/MacOS/DockyDockWatchdog" arm64
 verify_binary "Contents/Resources/DockBridge/DockyDockLoader" arm64e
 verify_binary "Contents/Resources/DockBridge/DockyDockBridge.dylib" arm64e
+
+verify_binary "Contents/Resources/MenuBridge/DockyMenuLoader" arm64e
+verify_binary "Contents/Resources/MenuBridge/DockyMenuBridge.dylib" "arm64 arm64e"

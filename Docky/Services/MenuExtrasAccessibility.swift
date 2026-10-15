@@ -33,7 +33,7 @@ actor MenuExtrasAccessibility {
             for group in children(window) {
                 guard ContinuousClock.now < deadline, let rect = frame(group),
                       let display = displays.first(where: { MenuExtraGeometry.visibleItem(rect, on: $0.frame) }),
-                      let target = target(in: group) else { continue }
+                      let target = target(in: group, frame: rect) else { continue }
                 var ownerPID: pid_t = 0
                 AXUIElementGetPid(target, &ownerPID)
                 let identifier = string(target, kAXIdentifierAttribute)
@@ -59,7 +59,7 @@ actor MenuExtrasAccessibility {
         return found.sorted { $0.frame.minX < $1.frame.minX }
     }
 
-    private func target(in group: AXUIElement) -> AXUIElement? {
+    private func target(in group: AXUIElement, frame groupFrame: CGRect) -> AXUIElement? {
         for child in children(group) {
             AXUIElementSetMessagingTimeout(child, 0.15)
             let role = string(child, kAXRoleAttribute)
@@ -67,7 +67,12 @@ actor MenuExtrasAccessibility {
                let bar = element(attribute(child, kAXExtrasMenuBarAttribute)),
                !children(bar).isEmpty {
                 let items = children(bar)
-                return items.count == 1 ? items.first : child
+                if items.count == 1 { return items.first }
+                if let match = items.first(where: {
+                    guard let itemFrame = frame($0) else { return false }
+                    return abs(itemFrame.midX - groupFrame.midX) < 2
+                        && abs(itemFrame.midY - groupFrame.midY) < 4
+                }) { return match }
             }
             if role == kAXMenuBarItemRole || role == kAXButtonRole { return child }
             if let leaf = children(child).first(where: { string($0, kAXRoleAttribute) == kAXMenuBarItemRole }) {
@@ -101,9 +106,8 @@ actor MenuExtrasAccessibility {
         deadline = .now + .seconds(1)
         guard result == .actionUnsupported || result == .notImplemented else { return result.rawValue }
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        if let physicalResult = pressPhysicalElement(at: center, ownerPID: item.ownerPID, group: group),
-           physicalResult != .actionUnsupported, physicalResult != .notImplemented {
-            return physicalResult.rawValue
+        guard physicalOwnerMatches(at: center, ownerPID: item.ownerPID, group: group) else {
+            return AXError.invalidUIElement.rawValue
         }
         guard !Task.isCancelled else { return AXError.invalidUIElement.rawValue }
         guard CGPreflightPostEventAccess() else { return AXError.apiDisabled.rawValue }
@@ -136,20 +140,17 @@ actor MenuExtrasAccessibility {
         return AXError.success.rawValue
     }
 
-    private func pressPhysicalElement(at point: CGPoint, ownerPID: pid_t, group: AXUIElement) -> AXError? {
+    private func physicalOwnerMatches(at point: CGPoint, ownerPID: pid_t, group: AXUIElement) -> Bool {
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
-            == .success, let hit else { return nil }
+            == .success, let hit else { return false }
         var hitPID: pid_t = 0
         var groupPID: pid_t = 0
         AXUIElementGetPid(hit, &hitPID)
         AXUIElementGetPid(group, &groupPID)
-        guard hitPID == ownerPID || hitPID == groupPID else { return .invalidUIElement }
-        AXUIElementSetMessagingTimeout(hit, 0.3)
-        var actions: CFArray?
-        guard AXUIElementCopyActionNames(hit, &actions) == .success,
-              (actions as? [String])?.contains(kAXPressAction) == true else { return .actionUnsupported }
-        return AXUIElementPerformAction(hit, kAXPressAction as CFString)
+        // Hosted AXPress can time out without opening a menu. Validate the owner,
+        // then use one physical down/up pair instead of issuing two activations.
+        return hitPID == ownerPID || hitPID == groupPID
     }
 
     func clear(session: UUID) {

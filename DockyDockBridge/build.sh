@@ -15,3 +15,5 @@ if [[ -z "$bridge_identity" ]]; then bridge_identity="-"; fi
 codesign --force --sign "$bridge_identity" "$bridge_output/DockyDockBridge.dylib"
 codesign --force --sign "$bridge_identity" --entitlements "$bridge_source/loader.entitlements" \
     "$bridge_output/DockyDockLoader"
+
+"${SRCROOT}/DockyMenuBridge/build.sh"

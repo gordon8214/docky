@@ -53,7 +53,8 @@ final class MenuExtrasService {
     }
 
     private func refresh(identity: UUID) async {
-        guard AXIsProcessTrusted(), CGPreflightScreenCaptureAccess() else {
+        guard AXIsProcessTrusted(),
+              MenuExtrasNativeBridge.shared.enabled || CGPreflightScreenCaptureAccess() else {
             captureSession.stop()
             items = []
             let missing = [AXIsProcessTrusted() ? nil : "Accessibility",
@@ -74,13 +75,19 @@ final class MenuExtrasService {
             return MenuExtraDisplay(id: identifier, frame: CGDisplayBounds(identifier))
         }
         var snapshots = await backend.snapshot(agentPID: agent.processIdentifier, displays: displays, session: identity)
+        snapshots = retainingNativeItems(in: snapshots, agentPID: agent.processIdentifier, displays: displays)
         guard generation == identity, !Task.isCancelled else { return }
+        if !snapshots.isEmpty, snapshots.allSatisfy({ MenuExtrasNativeBridge.shared.hostedIDs.contains($0.id)
+            || $0.ownerPID == ProcessInfo.processInfo.processIdentifier || $0.id.contains("com.apple.menuextra.clock")
+        }) { captureSession.stop() }
         var captured: [MenuExtra] = []
         for display in displays {
             let extras = snapshots.filter { $0.displayID == display.id }
             captured += await capture(extras)
         }
-        let settled = await backend.snapshot(agentPID: agent.processIdentifier, displays: displays, session: identity)
+        let settledSnapshot = await backend.snapshot(
+            agentPID: agent.processIdentifier, displays: displays, session: identity)
+        let settled = retainingNativeItems(in: settledSnapshot, agentPID: agent.processIdentifier, displays: displays)
         guard generation == identity, !Task.isCancelled else { return }
         if settled.map(\.frame) != snapshots.map(\.frame) || settled.map(\.id) != snapshots.map(\.id) {
             // Starting capture adds the system recording indicator and can reflow the bar.
@@ -96,8 +103,35 @@ final class MenuExtrasService {
         message = items.isEmpty ? "No visible menu extras" : "macOS menu extras"
     }
 
+    private func retainingNativeItems(in snapshots: [MenuExtraSnapshot], agentPID: pid_t,
+                                      displays: [MenuExtraDisplay]) -> [MenuExtraSnapshot] {
+        let found = Set(snapshots.map(\.id))
+        let retained = items.map(\.snapshot).filter { extra in
+            MenuExtrasNativeBridge.shared.hostedIDs.contains(extra.id) && !found.contains(extra.id)
+                && !snapshots.contains(where: {
+                    $0.ownerPID == extra.ownerPID && $0.displayID == extra.displayID
+                        && abs($0.frame.midX - extra.frame.midX) < 2 && abs($0.frame.midY - extra.frame.midY) < 2
+                })
+                && displays.contains(where: { $0.id == extra.displayID })
+                && (!extra.id.contains("com.apple.menuextra.") || extra.ownerPID == agentPID)
+        }
+        return (snapshots + retained).sorted { $0.frame.minX < $1.frame.minX }
+    }
+
     private func capture(_ extras: [MenuExtraSnapshot]) async -> [MenuExtra] {
         guard let first = extras.first else { return [] }
+        if !CGPreflightScreenCaptureAccess() || extras.allSatisfy({
+            MenuExtrasNativeBridge.shared.hostedIDs.contains($0.id)
+                || $0.ownerPID == ProcessInfo.processInfo.processIdentifier
+                || $0.id.contains("com.apple.menuextra.clock")
+        }) {
+            return extras.map { extra in
+                let image = items.first { $0.id == extra.id }?.image
+                    ?? NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: extra.label)
+                    ?? NSImage(size: extra.frame.size)
+                return MenuExtra(snapshot: extra, image: image)
+            }
+        }
         let region = extras.dropFirst().reduce(first.frame) { $0.union($1.frame) }
         do {
             let image = try await captureSession.image(in: region, displayID: first.displayID)
