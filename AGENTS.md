@@ -74,8 +74,8 @@ to the script's `swiftc` list.
 
 **In-app, needs the Debug build above.** These scripts launch the built binary
 with a `#if DEBUG` flag, which `AppDelegate.runDebugRegressionIfRequested`
-routes to `Docky/Testing/`. Quit any running Docky before the bridge and
-lifecycle tests.
+routes to `Docky/Testing/`. Quit any running Docky before the dock-system,
+bridge and lifecycle tests.
 
 | Script | Notes |
 | --- | --- |

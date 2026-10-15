@@ -181,14 +181,17 @@ extension DockSystemRegression {
         window.orderFront(nil)
         window.didOrderDockWindow()
         try await checkNativeWindowLevel(window)
-        window.applyFullscreenState(false, animated: false)
-        window.isPointerInsideWindow = true
-        let oldHold = window.beginInteraction()
         let profiles = ProfileSwitcherWindowController(mainWindow: window)
         let progress = SmartOrganizeProgressChipWindowController(mainWindow: window)
         let progressToken = SmartOrganizeProgressService.shared.begin()
         defer { SmartOrganizeProgressService.shared.end(progressToken) }
         try await Task.sleep(for: .milliseconds(50))
+        // The window follows the real Space, so while a fullscreen app is
+        // frontmost on this display it re-enters fullscreen whenever it
+        // rechecks. Force the windowed state after the last suspension point.
+        window.applyFullscreenState(false, animated: false)
+        window.isPointerInsideWindow = true
+        let oldHold = window.beginInteraction()
         DockEditModeService.shared.enter()
         window.applyFullscreenState(true, animated: false)
         precondition(window.visibilityState == .hidden && !window.permitsPassivePresentation)
