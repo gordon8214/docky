@@ -91,6 +91,52 @@ reconnects after Apple Dock restarts. Backend and independent readback failures
 appear in Settings → Behavior → System Dock and feedback diagnostics; an
 explicit retry is available. There is no Accessibility resize fallback.
 
+## Window list and thumbnails
+
+`WindowRegistry` reads other apps' windows from WindowServer, not from
+Accessibility. `kAXWindowsAttribute` only returns windows on the active Space,
+plus minimized windows and hidden apps' windows. On a Mac with four Spaces it
+returned 2 of 19 user windows. None of the calls below needs SIP disabled or
+the Dock-side publisher. `Docky/Private/WindowServerWindows.swift` loads them,
+and `Docky/Services/WindowServerWindowRules.swift` interprets their values.
+
+| Contract | Value (macOS 27.0.1, 26A434) |
+| --- | --- |
+| Spaces | `SLSCopyManagedDisplaySpaces`; `Current Space` is each display's visible Space |
+| Windows per Space | `SLSCopyWindowsWithOptionsAndTags(connection, 0, [space], 0x7, &1, &0)`; option `0x7` includes minimized windows |
+| Window details | `SLSWindowQueryWindows` iterator: parent, level, PID, tags, attributes, bounds |
+| User windows | Parent `0`, level `0`, and yabai's document-tag rule; bounds match `kCGWindowBounds` |
+| Minimized | Tag bit `0x1000000000000000`; the window is ordered out but keeps its Space |
+| Listed | Ordered in (`SLSWindowIsOrderedIn`) or minimized; other ordered-out windows are windows the app closed but kept |
+| Native tabs | Only the selected tab belongs to a Space, matching Mission Control |
+| Titles | `kAXTitleAttribute` first; otherwise `kCGWindowName` from `CGWindowListCreateDescriptionFromArray`, which needs Screen Recording |
+| Capture | `SLSHWCaptureWindowList(connection, &id, 1, options)`; `1 << 11` ignores the global clip shape, `1 << 9` returns points, `1 << 8` returns backing pixels |
+| AX elements on other Spaces | `_AXUIElementCreateWithRemoteToken`: PID, 4 zero bytes, `0x636f636f`, then a 64-bit element ID. Window element IDs were below 1,000 in testing (highest seen: 325), so the scan stops at 1,000 |
+
+Callers check Screen Recording permission before capturing. Capture takes
+30–50 ms per window and works for windows on inactive Spaces,
+minimized windows and hidden apps' windows. ScreenCaptureKit failed on some
+of those, and on every window of an unsigned test app on another Space. The
+live focus preview still streams through ScreenCaptureKit for windows on the
+active Space, and polls SkyLight captures for the rest.
+
+Connection notifications, registered with `SLSRegisterConnectionNotifyProc`,
+arrive on the main thread while AppKit pumps events. Window events need
+`SLSRequestNotificationsForWindows` for the window first. Each request replaces
+the previous set, and requests for more than 1,024 windows fail.
+
+| Event | Packet | Fires when |
+| --- | --- | --- |
+| `804` | window ID | A requested window is destroyed |
+| `806` / `807` | window ID | A requested window moves / resizes |
+| `815` / `816` | window ID | Both fire when a requested window is minimized or restored |
+| `1325` / `1326` | 64-bit Space ID, window ID | Any window joins / leaves a Space; how new and closed windows are found |
+
+No WindowServer event reports title changes, app hiding, or a tab switch in a
+background app. The registry takes titles and focus order from AX
+notifications, and hiding from `NSWorkspace`. A tab switch in the active app
+changes its focused window, which refreshes the list.
+
 ## Regression commands
 
 Build Debug first. Live bridge tests require a signed app. For a local unsigned
@@ -104,6 +150,7 @@ scripts/test_dock_system.sh
 scripts/test_dock_bridge.sh
 gtimeout 30 python3 scripts/test_dock_lifecycle.py
 scripts/test_appkit_ui.sh
+scripts/test_window_registry.sh
 scripts/test_appkit_browser.sh
 scripts/test_appkit_compatibility.sh
 ```

@@ -76,10 +76,11 @@ extension DockTileInteraction {
     }
 
     /// "Windows" submenu for the folder tile: lists every visible (non-
-    /// minimized) window across the folder's apps in WindowRegistry MRU
-    /// order, each focusable, plus a Tile sub-section for arranging the top
-    /// two (or four) windows side-by-side / stacked / in quarters. Returns
-    /// nil when there are no visible windows so the submenu doesn't appear.
+    /// minimized) window across the folder's apps on every Space, in
+    /// WindowRegistry MRU order, each focusable, plus a Tile sub-section for
+    /// arranging the top two (or four) windows on the active Space side-by-side
+    /// / stacked / in quarters. Returns nil when there are no visible windows
+    /// so the submenu doesn't appear.
     func appFolderWindowsSubmenu(for folder: AppFolderTile) -> ContextAction? {
         let bundleIDs = Set(folder.apps.map(\.bundleIdentifier))
         guard !bundleIDs.isEmpty else { return nil }
@@ -95,33 +96,36 @@ extension DockTileInteraction {
             }
         }
 
-        if windows.count >= 2 {
+        // Tiling arranges windows on the current Space only; moving windows
+        // from other Spaces would flip between desktops while tiling.
+        let tileable = windows.filter(\.isOnActiveSpace)
+        if tileable.count >= 2 {
             let workspace = WorkspaceService.shared
             children.append(.divider)
             children.append(contentsOf: [
                 .action(
                     "Left and Right",
                     image: contextMenuSymbol("rectangle.lefthalf.filled")
-                ) { _ = workspace.tile(windows: windows, layout: .leftRight) },
+                ) { _ = workspace.tile(windows: tileable, layout: .leftRight) },
                 .action(
                     "Right and Left",
                     image: contextMenuSymbol("rectangle.righthalf.filled")
-                ) { _ = workspace.tile(windows: windows, layout: .rightLeft) },
+                ) { _ = workspace.tile(windows: tileable, layout: .rightLeft) },
                 .action(
                     "Top and Bottom",
                     image: contextMenuSymbol("rectangle.tophalf.filled")
-                ) { _ = workspace.tile(windows: windows, layout: .topBottom) },
+                ) { _ = workspace.tile(windows: tileable, layout: .topBottom) },
                 .action(
                     "Bottom and Top",
                     image: contextMenuSymbol("rectangle.bottomhalf.filled")
-                ) { _ = workspace.tile(windows: windows, layout: .bottomTop) }
+                ) { _ = workspace.tile(windows: tileable, layout: .bottomTop) }
             ])
-            if windows.count >= 3 {
+            if tileable.count >= 3 {
                 children.append(
                     .action(
                         "Quarters",
                         image: contextMenuSymbol("rectangle.split.2x2")
-                    ) { _ = workspace.tile(windows: windows, layout: .quarters) }
+                    ) { _ = workspace.tile(windows: tileable, layout: .quarters) }
                 )
             }
         }

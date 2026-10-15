@@ -4046,6 +4046,16 @@
         }
       }
     },
+    "Show Windows From" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar ventanas de"
+          }
+        }
+      }
+    },
     "Shown when the Trash has items." : {
 
     },

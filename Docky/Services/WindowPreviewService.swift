@@ -55,15 +55,14 @@ final class WindowPreviewService: ObservableObject {
         var aggregated: [AppWindow] = []
         let registry = WindowRegistry.shared
         let includesMinimized = DockyPreferences.shared.includesMinimizedWindows
+        let spaceScope = DockyPreferences.shared.windowSwitcherSpaceScope
         for bundleID in bundleIDs where !bundleID.isEmpty {
-            for window in WorkspaceService.shared.appWindows(bundleIdentifier: bundleID) {
-                // Minimized windows skip the strict capture check —
-                // CGWindowServer often hides their bounds and we don't
-                // need a live preview for them anyway. They're still
-                // gated on the user preference and a valid cgWindowID
-                // so AX entries for long-gone windows don't slip in.
+            for window in WorkspaceService.shared.appWindows(bundleIdentifier: bundleID)
+            where spaceScope.includes(windowOnActiveSpace: window.isOnActiveSpace) {
+                // Minimized windows skip the size check and are gated
+                // on the user preference instead.
                 if window.isMinimized {
-                    guard includesMinimized, window.cgWindowID != nil else { continue }
+                    guard includesMinimized else { continue }
                 } else {
                     guard registry.isCapturable(window) else { continue }
                 }

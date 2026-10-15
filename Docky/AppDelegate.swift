@@ -29,7 +29,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func runDebugRegressionIfRequested() -> Bool {
         let regressionFlags = [
             "--window-switcher-regression", "--menu-extras-probe", "--dock-bridge-crash-fixture",
-            "--dock-bridge-regression", "--dock-system-regression", "--appkit-ui-regression"
+            "--dock-bridge-regression", "--dock-system-regression", "--appkit-ui-regression",
+            "--window-registry-regression"
         ]
         if ProcessInfo.processInfo.arguments.contains(where: regressionFlags.contains) {
             SystemCommandTabService.shared.permitsOverride = false
@@ -39,6 +40,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSApp.setActivationPolicy(.accessory)
             AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
             Task { await WindowSwitcherRegression.run() }
+            return true
+        }
+        if ProcessInfo.processInfo.arguments.contains("--window-registry-regression") {
+            window?.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
+            Task { await WindowRegistryRegression.run() }
             return true
         }
         if ProcessInfo.processInfo.arguments.contains("--menu-extras-probe") {

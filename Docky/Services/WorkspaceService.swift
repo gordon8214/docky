@@ -17,6 +17,9 @@ import Combine
 import CoreImage
 import CoreMedia
 import ScreenCaptureKit
+import os
+
+private let previewLogger = Logger(subsystem: "gt.quintero.Docky", category: "WindowPreview")
 
 enum AppFolderTileLayout {
     case leftRight, rightLeft, topBottom, bottomTop, quarters
@@ -59,13 +62,16 @@ final class WorkspaceService: ObservableObject {
     private var liveFocusPreviewSession: LiveWindowPreviewSession?
     private var liveFocusPreviewRequest = UUID()
     private let previewContentCache = WindowPreviewContentCache()
+    private let windowCaptureQueue = DispatchQueue(label: "gt.quintero.Docky.window-capture", qos: .utility)
+    /// The switcher's focused-window preview waits on its captures, so they
+    /// don't queue behind background thumbnails.
+    private let focusCaptureQueue = DispatchQueue(label: "gt.quintero.Docky.focus-capture", qos: .userInitiated)
     private var capturingWindowPreviewIDs: Set<String> = []
 
     /// A minimized-window capture can miss on its first try — the genie
-    /// animation leaves the offscreen content briefly unavailable, or the
-    /// SCWindow match hasn't settled. Rather than mark the window done
-    /// after one miss (which left it permanently thumbnail-less), retry a
-    /// few times with a short delay before giving up.
+    /// animation leaves the offscreen content briefly unavailable. Rather
+    /// than mark the window done after one miss (which left it permanently
+    /// thumbnail-less), retry a few times with a short delay before giving up.
     private let maxMinimizedPreviewAttempts = 3
     private let minimizedPreviewRetryDelay: Duration = .milliseconds(400)
 
@@ -131,10 +137,11 @@ final class WorkspaceService: ObservableObject {
         let isFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleIdentifier
             && !runningApp.isHidden
 
-        // No AX windows can also mean every window is on another Space (AX
-        // can't see those): activate to switch Spaces instead of reopening.
+        // The registry lists windows on every Space, but only user windows.
+        // Activate rather than reopen when WindowServer still knows a live
+        // window the registry filtered out.
         if accessibilityGranted, allWindows.isEmpty {
-            if hasWindowOnAnotherSpace(pid: runningApp.processIdentifier) {
+            if hasUnlistedLiveWindow(pid: runningApp.processIdentifier) {
                 runningApp.unhide()
                 runningApp.activateTransferringFrontmost(options: [.activateAllWindows])
             } else if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
@@ -143,18 +150,27 @@ final class WorkspaceService: ObservableObject {
             return
         }
 
-        // Running but every window is minimized: restore the most-recently-minimized.
-        if accessibilityGranted, visibleWindows.isEmpty, !allWindows.isEmpty,
-           let lastMinimized = minimizedWindows.last(where: { $0.bundleIdentifier == bundleIdentifier }) {
-            _ = restoreMinimizedWindow(lastMinimized)
-            return
+        // No visible window on this Space: restore the most-recently-minimized
+        // window, preferring one minimized here. When visible windows exist
+        // only on other Spaces and nothing here is minimized, activating
+        // below switches to them.
+        let windowsOnActiveSpace = visibleWindows.filter(\.isOnActiveSpace)
+        if accessibilityGranted, windowsOnActiveSpace.isEmpty {
+            let minimizedForApp = minimizedWindows.filter { $0.bundleIdentifier == bundleIdentifier }
+            if let target = minimizedForApp.last(where: \.isOnActiveSpace)
+                ?? (visibleWindows.isEmpty ? minimizedForApp.last : nil) {
+                _ = restoreMinimizedWindow(target)
+                return
+            }
         }
 
-        // Already frontmost with at least one visible window: apply user preference.
-        if isFrontmost, !visibleWindows.isEmpty {
+        // Already frontmost with at least one visible window here: apply user
+        // preference. Windows on other Spaces are left alone, so cycling and
+        // minimizing never act on a desktop the user can't see.
+        if isFrontmost, !windowsOnActiveSpace.isEmpty {
             applyFrontmostAppTileClickBehavior(
                 runningApp: runningApp,
-                visibleWindows: visibleWindows
+                visibleWindows: windowsOnActiveSpace
             )
             return
         }
@@ -164,9 +180,10 @@ final class WorkspaceService: ObservableObject {
         runningApp.activateTransferringFrontmost(options: [.activateAllWindows])
     }
 
-    /// Whether the window server knows a live, ordinary window for `pid` that
-    /// isn't on the active Space (ordered-in filters stale closed-window entries).
-    private func hasWindowOnAnotherSpace(pid: pid_t) -> Bool {
+    /// Whether WindowServer knows a live, ordinary, off-screen window for
+    /// `pid` that the registry didn't list (ordered-in filters stale
+    /// closed-window entries).
+    private func hasUnlistedLiveWindow(pid: pid_t) -> Bool {
         guard let entries = CGWindowListCopyWindowInfo([], kCGNullWindowID) as? [[String: Any]] else {
             return false
         }
@@ -259,7 +276,11 @@ final class WorkspaceService: ObservableObject {
         stopLiveFocusPreview()
         let request = liveFocusPreviewRequest
 
-        guard PermissionsService.shared.screenCapture == .granted else {
+        // ScreenCaptureKit streams no frames for windows on inactive Spaces or
+        // minimized windows; returning false lets the caller poll SkyLight
+        // captures instead.
+        guard PermissionsService.shared.screenCapture == .granted,
+              window.isOnActiveSpace, !window.isMinimized else {
             return false
         }
 
@@ -501,9 +522,8 @@ final class WorkspaceService: ObservableObject {
         for (window, frame) in placements {
             allOk = resize(window, toNSFrame: frame) && allOk
         }
-        // Surface every tiled window, windows on inactive Spaces won't be
-        // visible after resize until SLPS pulls them forward. Focus in order
-        // so the first-in-the-layout-name window ends up frontmost / key.
+        // Focus in reverse so the first-in-the-layout-name window ends up
+        // frontmost / key.
         for (window, _) in placements.reversed() {
             _ = focus(window: window)
         }
@@ -726,11 +746,18 @@ final class WorkspaceService: ObservableObject {
     /// window appears). The `runningApps` setter is diff-guarded so this
     /// extra pass costs nothing when no app changed eligibility.
     private func subscribeToRegistry() {
+        // The shareable-content cache only goes stale when windows come or
+        // go, not on every move.
+        var lastWindowIDs = Set<CGWindowID>()
         WindowRegistry.shared.$windows
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] windows in
                 MainActor.assumeIsolated {
-                    self?.previewContentCache.invalidate()
+                    let windowIDs = Set(windows.map(\.cgWindowID))
+                    if windowIDs != lastWindowIDs {
+                        lastWindowIDs = windowIDs
+                        self?.previewContentCache.invalidate()
+                    }
                     self?.refresh()
                 }
             }
@@ -763,7 +790,9 @@ final class WorkspaceService: ObservableObject {
         appWindowPreviewMetadata.removeValue(forKey: windowIdentifier)
         attemptedAppWindowPreviewIDs.remove(windowIdentifier)
         guard didChange else { return }
-        refreshAppWindowPreviews(for: WindowRegistry.shared.visible)
+        // Same source set as `refreshWindowDerivedState`, so minimized
+        // windows' previews survive the eviction pass.
+        refreshAppWindowPreviews(for: WindowRegistry.shared.switchable(includeMinimized: true))
     }
 
     /// Debug-only: clear the "already attempted" set so every visible
@@ -912,11 +941,13 @@ final class WorkspaceService: ObservableObject {
         attemptedAppWindowPreviewIDs = attemptedAppWindowPreviewIDs.intersection(activeWindowIdentifiers)
         var windowsToCapture: [AppWindow] = []
 
+        // Windows on other Spaces wait until they're shown when the switcher
+        // and previews only list the active Space.
+        let capturesOtherSpaces = DockyPreferences.shared.windowSwitcherSpaceScope == .allSpaces
         for window in windows {
-            // Don't attempt to capture minimized windows; ScreenCaptureKit
-            // can't render them. Any existing cached preview survives
-            // because the eviction loop above skips minimized entries.
-            guard !window.isMinimized,
+            // SkyLight captures minimized windows too, once; the TTL above
+            // never evicts their previews.
+            guard capturesOtherSpaces || window.isOnActiveSpace,
                   updatedPreviews[window.windowIdentifier] == nil,
                   !attemptedAppWindowPreviewIDs.contains(window.windowIdentifier) else {
                 continue
@@ -941,13 +972,9 @@ final class WorkspaceService: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
 
-            let shareableContentCache = ShareableContentCache()
             for window in windows {
                 guard self.appWindowPreviews[window.windowIdentifier] == nil,
-                      let preview = await self.captureAppWindowPreview(
-                          for: window,
-                          shareableContentCache: shareableContentCache
-                      ) else {
+                      let preview = await self.captureAppWindowPreview(for: window) else {
                     continue
                 }
 
@@ -966,10 +993,7 @@ final class WorkspaceService: ObservableObject {
         }
     }
 
-    private func captureAppWindowPreview(
-        for window: AppWindow,
-        shareableContentCache: ShareableContentCache? = nil
-    ) async -> NSImage? {
+    private func captureAppWindowPreview(for window: AppWindow) async -> NSImage? {
         guard PermissionsService.shared.screenCapture == .granted else {
             return nil
         }
@@ -978,80 +1002,31 @@ final class WorkspaceService: ObservableObject {
               capturingWindowPreviewIDs.insert(window.windowIdentifier).inserted else { return nil }
         defer { capturingWindowPreviewIDs.remove(window.windowIdentifier) }
 
-        do {
-            let shareableContent: SCShareableContent
-            if let shareableContentCache {
-                if let cachedContent = shareableContentCache.content {
-                    shareableContent = cachedContent
-                } else {
-                    let fetchedContent = try await shareableContentIncludingOffscreenWindows()
-                    shareableContentCache.content = fetchedContent
-                    shareableContent = fetchedContent
-                }
-            } else {
-                shareableContent = try await shareableContentIncludingOffscreenWindows()
-            }
-
-            guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
-                NSLog(
-                    "[Docky] App window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
-                )
-                return nil
-            }
-
-            let configuration = SCStreamConfiguration()
-            let captureSize = constrainedCaptureSize(for: shareableWindow.frame.size)
-            configuration.width = Int(captureSize.width)
-            configuration.height = Int(captureSize.height)
-            configuration.capturesAudio = false
-            if FeatureGate.shared.isAvailable(.streamMicrophoneCapture), #available(macOS 15.0, *) {
-                configuration.captureMicrophone = false
-            }
-            configuration.showsCursor = false
-            configuration.scalesToFit = true
-            configuration.ignoreShadowsSingleWindow = true
-            configuration.ignoreGlobalClipSingleWindow = true
-
-            let filter = SCContentFilter(desktopIndependentWindow: shareableWindow)
-            let cgImage = try await captureImage(contentFilter: filter, configuration: configuration)
-            return makeThumbnail(from: cgImage, maxSize: CGSize(width: 480, height: 300))
-        } catch {
-            NSLog("[Docky] App window preview capture failed for \(window.windowIdentifier): \(error.localizedDescription)")
+        guard let thumbnail = await captureThumbnail(of: window, maxSize: CGSize(width: 480, height: 300)) else {
+            previewLogger.error(
+                "App window preview capture failed for \(window.windowIdentifier, privacy: .public) title=\(window.windowTitle, privacy: .private)"
+            )
             return nil
         }
+        return thumbnail
     }
 
     private func captureFullSizeAppWindowImage(for window: AppWindow) async -> NSImage? {
         guard PermissionsService.shared.screenCapture == .granted else {
             return nil
         }
-
-        do {
-            let shareableContent = try await shareableContentIncludingOffscreenWindows()
-            guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
-                return nil
-            }
-
-            let configuration = SCStreamConfiguration()
-            let captureSize = fullSizeCaptureSize(for: shareableWindow.frame.size, screenBounds: window.screenBounds)
-            configuration.width = Int(captureSize.width)
-            configuration.height = Int(captureSize.height)
-            configuration.capturesAudio = false
-            if FeatureGate.shared.isAvailable(.streamMicrophoneCapture), #available(macOS 15.0, *) {
-                configuration.captureMicrophone = false
-            }
-            configuration.showsCursor = false
-            configuration.scalesToFit = true
-            configuration.ignoreShadowsSingleWindow = true
-            configuration.ignoreGlobalClipSingleWindow = true
-
-            let filter = SCContentFilter(desktopIndependentWindow: shareableWindow)
-            let cgImage = try await captureImage(contentFilter: filter, configuration: configuration)
-            return makeFullSizeImage(from: cgImage)
-        } catch {
-            NSLog("[Docky] Live focus preview capture failed for \(window.windowIdentifier): \(error.localizedDescription)")
+        // Backing pixels, capped like the live stream so a 6K window doesn't
+        // allocate a full-resolution frame on every poll.
+        let limit = fullSizeCaptureSize(
+            for: window.frame?.size ?? CGSize(width: 4096, height: 2304),
+            screenBounds: window.screenBounds
+        )
+        guard let cgImage = await captureWindowImage(
+                window.cgWindowID, bestResolution: true, fitting: limit, on: focusCaptureQueue
+              ) else {
             return nil
         }
+        return makeFullSizeImage(from: cgImage)
     }
 
     private func captureMinimizedWindowPreview(for window: AppWindow) async -> NSImage? {
@@ -1059,121 +1034,65 @@ final class WorkspaceService: ObservableObject {
             return nil
         }
 
-        do {
-            let shareableContent = try await shareableContentIncludingOffscreenWindows()
-            guard let shareableWindow = matchingShareableWindow(for: window, in: shareableContent.windows) else {
-                NSLog(
-                    "[Docky] Minimized window preview: no shareable window for \(window.windowIdentifier) title=\(window.windowTitle) totalShareableWindows=\(shareableContent.windows.count)"
-                )
-                return nil
-            }
-
-            let configuration = SCStreamConfiguration()
-            let captureSize = constrainedCaptureSize(for: shareableWindow.frame.size)
-            configuration.width = Int(captureSize.width)
-            configuration.height = Int(captureSize.height)
-            configuration.capturesAudio = false
-            if FeatureGate.shared.isAvailable(.streamMicrophoneCapture), #available(macOS 15.0, *) {
-                configuration.captureMicrophone = false
-            }
-            configuration.showsCursor = false
-            configuration.scalesToFit = true
-            configuration.ignoreShadowsSingleWindow = true
-            configuration.ignoreGlobalClipSingleWindow = true
-
-            let filter = SCContentFilter(desktopIndependentWindow: shareableWindow)
-            let cgImage = try await captureImage(contentFilter: filter, configuration: configuration)
-            return makeThumbnail(from: cgImage, maxSize: CGSize(width: 320, height: 200))
-        } catch {
-            NSLog("[Docky] Minimized window preview capture failed for \(window.windowIdentifier): \(error.localizedDescription)")
+        guard let thumbnail = await captureThumbnail(of: window, maxSize: CGSize(width: 320, height: 200)) else {
+            previewLogger.error(
+                "Minimized window preview capture failed for \(window.windowIdentifier, privacy: .public) title=\(window.windowTitle, privacy: .private)"
+            )
             return nil
         }
+        return thumbnail
     }
 
-    private func matchingShareableWindow(for window: AppWindow, in windows: [SCWindow]) -> SCWindow? {
-        // Exact identity match on the CGWindowID. `SCWindow.windowID` is a
-        // CGWindowID, as is `cgWindowID` (resolved via `_AXUIElementGetWindow`).
-        // The old code compared `windowNumber` here — that's the `AXWindowNumber`
-        // attribute, a *different* value — so the exact match silently failed and
-        // two same-titled windows (e.g. two Helium windows) fell through to the
-        // title+index fallback and got swapped.
-        if let cgWindowID = window.cgWindowID,
-           let exactMatch = windows.first(where: { $0.windowID == cgWindowID }) {
-            return exactMatch
+    /// A thumbnail at most `maxSize` points, with pixels for the window's
+    /// display. Captures in points and scales down on the capture queue, so
+    /// the main actor only wraps the result.
+    private func captureThumbnail(of window: AppWindow, maxSize: CGSize) async -> NSImage? {
+        let scale = backingScaleFactor(for: window.screenBounds)
+        let pixelLimit = CGSize(width: maxSize.width * scale, height: maxSize.height * scale)
+        guard let cgImage = await captureWindowImage(
+                window.cgWindowID, bestResolution: false, fitting: pixelLimit, on: windowCaptureQueue
+              ) else {
+            return nil
         }
+        // Point-resolution captures match the window's frame in points.
+        let sourceSize = window.frame?.size ?? CGSize(width: cgImage.width, height: cgImage.height)
+        let thumbnail = NSImage(
+            cgImage: cgImage,
+            size: WindowPreviewCaptureSizing.size(for: sourceSize, maximum: maxSize)
+        )
+        thumbnail.isTemplate = false
+        return thumbnail
+    }
 
-        let candidates = windows.filter { shareableWindow in
-            guard let owningApplication = shareableWindow.owningApplication else {
-                return false
+    /// Captures a window's backing store through SkyLight on a background
+    /// queue, because each capture blocks for tens of milliseconds, and scales
+    /// it to fit `limit` pixels there. Unlike ScreenCaptureKit, this works for
+    /// windows on inactive Spaces, minimized windows and hidden apps, and
+    /// needs no shareable-content enumeration.
+    private func captureWindowImage(
+        _ windowID: CGWindowID,
+        bestResolution: Bool,
+        fitting limit: CGSize,
+        on queue: DispatchQueue
+    ) async -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                let image = WindowServerWindows.captureImage(of: windowID, bestResolution: bestResolution)
+                    .flatMap { WindowPreviewCaptureSizing.downscaled($0, toFit: limit) }
+                continuation.resume(returning: image)
             }
-
-            return owningApplication.processID == window.processIdentifier
-                || owningApplication.bundleIdentifier == window.bundleIdentifier
         }
-
-        // Frame-shape filter: when AX gave us a frame, prefer
-        // SCWindows whose own frame matches that frame's size
-        // within a reasonable tolerance. This eliminates sliver
-        // overlays (chrome strips, dynamic-island shims, etc.)
-        // that an app owns alongside its real content window —
-        // a single Simulator process can publish a thin "control"
-        // window plus the actual iPhone content window, and the
-        // legacy match-by-title/index path would happily pick the
-        // strip and we'd capture a 4-pixel-tall thumbnail.
-        let shapeMatched = candidates.filter { sc in
-            isFrameApproximatelyEqual(sc.frame, to: window.frame)
-        }
-        let primaryPool = shapeMatched.isEmpty ? candidates : shapeMatched
-
-        let titledCandidates = primaryPool.filter { shareableWindow in
-            normalizedWindowTitle(shareableWindow.title) == normalizedWindowTitle(window.windowTitle)
-        }
-
-        // Fallback index: position of `window` within its app's window list.
-        // The registry maintains stable ordering, so this is consistent across
-        // calls within a process run.
-        let lookupIndex = WindowRegistry.shared
-            .windows(forBundleIdentifier: window.bundleIdentifier)
-            .firstIndex(where: { $0.id == window.id }) ?? 0
-
-        if titledCandidates.indices.contains(lookupIndex) {
-            return titledCandidates[lookupIndex]
-        }
-
-        if let titleMatch = titledCandidates.first {
-            return titleMatch
-        }
-
-        if primaryPool.indices.contains(lookupIndex) {
-            return primaryPool[lookupIndex]
-        }
-
-        return primaryPool.first ?? candidates.first
     }
 
-    /// True when both rectangles have positive sizes and each
-    /// dimension is within 20% of the other. Used to reject
-    /// sliver / chrome SCWindows that don't resemble the AX
-    /// element's reported window.
-    private func isFrameApproximatelyEqual(_ a: CGRect, to b: CGRect?) -> Bool {
-        guard let b, a.width > 0, a.height > 0, b.width > 0, b.height > 0 else {
-            return false
-        }
-        let dw = abs(a.width - b.width) / b.width
-        let dh = abs(a.height - b.height) / b.height
-        return dw < 0.20 && dh < 0.20
-    }
-
-    private func normalizedWindowTitle(_ title: String?) -> String {
-        (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The live focus preview still streams through ScreenCaptureKit, which
+    /// needs the window's `SCWindow`.
+    private func matchingShareableWindow(for window: AppWindow, in windows: [SCWindow]) -> SCWindow? {
+        windows.first { $0.windowID == window.cgWindowID }
     }
 
     private func shareableContentIncludingOffscreenWindows() async throws -> SCShareableContent {
         try await previewContentCache.current()
-    }
-
-    private func constrainedCaptureSize(for sourceSize: CGSize) -> CGSize {
-        WindowPreviewCaptureSizing.size(for: sourceSize, maximum: CGSize(width: 640, height: 400))
     }
 
     private func fullSizeCaptureSize(for sourceSize: CGSize, screenBounds: CGRect?) -> CGSize {
@@ -1204,56 +1123,6 @@ final class WorkspaceService: ObservableObject {
         return intersection.width * intersection.height
     }
 
-    private func captureImage(
-        contentFilter: SCContentFilter,
-        configuration: SCStreamConfiguration
-    ) async throws -> CGImage {
-        try Task.checkCancellation()
-        return try await withCheckedThrowingContinuation { continuation in
-            SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: configuration) { image, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let image else {
-                    continuation.resume(throwing: NSError(domain: "Docky.WindowPreview", code: -1, userInfo: nil))
-                    return
-                }
-
-                continuation.resume(returning: image)
-            }
-        }
-    }
-
-    private func makeThumbnail(from cgImage: CGImage, maxSize: CGSize) -> NSImage? {
-        guard cgImage.width > 0, cgImage.height > 0 else {
-            return nil
-        }
-
-        let sourceSize = CGSize(width: cgImage.width, height: cgImage.height)
-        let scale = min(maxSize.width / sourceSize.width, maxSize.height / sourceSize.height, 1)
-        let thumbnailSize = CGSize(
-            width: max(1, floor(sourceSize.width * scale)),
-            height: max(1, floor(sourceSize.height * scale))
-        )
-
-        let sourceImage = NSImage(cgImage: cgImage, size: sourceSize)
-        let thumbnail = NSImage(size: thumbnailSize)
-        thumbnail.lockFocus()
-        defer { thumbnail.unlockFocus() }
-
-        NSGraphicsContext.current?.imageInterpolation = .high
-        sourceImage.draw(
-            in: NSRect(origin: .zero, size: thumbnailSize),
-            from: NSRect(origin: .zero, size: sourceSize),
-            operation: .copy,
-            fraction: 1
-        )
-        thumbnail.isTemplate = false
-        return thumbnail
-    }
-
     private func makeFullSizeImage(from cgImage: CGImage) -> NSImage? {
         guard cgImage.width > 0, cgImage.height > 0 else {
             return nil
@@ -1267,10 +1136,6 @@ final class WorkspaceService: ObservableObject {
         return image
     }
 
-}
-
-private final class ShareableContentCache {
-    var content: SCShareableContent?
 }
 
 @MainActor

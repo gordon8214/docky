@@ -12,6 +12,7 @@
             await checkThemeWidgetRemoval()
             await checkWindowsTaskbar()
             checkWindowSwitcher()
+            await checkSwitcherSpaceScope()
             await checkMenuExtras()
             checkMediaTimeline()
             checkDragCancellation()

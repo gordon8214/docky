@@ -228,6 +228,9 @@ enum NativeSettingsFields {
                 title: String(localized: "Zoom Window"), control: zoomKey),
             NativePreferenceField.number("Window Preview Hover Delay", \.windowPreviewHoverDelay, range: 0...2),
             NativePreferenceField.choice(
+                "Show Windows From", \.windowSwitcherSpaceScope, values: WindowSwitcherSpaceScope.allCases,
+                name: { $0.title }),
+            NativePreferenceField.choice(
                 "Layout", \.windowPreviewLayout, values: WindowSwitcherLayout.allCases, name: { $0.title }),
             NativePreferenceField.choice(
                 "Preview Mode", \.windowSwitcherPreviewMode, values: WindowSwitcherPreviewMode.allCases,

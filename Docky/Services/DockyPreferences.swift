@@ -862,6 +862,26 @@ enum WindowSwitcherPreviewMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// Which Spaces the window switcher and hover window previews list windows from.
+enum WindowSwitcherSpaceScope: String, CaseIterable, Codable, Identifiable {
+    case allSpaces
+    case activeSpace
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .allSpaces: String(localized: "All Spaces")
+        case .activeSpace: String(localized: "Active Space")
+        }
+    }
+
+    /// Whether a window on an active Space (or not) belongs in the list.
+    func includes(windowOnActiveSpace: Bool) -> Bool {
+        self == .allSpaces || windowOnActiveSpace
+    }
+}
+
 enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
     case auto
     case thumbnails
@@ -2548,6 +2568,15 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Whether the window switcher and hover window previews list windows
+    /// from every Space or only from the Spaces currently shown.
+    var windowSwitcherSpaceScope: WindowSwitcherSpaceScope {
+        didSet {
+            guard windowSwitcherSpaceScope != oldValue else { return }
+            defaults.set(windowSwitcherSpaceScope.rawValue, forKey: Keys.windowSwitcherSpaceScope)
+        }
+    }
+
     /// Former layout choice for the window switcher overlay. The Windows 11–style
     /// switcher always shows thumbnail cards, so nothing reads this any more. It
     /// stays so stored preferences, profiles and Settings history still decode.
@@ -3608,6 +3637,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let replacesSystemCommandTab = "docky.windowSwitcherReplacesCommandTab"
         static let showsWindowSwitcherFocusPreview = "docky.showsWindowSwitcherFocusPreview"
         static let windowSwitcherPreviewMode = "docky.windowSwitcherPreviewMode"
+        static let windowSwitcherSpaceScope = "docky.windowSwitcherSpaceScope"
         static let windowSwitcherLayout = "docky.windowSwitcherLayout"
         static let switcherMinimizeKeyCode = "docky.switcherMinimizeKeyCode"
         static let switcherCloseKeyCode = "docky.switcherCloseKeyCode"
@@ -3721,6 +3751,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let replacesSystemCommandTab = false
         static let showsWindowSwitcherFocusPreview = true
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
+        static let windowSwitcherSpaceScope: WindowSwitcherSpaceScope = .allSpaces
         static let windowSwitcherLayout: WindowSwitcherLayout = .auto
         static let switcherMinimizeKeyCode: UInt16 = 46
         static let switcherCloseKeyCode: UInt16 = 13
@@ -3851,6 +3882,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedReplacesSystemCommandTab = defaults.object(forKey: Keys.replacesSystemCommandTab) as? Bool
         let storedShowsWindowSwitcherFocusPreview = defaults.object(forKey: Keys.showsWindowSwitcherFocusPreview) as? Bool
         let storedWindowSwitcherPreviewMode = defaults.string(forKey: Keys.windowSwitcherPreviewMode)
+        let storedWindowSwitcherSpaceScope = defaults.string(forKey: Keys.windowSwitcherSpaceScope)
         let storedWindowSwitcherLayout = defaults.string(forKey: Keys.windowSwitcherLayout)
         let storedSwitcherMinimizeKeyCode = defaults.object(forKey: Keys.switcherMinimizeKeyCode) as? Int
         let storedSwitcherCloseKeyCode = defaults.object(forKey: Keys.switcherCloseKeyCode) as? Int
@@ -4008,6 +4040,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.replacesSystemCommandTab = storedReplacesSystemCommandTab ?? DefaultValues.replacesSystemCommandTab
         self.showsWindowSwitcherFocusPreview = storedShowsWindowSwitcherFocusPreview ?? DefaultValues.showsWindowSwitcherFocusPreview
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
+        self.windowSwitcherSpaceScope = storedWindowSwitcherSpaceScope.flatMap(WindowSwitcherSpaceScope.init(rawValue:))
+            ?? DefaultValues.windowSwitcherSpaceScope
         self.windowSwitcherLayout = storedWindowSwitcherLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowSwitcherLayout
         self.switcherMinimizeKeyCode = storedSwitcherMinimizeKeyCode.map(UInt16.init) ?? DefaultValues.switcherMinimizeKeyCode
         self.switcherCloseKeyCode = storedSwitcherCloseKeyCode.map(UInt16.init) ?? DefaultValues.switcherCloseKeyCode
@@ -4297,6 +4331,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         replacesSystemCommandTab = DefaultValues.replacesSystemCommandTab
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode
+        windowSwitcherSpaceScope = DefaultValues.windowSwitcherSpaceScope
         windowSwitcherLayout = DefaultValues.windowSwitcherLayout
         switcherMinimizeKeyCode = DefaultValues.switcherMinimizeKeyCode
         switcherCloseKeyCode = DefaultValues.switcherCloseKeyCode

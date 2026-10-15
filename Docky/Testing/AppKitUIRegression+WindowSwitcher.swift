@@ -70,6 +70,66 @@
             window.close()
         }
 
+        /// The Window Management pane's Space choice shows the stored value,
+        /// writes the preference, and follows changes made elsewhere.
+        static func checkSwitcherSpaceScope() async {
+            print("Checking switcher Space scope")
+            fflush(stdout)
+            precondition(WindowSwitcherSpaceScope.allSpaces.includes(windowOnActiveSpace: false),
+                         "All Spaces keeps windows on other Spaces")
+            precondition(!WindowSwitcherSpaceScope.activeSpace.includes(windowOnActiveSpace: false),
+                         "Active Space drops windows on other Spaces")
+            precondition(WindowSwitcherSpaceScope.activeSpace.includes(windowOnActiveSpace: true))
+
+            let preferences = DockyPreferences.shared
+            let key = "docky.windowSwitcherSpaceScope"
+            let previous = preferences.windowSwitcherSpaceScope
+            let stored = UserDefaults.standard.object(forKey: key)
+            // A failed precondition skips `defer`, so restore before failing
+            // too; the installed app shares this defaults domain.
+            func restore() {
+                preferences.windowSwitcherSpaceScope = previous
+                if let stored { UserDefaults.standard.set(stored, forKey: key) } else {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            func require(_ condition: Bool, _ message: String) {
+                if !condition {
+                    restore()
+                    preconditionFailure(message)
+                }
+            }
+            defer { restore() }
+
+            // Start from the non-default value, which the popup can't show by
+            // falling back to its first item.
+            preferences.windowSwitcherSpaceScope = .activeSpace
+            let rows = NativeSettingsFields.windowManagementRows().compactMap { $0 as? NativeFormRow }
+            guard let row = rows.first(where: { $0.accessibilityLabel() == "Show Windows From" }),
+                  let popup = row.arrangedSubviews.compactMap({ $0 as? NSPopUpButton }).first else {
+                restore()
+                preconditionFailure("Window Management must offer the switcher's Space choice")
+            }
+            require(popup.itemTitles == WindowSwitcherSpaceScope.allCases.map(\.title),
+                    "The popup lists every scope")
+            await Task.yield()
+            require(popup.titleOfSelectedItem == WindowSwitcherSpaceScope.activeSpace.title,
+                    "The popup shows the stored scope")
+
+            popup.selectItem(withTitle: WindowSwitcherSpaceScope.allSpaces.title)
+            popup.sendAction(popup.action, to: popup.target)
+            require(preferences.windowSwitcherSpaceScope == .allSpaces, "Choosing a scope saves it")
+            require(UserDefaults.standard.string(forKey: key) == WindowSwitcherSpaceScope.allSpaces.rawValue,
+                    "The scope persists")
+
+            // Let the observer re-track after the popup's own change.
+            await Task.yield()
+            preferences.windowSwitcherSpaceScope = .activeSpace
+            await Task.yield()
+            require(popup.titleOfSelectedItem == WindowSwitcherSpaceScope.activeSpace.title,
+                    "Preference changes update the popup")
+        }
+
         private static func switcherFixtureCards() -> [WindowSwitcherCard] {
             let apps: [(String, String, String, CGFloat?)] = [
                 ("com.apple.Safari", "Safari", "Apple — Start Page", 16.0 / 10.0),

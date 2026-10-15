@@ -61,10 +61,12 @@ func CGSSetWindowBackgroundBlurRadius(
     _ radius: Int
 ) -> Int32
 
-// Window previews use asynchronous ScreenCaptureKit captures with explicit
-// output dimensions. The legacy CGWindowListCreateImage entry point blocks the
-// caller while macOS proxies it through ScreenCaptureKit, stalling the main run
-// loop and repeatedly enumerating the entire desktop for each window.
+// Window thumbnails use SkyLight's per-window capture
+// (`WindowServerWindows.captureImage`) on WorkspaceService's capture queues.
+// The legacy CGWindowListCreateImage entry
+// point blocks the caller while macOS proxies it through ScreenCaptureKit,
+// stalling the main run loop and repeatedly enumerating the entire desktop
+// for each window.
 
 @_silgen_name("CGSGetWindowAlpha")
 func CGSGetWindowAlpha(

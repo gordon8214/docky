@@ -6,10 +6,8 @@ extension NativeWindowDiagnosticsController {
             return "Screen Recording permission not granted"
         }
         if window.isMinimized {
-            // Minimized-preview path doesn't track an attempted-IDs
-            // set — captures fire opportunistically as windows
-            // minimize. Cache miss here just means we haven't
-            // captured it yet (e.g. minimized before Docky launched).
+            // Minimized captures retry up to three times; a miss means
+            // every attempt failed or none has run yet.
             return "Minimized — not yet captured"
         }
         // Window must be in the visible filter (non-minimized AND
@@ -42,25 +40,20 @@ extension NativeWindowDiagnosticsController {
             ? "app-window cache" : "—"
     }
 
-    /// Looks up the OS-reported bounds of `window.cgWindowID` via
-    /// `CGWindowListCopyWindowInfo`. If this disagrees with the
-    /// AX-reported frame, `_AXUIElementGetWindow` handed us a
-    /// CGWindowID that doesn't actually point at the AX element's
-    /// content window — common with apps that own auxiliary overlay
-    /// windows (Simulator's pill chrome, browsers' picker popovers,
-    /// etc.).
+    /// Looks up the bounds of `window.cgWindowID` via
+    /// `CGWindowListCopyWindowInfo`, independently of the SkyLight
+    /// snapshot the registry reads. A mismatch means the registry's
+    /// frame is stale.
     func cgWindowFrameDescription(for window: AppWindow) -> String {
-        guard window.cgWindowID != nil else { return "—" }
         guard let rect = cgWindowFrame(for: window) else { return "(not found)" }
         return formatRect(rect)
     }
 
     func cgWindowFrame(for window: AppWindow) -> CGRect? {
-        guard let cgID = window.cgWindowID else { return nil }
         let descriptions =
             CGWindowListCopyWindowInfo(
                 [.optionIncludingWindow],
-                cgID
+                window.cgWindowID
             ) as? [[String: Any]] ?? []
         guard let entry = descriptions.first,
             let boundsDict = entry[kCGWindowBounds as String] as? [String: Any]
@@ -100,9 +93,9 @@ extension NativeWindowDiagnosticsController {
         lines.append("PID:           \(window.processIdentifier)")
         lines.append("Title:         \(window.windowTitle.isEmpty ? "(no title)" : window.windowTitle)")
         lines.append("Identifier:    \(window.windowIdentifier)")
-        lines.append("CGWindowID:    \(window.cgWindowID.map { "\($0)" } ?? "—")")
-        lines.append("WindowNumber:  \(window.windowNumber.map { "\($0)" } ?? "—")")
-        lines.append("Frame (AX):    \(window.frame.map(formatRect) ?? "—")")
+        lines.append("CGWindowID:    \(window.cgWindowID)")
+        lines.append("Active Space:  \(window.isOnActiveSpace ? "yes" : "no")")
+        lines.append("Frame (WS):    \(window.frame.map(formatRect) ?? "—")")
         lines.append("Frame (CG):    \(cgWindowFrameDescription(for: window))")
         lines.append("Minimized:     \(window.isMinimized ? "yes" : "no")")
         lines.append("Cache:         \(cachedPreviewKindLabel(for: window))")

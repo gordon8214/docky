@@ -67,7 +67,7 @@ to the script's `swiftc` list.
 | --- | --- |
 | `scripts/test_observation_bridge.sh` | 30s / 10s |
 | `scripts/test_launchpad_scan.sh` (`-warnings-as-errors`) | 30s / 10s |
-| `scripts/test_appkit_browser.sh` (geometry, drop insertion, Launchpad grid) | 45s / 15s |
+| `scripts/test_appkit_browser.sh` (geometry, drop insertion, Launchpad grid, preview capture sizing, WindowServer tag and packet rules) | 45s / 15s |
 | `scripts/test_appkit_compatibility.sh` (Settings history, legacy widget encoding) | 45s / 15s |
 | `scripts/test_dock_payload.sh` (Dock payload and loader, Objective-C) | 30s / 10s |
 | `scripts/test_native_menu_bridge.sh` (menu bridge protocol, loader stub bytes) | 30s / 5s |
@@ -83,6 +83,7 @@ bridge and lifecycle tests.
 | `scripts/test_dock_system.sh` | `--dock-system-regression`; needs a WindowServer session |
 | `scripts/test_dock_bridge.sh` | Signed build. Temporarily restarts Apple's Dock |
 | `scripts/test_window_switcher.sh` | Unlocked desktop with existing Accessibility and Screen Recording grants; 45s cap. Skips the ⌘Tab takeover check while another Docky runs |
+| `scripts/test_window_registry.sh` | Same grants. Under 10s, longer when a window has no AX element; 30s cap plus any watch time. Checks the window list on every Space against WindowServer and CoreGraphics, thumbnails, and AX lookups. `--watch-registry <seconds>` prints live changes; `DOCKY_APP_BINARY` picks another build |
 | `gtimeout 30 python3 scripts/test_dock_lifecycle.py` | Signed build. Kills Dock and the app to check reconnection and watchdog recovery, including handing ⌘Tab back to macOS |
 
 Add `--windows-taskbar-snapshots` to `--appkit-ui-regression` to also write
@@ -120,7 +121,9 @@ multi-display behavior. Check those in a running build.
   through `NativeDockIntegration` and the Dock-side payload, then verifies the
   result from a separate process. There is no Accessibility resize fallback.
 - The verified ABI (macOS 27.0.1, 26A434) and the full design are in
-  `docs/window-system-integration.md`. Native menu extras are in
+  `docs/window-system-integration.md`. It also records the SkyLight window
+  list, capture and notification SPI behind `WindowRegistry`, which lists
+  windows on every Space. Native menu extras are in
   `docs/menu-extras-prototype.md`. Update these docs when you change the
   behavior or validation status they record.
 

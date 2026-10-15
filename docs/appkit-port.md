@@ -100,6 +100,13 @@ selection (↑ and ↓ follow the rows on screen), Delete closes the selected wi
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
 
+The switcher and hover window previews list windows from every Space, including
+fullscreen Spaces. "Show Windows From" in Window Management limits both to the
+Spaces currently shown, like Windows 11's "Only on the desktop I'm using". The
+app-folder "Windows" submenu always lists every Space. Actions that change
+several windows at once (cycling or minimizing from a frontmost app's tile, and
+tiling a folder's windows) act only on windows on the active Space.
+
 "Replace macOS ⌘Tab" in Window Management makes ⌘Tab the shortcut.
 `SystemCommandTabService` turns off WindowServer's ⌘Tab (1) and ⇧⌘Tab (2)
 symbolic hotkeys with `CGSSetSymbolicHotKeyEnabled`. The Dock matches those

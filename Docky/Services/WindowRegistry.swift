@@ -3,35 +3,34 @@
 //  Docky
 //
 //  Single source of truth for "what windows exist right now" across all
-//  running apps. Subscribes per-app to AX notifications and maintains a
-//  long-lived `[AppWindow]` whose identity is the underlying `AXUIElement`.
+//  running apps, on every Space.
 //
-//  Why this exists:
-//  - The poll-and-rebuild approach (re-enumerate AX windows on each call,
-//    match by derived identifier strings) is fragile under title changes,
-//    AX reordering, or rapid focus cycling. Identifying a window by the
-//    actual AXUIElement is stable for the lifetime of the window, so a
-//    raise/minimize/close call always targets the picked window or fails
-//    cleanly when the window is gone.
-//  - The list is kept fresh in the background, so consumers (window
-//    switcher, tile click logic) read a ready snapshot instead of paying
-//    the enumeration cost each interaction.
+//  WindowServer (SkyLight) decides which windows exist, where they are, and
+//  whether they're minimized. Its window ID is each window's identity, so a
+//  title change, an AX element swap or a Space move never makes a window look
+//  new. WindowServer notifications drive updates, including for apps whose
+//  Accessibility server is hung.
 //
-//  Threading: this class is isolated to the main actor — AX observers are
-//  added to the main run loop, and `NSWorkspace` notifications are
-//  delivered on the main queue.
+//  Accessibility still provides what WindowServer can't: focus order (MRU),
+//  title-change cues and the actions (restore, close, minimize, zoom, resize).
+//  AX elements are resolved by window ID in the background, including for
+//  windows on other Spaces, which `kAXWindowsAttribute` omits.
+//
+//  Threading: this class is isolated to the main actor. AX observers and
+//  WindowServer notifications are delivered on the main run loop, and
+//  `NSWorkspace` notifications on the main queue.
 //
 
 import AppKit
 import ApplicationServices
 import Combine
-import ScreenCaptureKit
+import os
 
-@MainActor private let axWindowNumberAttribute = "AXWindowNumber" as CFString
 @MainActor private let axCloseAction = "AXClose" as CFString
+private let logger = Logger(subsystem: "gt.quintero.Docky", category: "WindowRegistry")
 private let minimumTrackedWindowSize = CGSize(width: 100, height: 100)
 
-/// System helpers whose AX windows would leak into the switcher / preview if
+/// System helpers whose windows would leak into the switcher / preview if
 /// we treated them like regular apps. Most are filtered by activation policy
 /// already; this is a defensive belt-and-braces layer for cases where an
 /// agent transiently flips to `.regular` (Notification Center has done this
@@ -42,43 +41,32 @@ private let filteredBundleIdentifiers: Set<String> = [
     "com.apple.dock",
 ]
 
-/// Stable, opaque identity for an `AppWindow`. Backed by the
-/// `AXUIElement`'s CF identity — equal and hashable across the lifetime
-/// of the underlying window.
-nonisolated struct WindowID: Hashable {
-    fileprivate let element: AXUIElement
-
-    nonisolated static func == (lhs: WindowID, rhs: WindowID) -> Bool {
-        CFEqual(lhs.element, rhs.element)
-    }
-
-    nonisolated func hash(into hasher: inout Hasher) {
-        hasher.combine(Int(bitPattern: CFHash(element)))
-    }
+/// Stable identity for an `AppWindow`: its WindowServer window ID, which
+/// lasts for the window's lifetime.
+nonisolated struct WindowID: Hashable, Sendable {
+    let windowID: CGWindowID
 
     /// Stable string form for callers that need a string key (preview cache
-    /// keys, debug logs). Stable within a single process run but not across
-    /// launches.
+    /// keys, debug logs). Stable for the window's lifetime.
     nonisolated var stableString: String {
-        String(format: "ax:%lx", CFHash(element))
+        "wid:\(windowID)"
     }
 }
 
-/// A window observed in the registry. Identity is the underlying
-/// `AXUIElement`; all other fields are best-effort snapshots updated as
-/// AX notifications arrive.
+/// A window observed in the registry. Identity is the WindowServer window
+/// ID; all other fields are snapshots refreshed as notifications arrive.
 struct AppWindow: Identifiable, Hashable {
-    fileprivate let element: AXUIElement
+    nonisolated let cgWindowID: CGWindowID
     nonisolated let bundleIdentifier: String
     nonisolated let processIdentifier: pid_t
     nonisolated let appDisplayName: String
     nonisolated let windowTitle: String
     nonisolated let isMinimized: Bool
-    nonisolated let windowNumber: Int?
-    nonisolated let cgWindowID: CGWindowID?
+    /// Whether the window is on a Space currently shown on some display.
+    nonisolated let isOnActiveSpace: Bool
     nonisolated let frame: CGRect?
 
-    nonisolated var id: WindowID { WindowID(element: element) }
+    nonisolated var id: WindowID { WindowID(windowID: cgWindowID) }
 
     /// Compatibility alias matching the previous API surface.
     nonisolated var windowIdentifier: String { id.stableString }
@@ -86,20 +74,21 @@ struct AppWindow: Identifiable, Hashable {
     /// Compatibility alias matching the previous API surface.
     nonisolated var screenBounds: CGRect? { frame }
 
-    nonisolated static func == (lhs: AppWindow, rhs: AppWindow) -> Bool {
-        CFEqual(lhs.element, rhs.element)
-            && lhs.bundleIdentifier == rhs.bundleIdentifier
-            && lhs.processIdentifier == rhs.processIdentifier
-            && lhs.appDisplayName == rhs.appDisplayName
-            && lhs.windowTitle == rhs.windowTitle
-            && lhs.isMinimized == rhs.isMinimized
-            && lhs.windowNumber == rhs.windowNumber
-            && lhs.cgWindowID == rhs.cgWindowID
-            && lhs.frame == rhs.frame
+    nonisolated func with(frame: CGRect) -> AppWindow {
+        AppWindow(
+            cgWindowID: cgWindowID,
+            bundleIdentifier: bundleIdentifier,
+            processIdentifier: processIdentifier,
+            appDisplayName: appDisplayName,
+            windowTitle: windowTitle,
+            isMinimized: isMinimized,
+            isOnActiveSpace: isOnActiveSpace,
+            frame: frame
+        )
     }
 
     nonisolated func hash(into hasher: inout Hasher) {
-        hasher.combine(WindowID(element: element))
+        hasher.combine(id)
     }
 }
 
@@ -107,22 +96,26 @@ struct AppWindow: Identifiable, Hashable {
 final class WindowRegistry: ObservableObject {
     static let shared = WindowRegistry()
 
-    /// Observed-order window list across all tracked apps. Order is stable:
-    /// new windows are appended; updates land in place; removals leave a
-    /// hole that the next snapshot fills.
+    /// Window list across all tracked apps and Spaces, in per-window MRU
+    /// order: focus changes move only the focused window to the front;
+    /// updates land in place; new windows are appended.
     @Published private(set) var windows: [AppWindow] = []
 
     /// Fires when a window's cached preview should be evicted and re-
     /// captured, even though the registry's `$windows` array hasn't
-    /// changed shape. Emitted on resize (aspect ratio changed) and on
-    /// focus-out (capture the outgoing window while it's still on top).
-    /// The associated value is `AppWindow.windowIdentifier`.
+    /// changed shape. Emitted once a resize settles (aspect ratio changed)
+    /// and on focus-out (capture the outgoing window while it's still on
+    /// top). The associated value is `AppWindow.windowIdentifier`.
     let previewInvalidations = PassthroughSubject<String, Never>()
 
     /// Per-pid tracking of the AX-focused window so we can name the
     /// outgoing window when focus changes. Only used to drive preview
     /// invalidation; the canonical list ordering still lives in `windows`.
     private var lastFocusedWindowIDByPID: [pid_t: WindowID] = [:]
+
+    /// A window that took focus before the registry listed it. The next
+    /// snapshot moves it to the front unless another window takes focus.
+    private var pendingFrontWindow: (id: WindowID, pid: pid_t)?
 
     /// Windows currently minimized, in observation order. Newest minimized
     /// last — `last(where: bundleID:)` gives the most-recently minimized.
@@ -131,9 +124,7 @@ final class WindowRegistry: ObservableObject {
     }
 
     /// Windows that are visible (non-minimized) and large enough to be
-    /// interactable — the natural "switchable" set. Also gated by
-    /// `isCapturable`, so windows the switcher / preview pipeline can't
-    /// usefully represent never leak through.
+    /// interactable — the natural "switchable" set — on every Space.
     var visible: [AppWindow] {
         windows.filter { window in
             guard !window.isMinimized else { return false }
@@ -143,70 +134,66 @@ final class WindowRegistry: ObservableObject {
 
     /// Same as `visible` but optionally folds minimized windows back in
     /// so the switcher / hover preview can present them under a
-    /// "(minimized)" badge. Minimized windows skip the strict
-    /// `isCapturable` test (CGWindowServer often omits bounds for them,
-    /// which would otherwise filter them out) and are kept whenever
-    /// they have a `cgWindowID` to identify them.
-    func switchable(includeMinimized: Bool) -> [AppWindow] {
+    /// "(minimized)" badge, and optionally keeps only windows on a Space
+    /// currently shown.
+    func switchable(
+        includeMinimized: Bool,
+        spaceScope: WindowSwitcherSpaceScope = .allSpaces
+    ) -> [AppWindow] {
         windows.filter { window in
+            guard spaceScope.includes(windowOnActiveSpace: window.isOnActiveSpace) else { return false }
             if window.isMinimized {
-                return includeMinimized && window.cgWindowID != nil
+                return includeMinimized
             }
             return isCapturable(window)
         }
     }
 
-    /// True when a window has a working CGWindowID, the WindowServer
-    /// still reports bounds for it, and those bounds are large enough
-    /// to be a real content window (>= 100x100). Filters out auxiliary
-    /// overlays, menu-bar strips, and AX entries whose underlying CG
-    /// window has already gone away. Independent of minimized state —
-    /// per-tile hover previews legitimately want minimized windows so
-    /// long as they're real windows.
+    /// True when the window is large enough to be a real content window
+    /// (>= 100x100). Filters out auxiliary overlays and menu-bar strips.
+    /// Independent of minimized state — per-tile hover previews legitimately
+    /// want minimized windows so long as they're real windows.
     func isCapturable(_ window: AppWindow) -> Bool {
-        if let size = window.frame?.size,
-           size.width < minimumTrackedWindowSize.width
-            || size.height < minimumTrackedWindowSize.height {
-            return false
-        }
-        guard let cgWindowID = window.cgWindowID,
-              let cgFrame = cgWindowFrame(forID: cgWindowID) else {
-            return false
-        }
-        return cgFrame.width >= minimumTrackedWindowSize.width
-            && cgFrame.height >= minimumTrackedWindowSize.height
-    }
-
-    /// OS-reported bounds for a CGWindowID, or nil when the window no
-    /// longer exists from the WindowServer's perspective.
-    private func cgWindowFrame(forID cgWindowID: CGWindowID) -> CGRect? {
-        let descriptions = CGWindowListCopyWindowInfo(
-            [.optionIncludingWindow],
-            cgWindowID
-        ) as? [[String: Any]] ?? []
-        guard let entry = descriptions.first,
-              let boundsDict = entry[kCGWindowBounds as String] as? [String: Any] else {
-            return nil
-        }
-        return CGRect(
-            x: (boundsDict["X"] as? CGFloat) ?? 0,
-            y: (boundsDict["Y"] as? CGFloat) ?? 0,
-            width: (boundsDict["Width"] as? CGFloat) ?? 0,
-            height: (boundsDict["Height"] as? CGFloat) ?? 0
-        )
+        guard let size = window.frame?.size else { return false }
+        return size.width >= minimumTrackedWindowSize.width
+            && size.height >= minimumTrackedWindowSize.height
     }
 
     private var applicationObservers: [pid_t: AXObserver] = [:]
+    /// Failed AX observer registrations, retried on later snapshots. A
+    /// launching app often doesn't serve AX yet.
+    private var observerRetries: [pid_t: (attempts: Int, notBefore: ContinuousClock.Instant)] = [:]
     private var workspaceObservers: [NSObjectProtocol] = []
-    private var permissionsCancellable: AnyCancellable?
+    private var permissionCancellables: Set<AnyCancellable> = []
     private var observationsActive = false
-    /// Debounced follow-up task that runs `reconcileWithScreenCapture`
-    /// after a burst of AX updates settles. See
-    /// `scheduleScreenCaptureReconciliation` for details.
-    private var screenCaptureReconciliationTask: Task<Void, Never>?
+    private var reportedUnavailable = false
+    private var refreshScheduled = false
+    private var registeredWindowServerEvents = false
+    private var requestedNotificationWindowIDs: Set<CGWindowID> = []
+
+    /// Moves and resizes arrive for every frame of a drag. They're applied
+    /// at most every 100 ms, and preview invalidations once a resize settles.
+    private var pendingFrameWindowIDs: Set<CGWindowID> = []
+    private var frameFlushScheduled = false
+    private var pendingResizeInvalidations: Set<CGWindowID> = []
+    private var resizeInvalidationGeneration = 0
+
+    /// AX elements by window ID. Filled from AX notifications, the background
+    /// lookup, and on demand when an action needs one.
+    private var accessibilityElements: [CGWindowID: AXUIElement] = [:]
+    /// AX titles by window ID. Preferred over WindowServer titles, which are
+    /// empty without Screen Recording permission.
+    private var accessibilityTitles: [CGWindowID: String] = [:]
+    /// JetBrains helper panels, recognized by subrole in the background lookup.
+    private var floatingWindowIDs: Set<CGWindowID> = []
+    /// Windows already looked up in the background, so windows AX never
+    /// exposes (some Java and Electron helpers) aren't rescanned every update.
+    private var attemptedAccessibilityLookups: Set<CGWindowID> = []
+    private var accessibilityLookupInFlight = false
+    private let accessibilityLookupQueue = DispatchQueue(label: "gt.quintero.Docky.window-ax-lookup", qos: .utility)
 
     private init() {
-        permissionsCancellable = PermissionsService.shared.$accessibility
+        PermissionsService.shared.$accessibility
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] status in
@@ -217,6 +204,15 @@ final class WindowRegistry: ObservableObject {
                     self.stopObserving()
                 }
             }
+            .store(in: &permissionCancellables)
+
+        // Screen Recording adds WindowServer titles for windows AX doesn't name.
+        PermissionsService.shared.$screenCapture
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .store(in: &permissionCancellables)
 
         if PermissionsService.shared.accessibility == .granted {
             startObservingIfNeeded()
@@ -242,13 +238,26 @@ final class WindowRegistry: ObservableObject {
         windows(forBundleIdentifier: bundleIdentifier)
     }
 
+    #if DEBUG
+    /// Whether an AX element is cached for the window, for regressions.
+    func hasAccessibilityElement(for window: AppWindow) -> Bool {
+        accessibilityElements[window.cgWindowID] != nil
+    }
+
+    /// Whether every listed window has had its background AX lookup.
+    var isAccessibilityLookupIdle: Bool {
+        !accessibilityLookupInFlight
+            && windows.allSatisfy { attemptedAccessibilityLookups.contains($0.cgWindowID) }
+    }
+    #endif
+
     // MARK: - Window operations
 
-    /// Brings `window` to the front. Prefers the SLPS path (private SkyLight)
-    /// because it targets a specific CGWindowID — only the picked window comes
-    /// forward, instead of every window of the app. Falls back to AX-raise +
-    /// `NSRunningApplication.activate()` when no CGWindowID is available
-    /// (rare; see `WindowRegistry.cgWindowID`) or when SLPS is unavailable.
+    /// Brings `window` to the front, switching Spaces when it lives on
+    /// another one. Prefers the SLPS path (private SkyLight) because it
+    /// targets a specific window ID — only the picked window comes forward,
+    /// instead of every window of the app. Falls back to AX-raise +
+    /// `NSRunningApplication.activate()` when SLPS is unavailable.
     @discardableResult
     func focus(_ window: AppWindow) -> Bool {
         guard PermissionsService.shared.accessibility == .granted else {
@@ -256,12 +265,15 @@ final class WindowRegistry: ObservableObject {
             return false
         }
 
-        guard let element = liveElement(for: window) else {
-            return false
-        }
-
+        // Only restoring a minimized window needs AX before SLPS, which
+        // targets the window ID. Otherwise use a cached element for the
+        // best-effort raise rather than waiting on a token scan.
+        let element = window.isMinimized
+            ? accessibilityElement(for: window)
+            : accessibilityElements[window.cgWindowID]
         let restored: Bool
         if window.isMinimized {
+            guard let element else { return false }
             restored = AXUIElementSetAttributeValue(
                 element,
                 kAXMinimizedAttribute as CFString,
@@ -271,8 +283,7 @@ final class WindowRegistry: ObservableObject {
             restored = true
         }
 
-        if let cgWindowID = window.cgWindowID,
-           focusViaSLPS(pid: window.processIdentifier, cgWindowID: cgWindowID, element: element) {
+        if focusViaSLPS(pid: window.processIdentifier, cgWindowID: window.cgWindowID, element: element) {
             // SLPS doesn't unhide the app process itself; if it was hidden,
             // surface it now so its windows can actually display.
             if let runningApp = NSRunningApplication(processIdentifier: window.processIdentifier),
@@ -284,7 +295,8 @@ final class WindowRegistry: ObservableObject {
 
         // Legacy fallback: raise via AX, then activate the whole app. This
         // brings every window of the app forward — what we're trying to avoid
-        // — but it's the only thing that works when CGWindowID lookup fails.
+        // — but it's the only thing that works when SLPS fails.
+        guard let element = element ?? accessibilityElement(for: window) else { return false }
         let raised = AXUIElementPerformAction(element, kAXRaiseAction as CFString) == .success
 
         if let runningApp = NSRunningApplication(processIdentifier: window.processIdentifier) {
@@ -297,7 +309,7 @@ final class WindowRegistry: ObservableObject {
         return restored && raised
     }
 
-    private func focusViaSLPS(pid: pid_t, cgWindowID: CGWindowID, element: AXUIElement) -> Bool {
+    private func focusViaSLPS(pid: pid_t, cgWindowID: CGWindowID, element: AXUIElement?) -> Bool {
         var psn = ProcessSerialNumber()
         guard GetProcessForPID(pid, &psn) == noErr else { return false }
 
@@ -311,8 +323,10 @@ final class WindowRegistry: ObservableObject {
         // Best-effort: AX raise to confirm Z-order in AX, and mark as main so
         // the app's "main window changed" hooks fire. Failures here don't
         // unwind — the SLPS call already brought the window front.
-        _ = AXUIElementPerformAction(element, kAXRaiseAction as CFString)
-        _ = AXUIElementSetAttributeValue(element, kAXMainWindowAttribute as CFString, kCFBooleanTrue)
+        if let element {
+            _ = AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+            _ = AXUIElementSetAttributeValue(element, kAXMainWindowAttribute as CFString, kCFBooleanTrue)
+        }
 
         return true
     }
@@ -324,7 +338,7 @@ final class WindowRegistry: ObservableObject {
             return false
         }
 
-        guard let element = liveElement(for: window) else {
+        guard let element = accessibilityElement(for: window) else {
             return false
         }
 
@@ -342,7 +356,7 @@ final class WindowRegistry: ObservableObject {
             return false
         }
 
-        guard let element = liveElement(for: window) else {
+        guard let element = accessibilityElement(for: window) else {
             return false
         }
         if AXUIElementPerformAction(element, axCloseAction) == .success {
@@ -361,7 +375,7 @@ final class WindowRegistry: ObservableObject {
             return false
         }
 
-        guard let element = liveElement(for: window) else { return false }
+        guard let element = accessibilityElement(for: window) else { return false }
 
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
@@ -389,27 +403,30 @@ final class WindowRegistry: ObservableObject {
               let sizeValue = AXValueCreate(.cgSize, &size)
         else { return false }
 
-        guard let element = liveElement(for: window) else { return false }
+        guard let element = accessibilityElement(for: window) else { return false }
         let posResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, positionValue)
         let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, sizeValue)
         return posResult == .success && sizeResult == .success
     }
 
-    /// Returns a live `AXUIElement` for the window's logical identity, or nil
-    /// when the window is truly gone. Probes the cached element with a cheap
-    /// position read; if AX no longer answers, re-syncs the app and tries to
-    /// relocate the same window by `cgWindowID` (the only stable cross-element
-    /// identifier we keep). Skipping this lets stale element pointers silently
-    /// no-op `focus`/`minimize`/`close`/`resize`.
-    private func liveElement(for window: AppWindow) -> AXUIElement? {
-        if isElementResponsive(window.element) {
-            return window.element
+    /// Returns a live `AXUIElement` for the window, or nil when AX doesn't
+    /// expose it. Uses the cached element when it still answers; otherwise
+    /// looks the window up by ID, scanning the app's remote element tokens
+    /// when the window is on another Space. The background lookup normally
+    /// fills the cache first, so the main-thread scan is kept short.
+    private func accessibilityElement(for window: AppWindow) -> AXUIElement? {
+        if let element = accessibilityElements[window.cgWindowID], isElementResponsive(element) {
+            return element
         }
-        syncWindows(for: window.processIdentifier)
-        guard let cgID = window.cgWindowID else { return nil }
-        return windows.first(where: {
-            $0.processIdentifier == window.processIdentifier && $0.cgWindowID == cgID
-        })?.element
+        let found = WindowServerWindows.accessibilityWindows(
+            pid: window.processIdentifier,
+            wanted: [window.cgWindowID: window.frame ?? .null],
+            budget: .milliseconds(150),
+            readsDetails: false
+        )
+        let element = found[window.cgWindowID]?.element
+        accessibilityElements[window.cgWindowID] = element
+        return element
     }
 
     private func isElementResponsive(_ element: AXUIElement) -> Bool {
@@ -441,14 +458,22 @@ final class WindowRegistry: ObservableObject {
 
     private func startObservingIfNeeded() {
         guard !observationsActive else { return }
+        guard WindowServerWindows.isAvailable else {
+            if !reportedUnavailable {
+                reportedUnavailable = true
+                logger.error("SkyLight window SPI is unavailable; the window list stays empty")
+            }
+            return
+        }
         observationsActive = true
 
+        registerWindowServerEventsIfNeeded()
         subscribeToWorkspaceLifecycle()
-        let apps = currentRegularApps()
-        for app in apps {
-            installObserver(for: app)
-        }
         rebuildSnapshot()
+        // Start MRU order from the focused window, not WindowServer order.
+        if let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            bumpFocusedWindowToTop(pid: frontmost)
+        }
     }
 
     private func stopObserving() {
@@ -468,92 +493,89 @@ final class WindowRegistry: ObservableObject {
             )
         }
         applicationObservers.removeAll()
+        observerRetries.removeAll()
+        accessibilityElements.removeAll()
+        accessibilityTitles.removeAll()
+        floatingWindowIDs.removeAll()
+        attemptedAccessibilityLookups.removeAll()
+        lastFocusedWindowIDByPID.removeAll()
+        requestedNotificationWindowIDs.removeAll()
+        pendingFrameWindowIDs.removeAll()
+        pendingResizeInvalidations.removeAll()
+        pendingFrontWindow = nil
 
         if !windows.isEmpty {
             windows = []
         }
     }
 
+    /// WindowServer can't unregister a notification handler, so the handler
+    /// is installed once and ignores events while observation is stopped.
+    private func registerWindowServerEventsIfNeeded() {
+        guard !registeredWindowServerEvents else { return }
+        registeredWindowServerEvents = true
+        let failed = WindowServerWindows.register(
+            WindowServerEvent.allCases,
+            callback: windowServerNotificationCallback,
+            context: nil
+        )
+        if !failed.isEmpty {
+            logger.error("WindowServer notifications unavailable: \(failed.map(\.rawValue), privacy: .public)")
+        }
+    }
+
     private func subscribeToWorkspaceLifecycle() {
         let center = NSWorkspace.shared.notificationCenter
-        workspaceObservers = [
-            center.addObserver(
-                forName: NSWorkspace.didLaunchApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-                MainActor.assumeIsolated {
-                    self?.handleAppLaunched(app)
-                }
-            },
-            center.addObserver(
-                forName: NSWorkspace.didTerminateApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-                MainActor.assumeIsolated {
-                    self?.handleAppTerminated(app)
-                }
-            },
-            center.addObserver(
-                forName: NSWorkspace.didHideApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
-                MainActor.assumeIsolated {
-                    self?.removeWindows(for: pid)
-                }
-            },
-            center.addObserver(
-                forName: NSWorkspace.didUnhideApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
-                MainActor.assumeIsolated {
-                    self?.syncWindows(for: pid)
-                }
-            },
-            // AX's view of windows can drift after a Space switch — windows on
-            // the now-inactive Space sometimes get hidden/shown inconsistently.
-            // Re-snapshot so MRU and visibility reflect the new Space.
-            center.addObserver(
-                forName: NSWorkspace.activeSpaceDidChangeNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.rebuildSnapshot()
-                }
-            },
+        let names: [Notification.Name] = [
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification,
+            // Hidden apps' windows leave the list, matching ⌘H hiding them.
+            NSWorkspace.didHideApplicationNotification,
+            NSWorkspace.didUnhideApplicationNotification,
+            // Space switches change which windows are on an active Space.
+            NSWorkspace.activeSpaceDidChangeNotification,
         ]
-    }
-
-    private func handleAppLaunched(_ app: NSRunningApplication) {
-        guard shouldTrack(app) else {
-            return
+        workspaceObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                    .processIdentifier
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if name == NSWorkspace.didTerminateApplicationNotification, let pid {
+                        self.removeApplication(pid)
+                    }
+                    self.scheduleRefresh()
+                }
+            }
         }
-        installObserver(for: app)
-        // AX may not be ready immediately after launch — defer one tick.
-        DispatchQueue.main.async { [weak self] in
-            self?.syncWindows(for: app.processIdentifier)
+    }
+
+    private func removeApplication(_ pid: pid_t) {
+        removeObserver(for: pid)
+        observerRetries.removeValue(forKey: pid)
+        lastFocusedWindowIDByPID.removeValue(forKey: pid)
+        if pendingFrontWindow?.pid == pid {
+            pendingFrontWindow = nil
+        }
+        if windows.contains(where: { $0.processIdentifier == pid }) {
+            windows.removeAll { $0.processIdentifier == pid }
         }
     }
 
-    private func handleAppTerminated(_ app: NSRunningApplication) {
-        removeObserver(for: app.processIdentifier)
-        removeWindows(for: app.processIdentifier)
+    /// Apps the registry observes, hidden or not, so focus order survives
+    /// hiding. Only `shouldTrack` apps have their windows listed.
+    private func observedApplications() -> [pid_t: NSRunningApplication] {
+        var applications: [pid_t: NSRunningApplication] = [:]
+        for app in NSWorkspace.shared.runningApplications where Self.shouldObserve(app) {
+            applications[app.processIdentifier] = app
+        }
+        return applications
     }
 
-    private func currentRegularApps() -> [NSRunningApplication] {
-        NSWorkspace.shared.runningApplications.filter(shouldTrack)
-    }
-
-    private func shouldTrack(_ app: NSRunningApplication) -> Bool {
-        guard app.activationPolicy == .regular else { return false }
+    /// Whether the registry observes `app`: regular apps other than Docky
+    /// and system helpers.
+    static func shouldObserve(_ app: NSRunningApplication) -> Bool {
+        guard app.activationPolicy == .regular, app.processIdentifier > 0 else { return false }
         if let bundleId = app.bundleIdentifier {
             if filteredBundleIdentifiers.contains(bundleId) { return false }
             // Docky itself is invisible to every Docky-owned surface
@@ -565,12 +587,122 @@ final class WindowRegistry: ObservableObject {
         return true
     }
 
+    /// Whether the registry lists `app`'s windows: observed apps that
+    /// aren't hidden.
+    static func shouldTrack(_ app: NSRunningApplication) -> Bool {
+        shouldObserve(app) && !app.isHidden
+    }
+
+    // MARK: - WindowServer events
+
+    fileprivate func handleWindowServerEvent(_ event: WindowServerEvent, windowID: CGWindowID?) {
+        guard observationsActive else { return }
+        switch event {
+        case .windowMoved, .windowResized:
+            guard let windowID, windows.contains(where: { $0.cgWindowID == windowID }) else { return }
+            pendingFrameWindowIDs.insert(windowID)
+            scheduleFrameFlush()
+
+        case .windowAddedToSpace:
+            // Fires for every window on the system, including menus,
+            // tooltips and Docky's own panels.
+            guard isPotentialUserWindow(windowID) else { return }
+            scheduleRefresh()
+
+        case .windowRemovedFromSpace:
+            // Only windows the registry follows can leave its list.
+            if let windowID, !requestedNotificationWindowIDs.contains(windowID) { return }
+            scheduleRefresh()
+
+        case .windowDestroyed, .windowShown, .windowHidden:
+            scheduleRefresh()
+        }
+    }
+
+    /// Whether a window that just joined a Space could be listed: a
+    /// top-level, normal-level window of an observed app. Unknown owners or
+    /// levels count as potential, so nothing is missed.
+    private func isPotentialUserWindow(_ windowID: CGWindowID?) -> Bool {
+        guard let windowID, !windows.contains(where: { $0.cgWindowID == windowID }) else { return true }
+        if let owner = WindowServerWindows.ownerPID(of: windowID) {
+            guard let app = NSRunningApplication(processIdentifier: owner), Self.shouldObserve(app) else {
+                return false
+            }
+        }
+        return WindowServerWindows.isTopLevelNormalWindow(windowID) != false
+    }
+
+    /// Coalesces bursts of notifications (a window opening fires several)
+    /// into one snapshot.
+    private func scheduleRefresh() {
+        guard observationsActive, !refreshScheduled else { return }
+        refreshScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.refreshScheduled = false
+                self.rebuildSnapshot()
+            }
+        }
+    }
+
+    private func scheduleFrameFlush() {
+        guard !frameFlushScheduled else { return }
+        frameFlushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.flushFrameUpdates()
+            }
+        }
+    }
+
+    /// Applies every pending move and resize in one publish.
+    private func flushFrameUpdates() {
+        frameFlushScheduled = false
+        let windowIDs = pendingFrameWindowIDs
+        pendingFrameWindowIDs.removeAll()
+        guard observationsActive else { return }
+        var updated = windows
+        var changed = false
+        for windowID in windowIDs {
+            guard let index = updated.firstIndex(where: { $0.cgWindowID == windowID }),
+                  let bounds = WindowServerWindows.bounds(of: windowID),
+                  bounds != updated[index].frame else { continue }
+            if updated[index].frame?.size != bounds.size {
+                scheduleResizeInvalidation(for: windowID)
+            }
+            updated[index] = updated[index].with(frame: bounds)
+            changed = true
+        }
+        if changed {
+            windows = updated
+        }
+    }
+
+    /// Invalidates a resized window's preview once resizing has paused for
+    /// 300 ms, so a live resize doesn't recapture on every frame.
+    private func scheduleResizeInvalidation(for windowID: CGWindowID) {
+        pendingResizeInvalidations.insert(windowID)
+        resizeInvalidationGeneration += 1
+        let generation = resizeInvalidationGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, generation == self.resizeInvalidationGeneration else { return }
+                let windowIDs = self.pendingResizeInvalidations
+                self.pendingResizeInvalidations.removeAll()
+                for window in self.windows where windowIDs.contains(window.cgWindowID) {
+                    self.previewInvalidations.send(window.windowIdentifier)
+                }
+            }
+        }
+    }
+
     // MARK: - Per-app AX observer
 
     private func installObserver(for app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard pid > 0,
-              applicationObservers[pid] == nil else {
+        guard pid > 0, applicationObservers[pid] == nil else { return }
+        if let retry = observerRetries[pid], retry.attempts >= 5 || ContinuousClock.now < retry.notBefore {
             return
         }
 
@@ -580,29 +712,37 @@ final class WindowRegistry: ObservableObject {
             return
         }
 
-        applicationObservers[pid] = observer
-
         let appElement = AXUIElementCreateApplication(pid)
+        // A launching app may not serve AX yet; don't let it stall the
+        // main thread for the global timeout on each registration.
+        AXUIElementSetMessagingTimeout(appElement, 0.25)
         let context = Unmanaged.passUnretained(self).toOpaque()
 
+        // Window existence, geometry and minimization come from WindowServer.
+        // AX supplies focus order and title changes, which it doesn't report.
         let notifications: [CFString] = [
             kAXWindowCreatedNotification as CFString,
-            kAXUIElementDestroyedNotification as CFString,
-            kAXWindowMovedNotification as CFString,
-            kAXWindowResizedNotification as CFString,
-            kAXWindowMiniaturizedNotification as CFString,
-            kAXWindowDeminiaturizedNotification as CFString,
             kAXTitleChangedNotification as CFString,
             kAXFocusedWindowChangedNotification as CFString,
             kAXMainWindowChangedNotification as CFString,
             kAXApplicationActivatedNotification as CFString,
-            kAXApplicationHiddenNotification as CFString,
             kAXApplicationShownNotification as CFString,
         ]
 
+        var registered = 0
         for name in notifications {
-            _ = AXObserverAddNotification(observer, appElement, name, context)
+            let result = AXObserverAddNotification(observer, appElement, name, context)
+            if result == .success || result == .notificationAlreadyRegistered {
+                registered += 1
+            }
         }
+        guard registered > 0 else {
+            let attempts = (observerRetries[pid]?.attempts ?? 0) + 1
+            observerRetries[pid] = (attempts, ContinuousClock.now + .seconds(1))
+            return
+        }
+        observerRetries.removeValue(forKey: pid)
+        applicationObservers[pid] = observer
 
         CFRunLoopAddSource(
             CFRunLoopGetMain(),
@@ -640,10 +780,15 @@ final class WindowRegistry: ObservableObject {
             // Per-window MRU: the notification's element IS the now-focused
             // window. Move just that one to the front; the app's other
             // windows stay where they were in the global list.
-            let newFocusedID = WindowID(element: element)
+            guard let windowID = windowID(of: element, pid: pid) else {
+                scheduleRefresh()
+                return
+            }
+            accessibilityElements[windowID] = element
+            let newFocusedID = WindowID(windowID: windowID)
             invalidateOutgoingFocusedPreview(pid: pid, newFocusedID: newFocusedID)
             lastFocusedWindowIDByPID[pid] = newFocusedID
-            bumpWindowToTop(element: element, pid: pid)
+            bumpWindowToTop(newFocusedID, pid: pid)
 
         case kAXApplicationActivatedNotification,
              kAXApplicationShownNotification:
@@ -651,104 +796,221 @@ final class WindowRegistry: ObservableObject {
             // and bump only that one (not the app's whole block).
             bumpFocusedWindowToTop(pid: pid)
 
-        case kAXWindowCreatedNotification,
-             kAXWindowMiniaturizedNotification,
-             kAXWindowDeminiaturizedNotification:
-            // These can fire for background apps (e.g., "open in new window"
-            // from a notification). Don't bump — just refresh in place.
-            syncWindows(for: pid)
-
-        case kAXWindowMovedNotification:
-            updateFrameOrSync(element: element, pid: pid)
-
-        case kAXWindowResizedNotification:
-            // Aspect ratio likely changed; the cached thumbnail will look
-            // squished in the preview card. Drop it before the frame
-            // update so the refresh that follows kicks off a recapture.
-            let target = WindowID(element: element)
-            if let resized = windows.first(where: { $0.id == target }) {
-                previewInvalidations.send(resized.windowIdentifier)
+        case kAXWindowCreatedNotification:
+            if let windowID = windowID(of: element, pid: pid) {
+                accessibilityElements[windowID] = element
             }
-            updateFrameOrSync(element: element, pid: pid)
+            scheduleRefresh()
 
         case kAXTitleChangedNotification:
-            updateTitleOrSync(element: element, pid: pid)
-
-        case kAXApplicationHiddenNotification:
-            removeWindows(for: pid)
-
-        case kAXUIElementDestroyedNotification:
-            removeWindow(matching: element, pid: pid)
+            updateTitle(of: element, pid: pid)
 
         default:
             break
         }
     }
 
+    /// Applies a window's new AX title in place. Title-changed also fires for
+    /// controls inside windows, so the element must be the window itself.
+    private func updateTitle(of element: AXUIElement, pid: pid_t) {
+        let cached = accessibilityElements.first(where: { CFEqual($0.value, element) })?.key
+        guard let windowID = cached ?? windowID(of: element),
+              let index = windows.firstIndex(where: { $0.cgWindowID == windowID }),
+              cached != nil || stringAttribute(kAXRoleAttribute as CFString, of: element) == kAXWindowRole as String,
+              let title = stringAttribute(kAXTitleAttribute as CFString, of: element) else { return }
+        accessibilityTitles[windowID] = title
+        let existing = windows[index]
+        let resolved = displayTitle(title, appDisplayName: existing.appDisplayName)
+        guard resolved != existing.windowTitle else { return }
+        windows[index] = AppWindow(
+            cgWindowID: existing.cgWindowID,
+            bundleIdentifier: existing.bundleIdentifier,
+            processIdentifier: existing.processIdentifier,
+            appDisplayName: existing.appDisplayName,
+            windowTitle: resolved,
+            isMinimized: existing.isMinimized,
+            isOnActiveSpace: existing.isOnActiveSpace,
+            frame: existing.frame
+        )
+    }
+
+    private func windowID(of element: AXUIElement) -> CGWindowID? {
+        var windowID: CGWindowID = 0
+        guard _AXUIElementGetWindow(element, &windowID) == .success, windowID != 0 else { return nil }
+        return windowID
+    }
+
+    /// The element's window ID, or for apps whose AX elements don't report
+    /// one, the listed window of `pid` with the same frame.
+    private func windowID(of element: AXUIElement, pid: pid_t) -> CGWindowID? {
+        if let windowID = windowID(of: element) { return windowID }
+        guard let frame = frameAttribute(of: element) else { return nil }
+        return windows.first { window in
+            window.processIdentifier == pid && window.frame.map { $0.isApproximately(frame) } == true
+        }?.cgWindowID
+    }
+
+    private func displayTitle(_ title: String, appDisplayName: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? appDisplayName : trimmed
+    }
+
     // MARK: - Snapshot mutation
 
     private func rebuildSnapshot() {
+        guard observationsActive else { return }
+        let applications = observedApplications()
+        let listedPIDs = Set(applications.filter { !$0.value.isHidden }.keys)
+        guard let snapshot = WindowServerWindows.snapshot(checkingOrderFor: listedPIDs) else { return }
+        let liveWindows = snapshot.windows.filter { applications[$0.processIdentifier] != nil }
+        let listed = liveWindows.filter { listedPIDs.contains($0.processIdentifier) && $0.isListed }
+        // WindowServer titles fill in only where AX hasn't named the window.
+        let serverTitles = WindowServerWindows.titles(
+            for: listed.filter { accessibilityTitles[$0.id] == nil }.map(\.id)
+        )
+
         var collected: [AppWindow] = []
-        for app in currentRegularApps() {
-            collected.append(contentsOf: enumerateWindows(for: app))
+        for info in listed {
+            guard let app = applications[info.processIdentifier] else { continue }
+            let bundleID = app.bundleIdentifier ?? "pid:\(info.processIdentifier)"
+            let displayName = app.localizedName ?? bundleID
+            let window = AppWindow(
+                cgWindowID: info.id,
+                bundleIdentifier: bundleID,
+                processIdentifier: info.processIdentifier,
+                appDisplayName: displayName,
+                windowTitle: displayTitle(
+                    accessibilityTitles[info.id] ?? serverTitles[info.id] ?? "",
+                    appDisplayName: displayName
+                ),
+                isMinimized: info.isMinimized,
+                isOnActiveSpace: !info.spaceIDs.isDisjoint(with: snapshot.activeSpaceIDs),
+                frame: info.bounds
+            )
+            guard passesAppDiscriminator(window: window) else { continue }
+            collected.append(window)
+        }
+
+        let previous = Dictionary(windows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for window in collected {
+            if let old = previous[window.id], old.frame?.size != window.frame?.size {
+                scheduleResizeInvalidation(for: window.cgWindowID)
+            }
         }
         applyOrdered(collected)
+
+        // Listed windows first, so they keep their events if WindowServer's
+        // per-connection limit is ever reached.
+        let listedIDs = collected.map(\.cgWindowID)
+        let listedIDSet = Set(listedIDs)
+        let notificationIDs = listedIDs + liveWindows.map(\.id).filter { !listedIDSet.contains($0) }
+        if Set(notificationIDs) != requestedNotificationWindowIDs {
+            requestedNotificationWindowIDs = Set(notificationIDs)
+            WindowServerWindows.requestNotifications(for: notificationIDs)
+        }
+
+        // Caches follow every live window, including hidden apps' windows and
+        // windows a filter dropped, so neither is looked up again.
+        let liveIDs = Set(liveWindows.map(\.id))
+        accessibilityElements = accessibilityElements.filter { liveIDs.contains($0.key) }
+        accessibilityTitles = accessibilityTitles.filter { liveIDs.contains($0.key) }
+        floatingWindowIDs.formIntersection(liveIDs)
+        attemptedAccessibilityLookups.formIntersection(liveIDs)
+        for (pid, app) in applications where applicationObservers[pid] == nil {
+            installObserver(for: app)
+        }
+        for pid in applicationObservers.keys where applications[pid] == nil {
+            removeObserver(for: pid)
+        }
+        resolveMissingAccessibilityElements()
     }
 
-    private func syncWindows(for pid: pid_t) {
-        guard let app = NSRunningApplication(processIdentifier: pid),
-              app.activationPolicy == .regular else {
-            removeWindows(for: pid)
-            return
+    /// Looks up AX elements, titles and subroles for newly listed windows off
+    /// the main actor, so actions on windows in other Spaces don't wait for a
+    /// token scan and no AX attribute is read on the main thread per update.
+    private func resolveMissingAccessibilityElements() {
+        guard !accessibilityLookupInFlight else { return }
+        var wanted: [pid_t: [CGWindowID: CGRect]] = [:]
+        for window in windows where !attemptedAccessibilityLookups.contains(window.cgWindowID) {
+            wanted[window.processIdentifier, default: [:]][window.cgWindowID] = window.frame ?? .null
+            attemptedAccessibilityLookups.insert(window.cgWindowID)
         }
-
-        let updated = enumerateWindows(for: app)
-        replaceWindows(forPID: pid, with: updated)
+        guard !wanted.isEmpty else { return }
+        accessibilityLookupInFlight = true
+        let request = wanted
+        accessibilityLookupQueue.async {
+            var found: [CGWindowID: AccessibilityWindowElement] = [:]
+            for (pid, windows) in request {
+                let elements = WindowServerWindows.accessibilityWindows(
+                    pid: pid,
+                    wanted: windows,
+                    budget: .milliseconds(400),
+                    readsDetails: true
+                )
+                found.merge(elements) { _, new in new }
+            }
+            let result = found
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    WindowRegistry.shared.finishAccessibilityLookup(result)
+                }
+            }
+        }
     }
 
-    /// Moves a single window to the front of the registry. Identifies the
-    /// window by AX element pointer first, falling back to CGWindowID if AX
-    /// returned a different element instance for the same window. Bypasses
-    /// `applyOrdered`, which deliberately preserves existing order — so this
-    /// is the only mutation path that actually changes ordering.
-    private func bumpWindowToTop(element: AXUIElement, pid: pid_t) {
-        let target = WindowID(element: element)
-        if let index = windows.firstIndex(where: { $0.id == target }) {
-            // Already at the top — skip the mutation so we don't fire a
-            // spurious @Published update.
-            guard index != 0 else { return }
-            let window = windows.remove(at: index)
-            windows.insert(window, at: 0)
+    private func finishAccessibilityLookup(_ found: [CGWindowID: AccessibilityWindowElement]) {
+        accessibilityLookupInFlight = false
+        guard observationsActive else { return }
+        let listed = Dictionary(windows.map { ($0.cgWindowID, $0) }, uniquingKeysWith: { first, _ in first })
+        var needsRefresh = false
+        for (windowID, handle) in found {
+            guard let window = listed[windowID] else { continue }
+            if accessibilityElements[windowID] == nil {
+                accessibilityElements[windowID] = handle.element
+            }
+            if let title = handle.title {
+                accessibilityTitles[windowID] = title
+                if displayTitle(title, appDisplayName: window.appDisplayName) != window.windowTitle {
+                    needsRefresh = true
+                }
+            }
+            if let subrole = handle.subrole,
+               window.bundleIdentifier.hasPrefix("com.jetbrains."),
+               subrole == kAXFloatingWindowSubrole as String || subrole == kAXSystemFloatingWindowSubrole as String {
+                floatingWindowIDs.insert(windowID)
+                needsRefresh = true
+            }
+        }
+        if needsRefresh { scheduleRefresh() }
+        resolveMissingAccessibilityElements()
+    }
+
+    /// Moves a single window to the front of the registry. When the window
+    /// isn't listed yet (focus raced its creation), the next snapshot moves
+    /// it. Bypasses `applyOrdered`'s order preservation — this is the only
+    /// mutation path that actually changes ordering.
+    private func bumpWindowToTop(_ windowID: WindowID, pid: pid_t) {
+        guard let index = windows.firstIndex(where: { $0.id == windowID }) else {
+            pendingFrontWindow = (windowID, pid)
+            scheduleRefresh()
             return
         }
-
-        // AX element identity didn't match — try the system CGWindowID.
-        var wid: CGWindowID = 0
-        if _AXUIElementGetWindow(element, &wid) == .success,
-           wid != 0,
-           let index = windows.firstIndex(where: { $0.cgWindowID == wid }) {
-            guard index != 0 else { return }
-            let window = windows.remove(at: index)
-            windows.insert(window, at: 0)
-            return
-        }
-
-        // Last resort: window isn't in the registry yet. Refresh the app's
-        // windows so the next focus event (or the AX-create notification we
-        // raced against) lands cleanly.
-        syncWindows(for: pid)
+        // A later focus wins over a window still waiting to be listed.
+        pendingFrontWindow = nil
+        // Already at the top — skip the mutation so we don't fire a
+        // spurious @Published update.
+        guard index != 0 else { return }
+        // Reorder a copy so subscribers see one change, not a removal
+        // followed by an insertion.
+        var reordered = windows
+        reordered.insert(reordered.remove(at: index), at: 0)
+        windows = reordered
     }
 
     /// Looks up the app's currently focused window via AX and bumps just
     /// that one to the front. Used when the notification carries the app
     /// element rather than a window element.
     private func bumpFocusedWindowToTop(pid: pid_t) {
-        guard let app = NSRunningApplication(processIdentifier: pid),
-              app.activationPolicy == .regular else {
-            removeWindows(for: pid)
-            return
-        }
-
         let appElement = AXUIElementCreateApplication(pid)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
@@ -758,73 +1020,29 @@ final class WindowRegistry: ObservableObject {
               ) == .success,
               let value,
               CFGetTypeID(value) == AXUIElementGetTypeID() else {
-            // No focused window reported — refresh in place so we at least
-            // pick up state changes (hide/unhide, fresh windows).
-            syncWindows(for: pid)
+            // No focused window reported — refresh so we at least pick up
+            // state changes (hide/unhide, fresh windows).
+            scheduleRefresh()
             return
         }
 
         let focusedElement = value as! AXUIElement
-        bumpWindowToTop(element: focusedElement, pid: pid)
+        guard let windowID = windowID(of: focusedElement, pid: pid) else { return }
+        accessibilityElements[windowID] = focusedElement
+        bumpWindowToTop(WindowID(windowID: windowID), pid: pid)
     }
 
-    func liveWindows(for pid: pid_t) -> [AppWindow] {
-        guard pid > 0,
-              let app = NSRunningApplication(processIdentifier: pid),
-              app.activationPolicy == .regular else { return [] }
-        return enumerateWindows(for: app)
-    }
-
-    private func enumerateWindows(for app: NSRunningApplication) -> [AppWindow] {
-        let pid = app.processIdentifier
-        guard pid > 0 else { return [] }
-
-        let bundleID = app.bundleIdentifier ?? "pid:\(pid)"
-        let displayName = app.localizedName ?? bundleID
-
-        let appElement = AXUIElementCreateApplication(pid)
-
-        var rawWindows: CFArray?
-        guard AXUIElementCopyAttributeValues(
-                appElement,
-                kAXWindowsAttribute as CFString,
-                0,
-                256,
-                &rawWindows
-              ) == .success,
-              let elements = rawWindows as? [AXUIElement] else {
-            return []
-        }
-
-        var seen = Set<WindowID>()
-        var result: [AppWindow] = []
-        for element in elements where role(of: element) == kAXWindowRole as String {
-            let id = WindowID(element: element)
-            guard !seen.contains(id) else { continue }
-            seen.insert(id)
-            guard let window = makeAppWindow(
-                element: element,
-                bundleIdentifier: bundleID,
-                processIdentifier: pid,
-                appDisplayName: displayName
-            ) else { continue }
-            guard passesAppDiscriminator(window: window, element: element) else { continue }
-            result.append(window)
-        }
-        return result
-    }
-
-    /// Per-bundle filters that strip AX entries known to be false
+    /// Per-bundle filters that strip windows known to be false
     /// positives for specific apps — menu-bar shadows, scratch popups,
     /// invisible launcher panels. The whitelist is kept narrow on
     /// purpose: each rule should be backed by a real, repeatable bug.
     /// Returns `true` when the candidate looks legit for that app.
-    private func passesAppDiscriminator(window: AppWindow, element: AXUIElement) -> Bool {
+    private func passesAppDiscriminator(window: AppWindow) -> Bool {
         let trimmedTitle = window.windowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let bundleID = window.bundleIdentifier
         let frame = window.frame
 
-        // Steam emits AX "windows" for its in-app overlay shadows that
+        // Steam emits windows for its in-app overlay shadows that
         // carry no title and dwarf the actual game window. The real
         // game/library windows always have a title.
         if bundleID == "com.valvesoftware.steam" {
@@ -833,7 +1051,7 @@ final class WindowRegistry: ObservableObject {
             }
         }
 
-        // Firefox briefly exposes a thin AX panel under the main window
+        // Firefox briefly exposes a thin panel under the main window
         // when popovers open; height is the easiest reliable signal.
         if bundleID == "org.mozilla.firefox" || bundleID.hasPrefix("org.mozilla.") {
             if let frame, frame.height < 300 {
@@ -841,133 +1059,15 @@ final class WindowRegistry: ObservableObject {
             }
         }
 
-        // JetBrains IDEs back floating helper panels with AX windows
+        // JetBrains IDEs back floating helper panels with real windows
         // (find-in-files, scratch tool windows). The main editor window
         // has no AX subrole; helpers carry `AXFloatingWindow` or
-        // `AXSystemFloatingWindow`. Drop those so the switcher only
-        // shows real editor frames.
-        if bundleID.hasPrefix("com.jetbrains.") {
-            if let subrole = stringAttribute(kAXSubroleAttribute as CFString, of: element),
-               subrole == kAXFloatingWindowSubrole as String
-                || subrole == kAXSystemFloatingWindowSubrole as String {
-                return false
-            }
+        // `AXSystemFloatingWindow`, read by the background lookup.
+        if bundleID.hasPrefix("com.jetbrains."), floatingWindowIDs.contains(window.cgWindowID) {
+            return false
         }
 
         return true
-    }
-
-    private func makeAppWindow(
-        element: AXUIElement,
-        bundleIdentifier: String,
-        processIdentifier: pid_t,
-        appDisplayName: String
-    ) -> AppWindow? {
-        let title = stringAttribute(kAXTitleAttribute as CFString, of: element)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedTitle = (title?.isEmpty ?? true) ? appDisplayName : (title ?? appDisplayName)
-        let isMinimized = boolAttribute(kAXMinimizedAttribute as CFString, of: element) ?? false
-        let windowNumber = intAttribute(axWindowNumberAttribute, of: element)
-        let frame = frameAttribute(of: element)
-        let cgWindowID = cgWindowID(
-            of: element,
-            processIdentifier: processIdentifier,
-            title: resolvedTitle,
-            frame: frame
-        )
-
-        return AppWindow(
-            element: element,
-            bundleIdentifier: bundleIdentifier,
-            processIdentifier: processIdentifier,
-            appDisplayName: appDisplayName,
-            windowTitle: resolvedTitle,
-            isMinimized: isMinimized,
-            windowNumber: windowNumber,
-            cgWindowID: cgWindowID,
-            frame: frame
-        )
-    }
-
-    private func replaceWindows(forPID pid: pid_t, with updatedWindows: [AppWindow]) {
-        var next = windows
-        let insertIndex = next.firstIndex(where: { $0.processIdentifier == pid }) ?? next.count
-        next.removeAll { $0.processIdentifier == pid }
-        next.insert(contentsOf: updatedWindows, at: min(insertIndex, next.count))
-        applyOrdered(next)
-        scheduleScreenCaptureReconciliation()
-    }
-
-    // MARK: - ScreenCaptureKit reconciliation
-
-    /// Debounced follow-up that compares the registry's on-screen windows
-    /// against ScreenCaptureKit's view. When SCK reports more on-screen
-    /// windows for a PID than the registry knows about, we re-enumerate
-    /// AX for that PID — usually catching a window AX hadn't yet
-    /// surfaced, with Phase 1's title/geometry fallback closing the gap
-    /// for AX entries that lack a direct CGWindowID.
-    ///
-    /// The cancel/replace loop coalesces bursts of AX notifications into
-    /// a single SCK round-trip, and the work itself is idempotent: if
-    /// the second AX pass still falls short, we exit silently rather
-    /// than scheduling another retry.
-    private func scheduleScreenCaptureReconciliation() {
-        guard PermissionsService.shared.screenCapture == .granted else { return }
-        screenCaptureReconciliationTask?.cancel()
-        screenCaptureReconciliationTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(180))
-            guard let self, !Task.isCancelled else { return }
-            await self.reconcileWithScreenCapture()
-        }
-    }
-
-    @MainActor
-    private func reconcileWithScreenCapture() async {
-        let content: SCShareableContent
-        do {
-            content = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
-        } catch {
-            return
-        }
-
-        var scWindowsByPID: [pid_t: Int] = [:]
-        for window in content.windows {
-            guard let app = window.owningApplication else { continue }
-            scWindowsByPID[pid_t(app.processID), default: 0] += 1
-        }
-
-        var registryOnScreenByPID: [pid_t: Int] = [:]
-        for window in windows where !window.isMinimized {
-            registryOnScreenByPID[window.processIdentifier, default: 0] += 1
-        }
-
-        for (pid, scCount) in scWindowsByPID {
-            let registryCount = registryOnScreenByPID[pid, default: 0]
-            guard scCount > registryCount else { continue }
-            guard let app = NSRunningApplication(processIdentifier: pid),
-                  app.activationPolicy == .regular,
-                  !filteredBundleIdentifiers.contains(app.bundleIdentifier ?? "") else {
-                continue
-            }
-            let refreshed = enumerateWindows(for: app)
-            // Bypass `replaceWindows` to avoid re-arming the reconciler
-            // and looping on a PID whose AX layer truly doesn't expose
-            // the window SCK sees.
-            var next = windows
-            let insertIndex = next.firstIndex(where: { $0.processIdentifier == pid }) ?? next.count
-            next.removeAll { $0.processIdentifier == pid }
-            next.insert(contentsOf: refreshed, at: min(insertIndex, next.count))
-            applyOrdered(next)
-        }
-    }
-
-    private func removeWindows(for pid: pid_t) {
-        lastFocusedWindowIDByPID.removeValue(forKey: pid)
-        guard windows.contains(where: { $0.processIdentifier == pid }) else { return }
-        windows.removeAll { $0.processIdentifier == pid }
     }
 
     /// Emits a preview-invalidation for the window that just lost focus
@@ -984,94 +1084,33 @@ final class WindowRegistry: ObservableObject {
         previewInvalidations.send(outgoing.windowIdentifier)
     }
 
-    private func removeWindow(matching element: AXUIElement, pid: pid_t) {
-        let target = WindowID(element: element)
-        if let index = windows.firstIndex(where: { $0.id == target }) {
-            windows.remove(at: index)
-        } else {
-            // Element pointer mismatch can happen for some apps — fall back
-            // to a per-app sync to keep state correct.
-            syncWindows(for: pid)
-        }
-    }
-
-    private func updateFrameOrSync(element: AXUIElement, pid: pid_t) {
-        let target = WindowID(element: element)
-        guard let index = windows.firstIndex(where: { $0.id == target }) else {
-            syncWindows(for: pid)
-            return
-        }
-
-        let existing = windows[index]
-        let newFrame = frameAttribute(of: element)
-        guard existing.frame != newFrame else { return }
-
-        windows[index] = AppWindow(
-            element: existing.element,
-            bundleIdentifier: existing.bundleIdentifier,
-            processIdentifier: existing.processIdentifier,
-            appDisplayName: existing.appDisplayName,
-            windowTitle: existing.windowTitle,
-            isMinimized: existing.isMinimized,
-            windowNumber: existing.windowNumber,
-            cgWindowID: existing.cgWindowID,
-            frame: newFrame
-        )
-    }
-
-    private func updateTitleOrSync(element: AXUIElement, pid: pid_t) {
-        let target = WindowID(element: element)
-        guard let index = windows.firstIndex(where: { $0.id == target }) else {
-            // Title-changed can fire for non-window elements (menu items,
-            // sheets); ignore unless we know the window.
-            return
-        }
-
-        let existing = windows[index]
-        let newTitle = stringAttribute(kAXTitleAttribute as CFString, of: element)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let resolvedTitle = newTitle.isEmpty ? existing.appDisplayName : newTitle
-        guard resolvedTitle != existing.windowTitle else { return }
-
-        windows[index] = AppWindow(
-            element: existing.element,
-            bundleIdentifier: existing.bundleIdentifier,
-            processIdentifier: existing.processIdentifier,
-            appDisplayName: existing.appDisplayName,
-            windowTitle: resolvedTitle,
-            isMinimized: existing.isMinimized,
-            windowNumber: existing.windowNumber,
-            cgWindowID: existing.cgWindowID,
-            frame: existing.frame
-        )
-    }
-
+    /// Preserves existing order: existing windows keep their slot and pick
+    /// up the latest fields from the snapshot. Newly observed windows are
+    /// appended, those on an active Space first, in WindowServer order. A
+    /// window that took focus before it was listed goes first, in the same
+    /// publish.
     private func applyOrdered(_ snapshot: [AppWindow]) {
-        // Preserve insertion order: existing windows keep their slot and
-        // pick up the latest fields from the snapshot; newly-observed
-        // windows are appended in the order AX returned them.
-        var remaining = Set(snapshot.map(\.id))
+        let snapshotByID = Dictionary(snapshot.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var orderedExisting: [AppWindow] = []
-        for window in windows where remaining.contains(window.id) {
-            if let updated = snapshot.first(where: { $0.id == window.id }) {
-                orderedExisting.append(updated)
-            } else {
-                orderedExisting.append(window)
-            }
-            remaining.remove(window.id)
+        var seen = Set<WindowID>()
+        for window in windows {
+            guard let updated = snapshotByID[window.id], seen.insert(window.id).inserted else { continue }
+            orderedExisting.append(updated)
         }
-        let newcomers = snapshot.filter { remaining.contains($0.id) }
-        let next = orderedExisting + newcomers
+        let newcomers = snapshot.filter { seen.insert($0.id).inserted }
+        var next = orderedExisting
+            + newcomers.filter(\.isOnActiveSpace)
+            + newcomers.filter { !$0.isOnActiveSpace }
+        if let pending = pendingFrontWindow, let index = next.firstIndex(where: { $0.id == pending.id }) {
+            pendingFrontWindow = nil
+            next.insert(next.remove(at: index), at: 0)
+        }
         if next != windows {
             windows = next
         }
     }
 
     // MARK: - AX attribute helpers
-
-    private func role(of element: AXUIElement) -> String? {
-        stringAttribute(kAXRoleAttribute as CFString, of: element)
-    }
 
     private func stringAttribute(_ attribute: CFString, of element: AXUIElement) -> String? {
         var value: CFTypeRef?
@@ -1081,149 +1120,20 @@ final class WindowRegistry: ObservableObject {
         return value as? String
     }
 
-    private func boolAttribute(_ attribute: CFString, of element: AXUIElement) -> Bool? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
-            return nil
-        }
-        return (value as? NSNumber)?.boolValue
-    }
-
-    private func intAttribute(_ attribute: CFString, of element: AXUIElement) -> Int? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
-            return nil
-        }
-        return (value as? NSNumber)?.intValue
-    }
-
-    /// Resolves an AX window's CGWindowID. The private `_AXUIElementGetWindow`
-    /// is the fast path. When that fails (Adobe, Electron helpers, some
-    /// JetBrains windows) we walk the WindowServer's window list for the
-    /// owning PID and match heuristically. Three tiers, most-confident
-    /// first, so we never elevate a guess over a known good answer:
-    ///
-    ///  1. Exact title equality.
-    ///  2. Geometry tolerance — same origin and size within 2pt. Catches
-    ///     untitled documents/popovers that the AX layer reports without
-    ///     a name.
-    ///  3. Case-insensitive substring overlap on the title, either
-    ///     direction. Last resort because Chrome's "Page Title - Google
-    ///     Chrome" vs CG's "Page Title" pattern depends on app behavior.
-    ///
-    /// Geometry comparison happens against `frame` (the AX-reported frame)
-    /// so callers must pass the trimmed value, not the raw AX read.
-    private func cgWindowID(
-        of element: AXUIElement,
-        processIdentifier: pid_t,
-        title: String,
-        frame: CGRect?
-    ) -> CGWindowID? {
-        var id: CGWindowID = 0
-        if _AXUIElementGetWindow(element, &id) == .success, id != 0 {
-            return id
-        }
-        return cgWindowIDByHeuristic(
-            processIdentifier: processIdentifier,
-            title: title,
-            frame: frame
-        )
-    }
-
-    private func cgWindowIDByHeuristic(
-        processIdentifier: pid_t,
-        title: String,
-        frame: CGRect?
-    ) -> CGWindowID? {
-        let listOptions: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let descriptions = CGWindowListCopyWindowInfo(listOptions, kCGNullWindowID) as? [[String: Any]] ?? []
-        let appEntries = descriptions.filter { entry in
-            (entry[kCGWindowOwnerPID as String] as? pid_t) == processIdentifier
-        }
-        guard !appEntries.isEmpty else { return nil }
-
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedTitle.isEmpty,
-           let match = appEntries.first(where: {
-               ($0[kCGWindowName as String] as? String) == trimmedTitle
-           }),
-           let id = match[kCGWindowNumber as String] as? CGWindowID {
-            return id
-        }
-
-        if let frame {
-            for entry in appEntries {
-                guard let boundsDict = entry[kCGWindowBounds as String] as? [String: Any] else { continue }
-                let cgFrame = CGRect(
-                    x: (boundsDict["X"] as? CGFloat) ?? 0,
-                    y: (boundsDict["Y"] as? CGFloat) ?? 0,
-                    width: (boundsDict["Width"] as? CGFloat) ?? 0,
-                    height: (boundsDict["Height"] as? CGFloat) ?? 0
-                )
-                if abs(cgFrame.origin.x - frame.origin.x) < 2,
-                   abs(cgFrame.origin.y - frame.origin.y) < 2,
-                   abs(cgFrame.size.width - frame.size.width) < 2,
-                   abs(cgFrame.size.height - frame.size.height) < 2,
-                   let id = entry[kCGWindowNumber as String] as? CGWindowID {
-                    return id
-                }
-            }
-        }
-
-        if !trimmedTitle.isEmpty {
-            let lowered = trimmedTitle.lowercased()
-            for entry in appEntries {
-                guard let cgTitle = entry[kCGWindowName as String] as? String,
-                      !cgTitle.isEmpty else { continue }
-                let loweredCG = cgTitle.lowercased()
-                if loweredCG.contains(lowered) || lowered.contains(loweredCG),
-                   let id = entry[kCGWindowNumber as String] as? CGWindowID {
-                    return id
-                }
-            }
-        }
-
-        return nil
-    }
-
     private func frameAttribute(of element: AXUIElement) -> CGRect? {
-        guard let position = pointAttribute(kAXPositionAttribute as CFString, of: element),
-              let size = sizeAttribute(kAXSizeAttribute as CFString, of: element) else {
+        var position: CFTypeRef?
+        var size: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &size) == .success,
+              let position, let size,
+              CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() else {
             return nil
         }
-        return CGRect(origin: position, size: size)
-    }
-
-    private func pointAttribute(_ attribute: CFString, of element: AXUIElement) -> CGPoint? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
-              let value,
-              CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-
-        let axValue = value as! AXValue
-        guard AXValueGetType(axValue) == .cgPoint else { return nil }
-
-        var point = CGPoint.zero
-        guard AXValueGetValue(axValue, .cgPoint, &point) else { return nil }
-        return point
-    }
-
-    private func sizeAttribute(_ attribute: CFString, of element: AXUIElement) -> CGSize? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
-              let value,
-              CFGetTypeID(value) == AXValueGetTypeID() else {
-            return nil
-        }
-
-        let axValue = value as! AXValue
-        guard AXValueGetType(axValue) == .cgSize else { return nil }
-
-        var size = CGSize.zero
-        guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
-        return size
+        var origin = CGPoint.zero
+        var extent = CGSize.zero
+        guard AXValueGetValue(position as! AXValue, .cgPoint, &origin),
+              AXValueGetValue(size as! AXValue, .cgSize, &extent) else { return nil }
+        return CGRect(origin: origin, size: extent)
     }
 }
 
@@ -1248,5 +1158,26 @@ private func axObserverCallback(
             element: callbackElement,
             notificationName: name as CFString
         )
+    }
+}
+
+// WindowServer requires a free C function. The packet is only valid during
+// the callback, so the window ID is read first. The handler always runs on a
+// later main-queue turn, never inside SkyLight's dispatch, so it can't
+// re-enter SkyLight or the registry's initialization.
+private func windowServerNotificationCallback(
+    type: UInt32,
+    data: UnsafeMutableRawPointer?,
+    length: UInt32,
+    context: UnsafeMutableRawPointer?,
+    connection: Int32
+) {
+    guard let event = WindowServerEvent(rawValue: type) else { return }
+    let packet = UnsafeRawBufferPointer(start: data, count: data == nil ? 0 : Int(length))
+    let windowID = event.windowID(in: packet)
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+            WindowRegistry.shared.handleWindowServerEvent(event, windowID: windowID)
+        }
     }
 }

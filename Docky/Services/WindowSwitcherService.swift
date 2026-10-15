@@ -114,7 +114,8 @@ final class WindowSwitcherService: ObservableObject {
         }
 
         let latestWindows = WindowRegistry.shared.switchable(
-            includeMinimized: DockyPreferences.shared.includesMinimizedWindows
+            includeMinimized: DockyPreferences.shared.includesMinimizedWindows,
+            spaceScope: DockyPreferences.shared.windowSwitcherSpaceScope
         )
 
         windows = latestWindows

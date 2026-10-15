@@ -15,6 +15,7 @@ struct AppKitBrowserRegression {
         testSearchAndSelection()
         testSelectionFeedback()
         testPreviewCaptureBounds()
+        testWindowServerRules()
         testControllerRelease()
         testObservationLifecycle()
         print("AppKit browser and geometry regressions passed")
@@ -220,6 +221,14 @@ struct AppKitBrowserRegression {
             == CGSize(width: 1600, height: 1200), "Ordinary windows retain Retina resolution")
         expect(WindowPreviewCaptureSizing.size(for: CGSize(width: CGFloat.infinity, height: 100), maximum: limit)
             == CGSize(width: 1, height: 1), "Invalid window dimensions must not create oversized buffers")
+        let context = CGContext(data: nil, width: 400, height: 200, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)!
+        let source = context.makeImage()!
+        let scaled = WindowPreviewCaptureSizing.downscaled(source, toFit: CGSize(width: 100, height: 100))
+        expect(scaled?.width == 100 && scaled?.height == 50, "Captures scale down to fit, keeping their aspect ratio")
+        expect(WindowPreviewCaptureSizing.downscaled(source, toFit: limit) === source,
+               "Captures that already fit aren't redrawn")
         let gate = WindowPreviewFrameGate()
         expect(gate.beginFrame(), "The first frame may enter the main-actor queue")
         for _ in 0..<10_000 {
@@ -230,6 +239,65 @@ struct AppKitBrowserRegression {
         gate.stop()
         gate.endFrame()
         expect(!gate.beginFrame(), "A stopped preview must reject late frames")
+    }
+
+    /// Tag, attribute and packet values recorded from macOS 27.0.1 (26A434).
+    private static func testWindowServerRules() {
+        let visible: UInt64 = 0x0300_0001_0048_2001
+        let minimized: UInt64 = 0x1300_0001_0048_0001
+        let hiddenApp: UInt64 = 0x0300_0081_0048_0001
+        expect(WindowServerWindowRules.isUserWindow(tags: visible, attributes: 0x3), "A visible document window is listed")
+        expect(WindowServerWindowRules.isUserWindow(tags: minimized, attributes: 0x1), "A minimized document window is listed")
+        expect(WindowServerWindowRules.isUserWindow(tags: hiddenApp, attributes: 0x1), "A hidden app's window stays a user window")
+        expect(WindowServerWindowRules.isMinimized(tags: minimized), "The minimized tag is recognized")
+        expect(!WindowServerWindowRules.isMinimized(tags: visible) && !WindowServerWindowRules.isMinimized(tags: hiddenApp),
+               "Visible and hidden windows aren't minimized")
+        expect(!WindowServerWindowRules.isUserWindow(tags: 0x0400_0000_0000_0000, attributes: 0x2),
+               "Windows without a document tag are utility surfaces")
+        expect(WindowServerWindowRules.isUserWindow(tags: 0x2 | 0x8000_0000, attributes: 0x2),
+               "A document panel is listed")
+        expect(!WindowServerWindowRules.isUserWindow(tags: 0x2, attributes: 0x2),
+               "A panel without the document bit isn't listed")
+        expect(WindowServerWindowRules.isUserWindow(tags: 0x0400_0000_0000_0001, attributes: 0),
+               "The visible tag alone lists a document window")
+        expect(!WindowServerWindowRules.isUserWindow(tags: 0x1000_0000_0000_0001, attributes: 0x4),
+               "Off-screen tags only count with attributes 0 or 1")
+        expect(!WindowServerWindowRules.isUserWindow(tags: 0x1, attributes: 0),
+               "A document window with no state tags isn't listed")
+        expect(WindowServerWindowRules.hasOrderedInAttribute(0x3) && !WindowServerWindowRules.hasOrderedInAttribute(0x1),
+               "The ordered-in attribute is bit 0x2")
+        expect(CGRect(x: 10, y: 20, width: 300, height: 200).isApproximately(CGRect(x: 11.5, y: 20, width: 300, height: 201)),
+               "Frames within 2 points match")
+        expect(!CGRect(x: 10, y: 20, width: 300, height: 200).isApproximately(CGRect(x: 12, y: 20, width: 300, height: 200)),
+               "Frames 2 points apart don't match")
+
+        func info(orderedIn: Bool, tags: UInt64) -> WindowServerWindowInfo {
+            WindowServerWindowInfo(id: 7, processIdentifier: 1, bounds: .zero, tags: tags, attributes: 0x1,
+                                   isOrderedIn: orderedIn, spaceIDs: [4])
+        }
+        expect(info(orderedIn: true, tags: visible).isListed, "Ordered-in windows are listed")
+        expect(info(orderedIn: false, tags: minimized).isListed, "Minimized windows are listed")
+        expect(!info(orderedIn: false, tags: visible).isListed, "Closed windows an app keeps aren't listed")
+
+        var spacePacket = [UInt8](repeating: 0, count: 12)
+        spacePacket.withUnsafeMutableBytes {
+            $0.storeBytes(of: UInt64(10055), toByteOffset: 0, as: UInt64.self)
+            $0.storeBytes(of: UInt32(95622), toByteOffset: 8, as: UInt32.self)
+        }
+        spacePacket.withUnsafeBytes { packet in
+            expect(WindowServerEvent.windowRemovedFromSpace.windowID(in: packet) == 95622,
+                   "Space events carry the window after the Space ID")
+            expect(WindowServerEvent.windowAddedToSpace.windowID(in: UnsafeRawBufferPointer(rebasing: packet[0..<8])) == nil,
+                   "A truncated Space packet names no window")
+        }
+        var windowPacket = [UInt8](repeating: 0, count: 4)
+        windowPacket.withUnsafeMutableBytes { $0.storeBytes(of: UInt32(95624), toByteOffset: 0, as: UInt32.self) }
+        windowPacket.withUnsafeBytes { packet in
+            expect(WindowServerEvent.windowMoved.windowID(in: packet) == 95624, "Window events carry the window first")
+        }
+        [UInt8](repeating: 0, count: 4).withUnsafeBytes { packet in
+            expect(WindowServerEvent.windowDestroyed.windowID(in: packet) == nil, "Window ID 0 names no window")
+        }
     }
 
     @MainActor
