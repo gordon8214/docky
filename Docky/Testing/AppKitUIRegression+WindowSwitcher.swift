@@ -37,12 +37,34 @@
                          "Windows without a capture show their app icon")
             precondition(controller.cardViews[cards[0].id]?.showsFallbackIcon == false)
 
+            for cardView in controller.cardViews.values {
+                precondition((cardView.layer?.backgroundColor?.alpha ?? 0) > 0
+                              && cardView.layer?.borderWidth == WindowSwitcherCardView.tileEdgeWidth,
+                              "Every card sits on a tile, not only the hovered one")
+            }
+
             guard let hovered = controller.cardViews[cards[2].id] else { preconditionFailure("Card required") }
             precondition(hovered.closeButton.isHidden, "The close button only appears on hover")
+            let restingFill = hovered.layer?.backgroundColor
             hovered.setHovered(true)
             precondition(!hovered.closeButton.isHidden, "Hovering a card shows its close button")
+            precondition(hovered.layer?.backgroundColor != restingFill, "Hovering changes the tile's fill")
             hovered.setHovered(false)
             precondition(hovered.closeButton.isHidden)
+
+            // Hover follows the pointer, so a card that moved away from it
+            // doesn't stay hovered beside the card now under it.
+            func hoveredIDs(pointerOver id: String?) -> [String] {
+                let point = id.flatMap { controller.cardViews[$0] }.map {
+                    $0.convert(CGPoint(x: $0.bounds.midX, y: $0.bounds.midY), to: nil)
+                }
+                controller.updateHoveredCard(atWindowPoint: point)
+                return controller.cardViews.values.filter(\.isHovered).map(\.card.id)
+            }
+            precondition(hoveredIDs(pointerOver: cards[2].id) == [cards[2].id], "The card under the pointer is hovered")
+            precondition(hoveredIDs(pointerOver: cards[3].id) == [cards[3].id],
+                         "Only the card under the pointer stays hovered")
+            precondition(hoveredIDs(pointerOver: nil).isEmpty, "No pointer means no hovered card")
 
             let lastRowCard = geometry.rows[1][0]
             let neighbor = WindowSwitcherService.shared.verticalNeighbor?(cards[lastRowCard].id, -1)

@@ -95,9 +95,12 @@ The window switcher looks and behaves like the Windows 11 Alt+Tab switcher.
 (`WindowsTaskbarPopupChrome`) of window cards on the dock's screen.
 `WindowSwitcherGeometry` gives every thumbnail one height (15% of the screen,
 96–160 points), takes each card's width from its window's aspect ratio, and wraps
-cards into centered rows at 85% of the screen width. Each card shows the app
-icon and window title above the thumbnail, a 3-point selection frame in the
-system accent color, and a close button on hover. Each thumbnail has a 1-point translucent border and a
+cards into centered rows at 85% of the screen width. Each card is a rounded
+tile with the WinUI card fill and a 1-point edge, holding the app icon and
+window title above the thumbnail. The selected card gets a 3-point frame in the
+system accent color; a hovered card a stronger fill and a close button. Hover
+follows the pointer after every layout, because a card that reflows away from a
+still pointer never gets a mouse-exited event. Each thumbnail has a 1-point translucent border and a
 soft drop shadow. Windows without a capture show their app icon, with neither.
 "Switcher Font Size" (9–24 points, default 12) and "Switcher Icon Size" (12–48,
 default 16) in Window Management size the title and icon. The header grows to

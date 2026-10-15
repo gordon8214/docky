@@ -2,9 +2,9 @@
 //  WindowSwitcherCardView.swift
 //  Docky
 //
-//  One window in the Windows 11–style switcher: an icon-and-title header
-//  above the window's thumbnail, a rounded selection frame, a hover fill,
-//  and a close button that appears on hover.
+//  One window in the Windows 11–style switcher: a rounded tile holding an
+//  icon-and-title header above the window's thumbnail, a selection frame,
+//  a hover fill, and a close button that appears on hover.
 //
 
 import AppKit
@@ -56,6 +56,7 @@ struct WindowSwitcherHeaderStyle: Equatable {
 final class WindowSwitcherCardView: NSView {
     static let selectionBorderWidth: CGFloat = 3
     static let cornerRadius: CGFloat = 8
+    static let tileEdgeWidth: CGFloat = 1
     static let thumbnailCornerRadius: CGFloat = 4
     static let thumbnailBorderWidth: CGFloat = 1
     static let thumbnailShadowBlurRadius: CGFloat = 3
@@ -228,6 +229,24 @@ final class WindowSwitcherCardView: NSView {
         updatePalette()
     }
 
+    /// Every card is a tile, like Windows 11's Alt+Tab, using the WinUI card
+    /// fill (white at 70% light, 5% dark). Hovering lays the taskbar's hover
+    /// highlight over it.
+    static func tileFill(dark: Bool, hovered: Bool) -> NSColor {
+        switch (dark, hovered) {
+        case (false, false): NSColor(calibratedWhite: 1, alpha: 0.7)
+        case (false, true): NSColor(calibratedWhite: 0.94, alpha: 0.71)
+        case (true, false): NSColor(calibratedWhite: 1, alpha: 0.05)
+        case (true, true): NSColor(calibratedWhite: 1, alpha: 0.12)
+        }
+    }
+
+    /// Stronger than the WinUI card stroke so each tile reads clearly on the
+    /// panel. Dark mode uses a light edge, which shows against the dark panel.
+    static func tileEdge(dark: Bool) -> NSColor {
+        dark ? NSColor.white.withAlphaComponent(0.18) : NSColor.black.withAlphaComponent(0.18)
+    }
+
     static func aspectFitRect(for size: CGSize, in bounds: CGRect) -> CGRect {
         guard size.width > 0, size.height > 0, !bounds.isEmpty else { return bounds }
         let scale = min(bounds.width / size.width, bounds.height / size.height)
@@ -247,9 +266,9 @@ final class WindowSwitcherCardView: NSView {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.backgroundColor = isHovered
-            ? WindowsTaskbarStyle.highlight(appearance).cgColor
-            : NSColor.clear.cgColor
+        layer?.backgroundColor = Self.tileFill(dark: dark, hovered: isHovered).cgColor
+        layer?.borderWidth = Self.tileEdgeWidth
+        layer?.borderColor = Self.tileEdge(dark: dark).cgColor
         // The system accent color, resolved for this card's appearance.
         var accent = NSColor.controlAccentColor.cgColor
         appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.cgColor }

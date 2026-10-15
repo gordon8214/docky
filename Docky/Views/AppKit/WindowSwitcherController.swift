@@ -239,6 +239,20 @@ final class WindowSwitcherController: NSViewController {
         for (index, id) in orderedIDs.enumerated() where geometry.cardFrames.indices.contains(index) {
             cardViews[id]?.frame = geometry.cardFrames[index]
         }
+        if let window = view.window, window.isVisible {
+            updateHoveredCard(atWindowPoint: window.mouseLocationOutsideOfEventStream)
+        }
+    }
+
+    /// Cards reflow when thumbnails arrive or windows close, and a tracking
+    /// area that moves away from a still pointer never reports an exit. So
+    /// after each layout, hover follows the pointer rather than the last event.
+    func updateHoveredCard(atWindowPoint point: CGPoint?) {
+        let location = point.map { documentView.convert($0, from: nil) }
+        let visible = documentView.visibleRect
+        for cardView in cardViews.values {
+            cardView.setHovered(location.map { visible.contains($0) && cardView.frame.contains($0) } ?? false)
+        }
     }
 
     private var geometryScreenSize: CGSize?
