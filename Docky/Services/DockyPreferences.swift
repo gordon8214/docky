@@ -2561,7 +2561,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         replacesSystemCommandTab ? KeyboardShortcut.commandTab : windowSwitcherShortcut
     }
 
-    /// Whether the window switcher should preview the selected window in place after a short hold.
+    /// Whether the window switcher previews the selected window while the shortcut is held.
+    /// Off by default, so like ⌘Tab nothing comes forward until the shortcut is released.
     var showsWindowSwitcherFocusPreview: Bool {
         didSet {
             guard showsWindowSwitcherFocusPreview != oldValue else { return }
@@ -3760,7 +3761,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let includesMinimizedWindows = true
         static let windowSwitcherShortcut = KeyboardShortcut(keyCode: 48, modifierFlags: [.option])
         static let replacesSystemCommandTab = false
-        static let showsWindowSwitcherFocusPreview = true
+        static let showsWindowSwitcherFocusPreview = false
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
         static let windowSwitcherSpaceScope: WindowSwitcherSpaceScope = .allSpaces
         static let windowSwitcherLayout: WindowSwitcherLayout = .auto

@@ -100,6 +100,12 @@ selection (↑ and ↓ follow the rows on screen), Delete closes the selected wi
 Return or releasing the modifier switches, Escape or a click outside the panel
 cancels, and every other key is swallowed so ⌘Q and ⌘H can't reach Docky.
 
+Like ⌘Tab, the switcher changes nothing until the shortcut is released.
+"Enable Switcher Preview" in Window Management, off by default, adds a preview
+of the selected window. In Place mode draws a live capture of the window at its
+real position behind the panel after a 1-second hold. Instant Focus mode focuses
+each selected window as you go.
+
 In Instant Focus mode, selecting a window on another Space doesn't focus it,
 because that would switch Spaces on every selection. The switcher stays visible
 while such a window is selected, and releasing the shortcut switches to it.
