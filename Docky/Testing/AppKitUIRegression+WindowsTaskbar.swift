@@ -4,69 +4,50 @@
 
     extension AppKitUIRegression {
         static func checkWindowsTaskbar() async {
-            let manager = ThemeManager.shared
-            let oldTheme = manager.activeThemeID
             let prefs = DockyPreferences.shared
             let settings = DockSettingsService.shared
-            let oldPosition = prefs.windowPosition
-            let oldSize = settings.tileSize
-            let oldMagnification = settings.magnification
             let oldTaskbarHeight = prefs.windowsTaskbarHeight
-            defer {
-                if let oldTheme { manager.setActive(oldTheme) } else { manager.clearActive() }
-                prefs.windowsTaskbarHeight = oldTaskbarHeight
-            }
+            defer { prefs.windowsTaskbarHeight = oldTaskbarHeight }
             // The suite runs against the real defaults, so start from the standard size.
             prefs.windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
-            manager.setActive("windows")
-            precondition(WindowsTaskbarStyle.isActive)
-            precondition(
-                prefs.effectiveWindowPosition == .bottom && prefs.effectiveWindowAxisSizing == .fullAxis)
             precondition(settings.displayTileSize == 40)
-            precondition(
-                prefs.windowPosition == oldPosition && settings.tileSize == oldSize
-                    && settings.magnification == oldMagnification)
-            guard let manifest = manager.activeManifest,
-                let encoded = try? JSONEncoder().encode(manifest),
-                let decoded = try? JSONDecoder().decode(ThemeManifest.self, from: encoded)
-            else {
-                preconditionFailure("Windows theme must round-trip")
-            }
-            precondition(decoded.behavior?.taskbarStyle == "windows11")
-            precondition(decoded.layout?.insertions?.isEmpty == true, "The taskbar must not inject Search")
-            checkWindowsArchiveRoundTrip()
             checkWindowsGeometryAndMotion()
             checkWindowsViews()
             await checkWindowsReviewRegressions()
             await checkWindowsTaskbarSize()
-            manager.clearActive()
-            precondition(!WindowsTaskbarStyle.isActive && prefs.effectiveWindowPosition == oldPosition)
-            precondition(settings.displayTileSize == oldSize)
             await Task.yield()
             print("Windows 11 taskbar regressions passed")
         }
-        private static func checkWindowsArchiveRoundTrip() {
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("docky.windows-export." + UUID().uuidString)
-            let suite = RegressionDefaults("docky.windows-export")
-            let defaults = suite.defaults
-            defer {
-                suite.remove()
-                try? FileManager.default.removeItem(at: directory)
+        /// Files, folders and apps dropped on the tray's Trash button go to the Trash.
+        private static func checkWindowsTrayTrash(root: DockRootView) {
+            let canvas = root.canvas
+            // Shelve mode can hide Trash, and then the tray has no Trash button.
+            guard let trash = canvas.windowsStatus?.trashTile else {
+                print("Skipped tray Trash drops: Shelve mode hides Trash")
+                return
             }
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let archive = directory.appendingPathComponent("windows.dockytheme")
-                try ThemeManager.shared.exportCurrentAppearance(name: "Windows export fixture", to: archive)
-                let restored = ThemeManager(
-                    defaults: defaults, directoryURL: directory.appendingPathComponent("themes"))
-                let imported = try restored.importTheme(from: archive)
-                restored.setActive(imported.id)
-                precondition(restored.activeManifest?.behavior?.taskbarStyle == "windows11")
-                precondition(restored.activeManifest?.behavior?.tileSize == nil)
-                precondition(restored.activeManifest?.behavior?.windowAxisSizing == nil)
-                precondition(restored.activeManifest?.behavior?.magnification == nil)
-            } catch { preconditionFailure("Windows archive round-trip failed: \(error)") }
+            guard let frame = canvas.controller.visibleTileFrames[trash.id] else {
+                preconditionFailure("The tray's Trash button must take drops")
+            }
+            let controller = canvas.controller
+            defer { controller.dockDrag.clear() }
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            controller.updateExternalDocumentDrop(at: center)
+            precondition(controller.dockDrag.documentTargetTileID == trash.id, "Documents drop on Trash")
+            controller.updateExternalFolderDrop(at: center)
+            precondition(
+                controller.dockDrag.documentTargetTileID == trash.id && controller.dockDrag.destinationIndex == nil,
+                "A folder dropped on Trash goes to the Trash instead of the tray's items")
+            controller.updateExternalAppDrop(at: center)
+            precondition(controller.dockDrag.documentTargetTileID == trash.id, "Apps drop on Trash")
+            // An app folder's apps are entries in a group; dropping one on Trash must not uninstall it.
+            controller.dockDrag.sourceFolderTileID = "fixture-folder"
+            controller.updateExternalAppDrop(at: center)
+            precondition(
+                controller.dockDrag.documentTargetTileID != trash.id, "Apps from an app folder never target Trash")
+            precondition(
+                !DockCanvasController.canTrash(Bundle.main.bundleURL), "Docky and running apps never go to the Trash")
+            print("Tray Trash drop regressions passed")
         }
         private static func checkWindowsGeometryAndMotion() {
             for width: CGFloat in [0, 100, 320, 800, 1440, 3000] {
@@ -100,7 +81,6 @@
             precondition(
                 root.canvas.windowsAppTiles.first?.id == "windows:start"
                     || root.canvas.windowsAppTiles.first?.content.isWindowsStart == true)
-            precondition(root.canvas.controller.magnificationPass().iconSizes.isEmpty)
             for tile in root.canvas.tiles.values {
                 tile.layoutSubtreeIfNeeded()
                 precondition(tile.bounds.size == CGSize(width: 40, height: 40))
@@ -117,6 +97,7 @@
                 precondition(TilePressService.shared.pressedTileID == nil)
                 precondition(tile.mouseDownPoint == nil && tile.canceledMouseSession)
             }
+            checkWindowsTrayTrash(root: root)
             captureWindowsSnapshots(root: root)
             let label = NSTextField(labelWithString: "Test")
             let popup = WindowsTaskbarPopup(content: label, size: CGSize(width: 220, height: 48))

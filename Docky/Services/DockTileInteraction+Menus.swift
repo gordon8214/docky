@@ -3,7 +3,6 @@ import OSLog
 
 extension DockTileInteraction {
     func contextActions(modifierFlags: NSEvent.ModifierFlags) -> [ContextAction] {
-        if tile.content == .divider && !isDockyPinnedTile && !isDockyTrailingTile { return dividerContextActions }
         if let actions = MenuCatalogService.shared.contextActions(for: tile, modifierFlags: modifierFlags),
             let merged = catalogContextActions(actions, flags: modifierFlags) {
             return merged
@@ -39,7 +38,7 @@ extension DockTileInteraction {
     }
     func appendingFolderRemoval(to base: [ContextAction]) -> [ContextAction] {
         guard isDockyTrailingTile else { return base }
-        return base + [.divider, .action(String(localized: "Remove from Dock")) { removeDockyTile() }]
+        return base + [.divider, .action(String(localized: "Remove from Taskbar")) { removeDockyTile() }]
     }
     func launcherContextActions() -> [ContextAction] {
         let action: ContextAction?
@@ -149,7 +148,7 @@ extension DockTileInteraction {
         }
 
         var actions: [ContextAction] = [
-            .action(String(localized: "Edit Dock...")) {
+            .action(String(localized: "Edit Taskbar...")) {
                 DockEditModeService.shared.enter()
             }
         ]
@@ -157,7 +156,7 @@ extension DockTileInteraction {
         if case .spacer = tile.content {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -165,7 +164,7 @@ extension DockTileInteraction {
         if case .flexibleSpacer = tile.content {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -173,7 +172,7 @@ extension DockTileInteraction {
         if case .divider = tile.content {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -181,7 +180,7 @@ extension DockTileInteraction {
         if case .widget = tile.content {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -189,7 +188,7 @@ extension DockTileInteraction {
         if case .smartStack = tile.content {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -236,7 +235,7 @@ extension DockTileInteraction {
         case .launchpad, .startMenu:
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         default:

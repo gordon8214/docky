@@ -58,12 +58,23 @@
             let status = WindowsTaskbarStatusView()
             status.refresh()
             let buttons = status.subviews.compactMap { $0 as? WindowsStatusButton }
-            precondition(buttons.map(\.glyph) == ["overflow", "clock"],
+            precondition(buttons.map(\.glyph) == ["overflow", "trash", "clock"],
                          "Battery, Volume, and Wi-Fi must have no synthetic taskbar replacements")
             precondition(status.preferredWidth == 110,
                          "Unhosted system extras must reserve no taskbar space")
-            precondition(buttons.first?.isHidden == true && buttons.last?.isHidden == false,
-                         "The clock must remain available with menu extras disabled")
+            precondition(buttons[0].isHidden && buttons[1].isHidden && buttons[2].isHidden == false,
+                         "Without overflow tiles or a Trash tile, only the clock remains")
+            status.trashTile = Tile(id: "trailing:trash", content: .trash)
+            status.frame = CGRect(x: 0, y: 0, width: status.preferredWidth, height: status.metrics.height)
+            status.layoutSubtreeIfNeeded()
+            let trash = buttons[1]
+            precondition(
+                !trash.isHidden && trash.frame.minX == 0 && status.preferredWidth == 110 + status.metrics.overflowWidth,
+                "The Trash button leads the tray when there are no overflow tiles")
+            precondition(trash.image != nil && trash.contextActions?().isEmpty == false && trash.onActivate != nil,
+                         "The Trash button shows Trash's icon, opens it, and offers its menu")
+            status.isTrashDropTarget = true
+            precondition(trash.isDropTarget, "The Trash button highlights as a drop target")
         }
     }
 #endif

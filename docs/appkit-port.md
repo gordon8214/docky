@@ -1,14 +1,17 @@
 # AppKit UI
 
 This fork targets macOS 27 and renders app-owned UI with AppKit and Core Animation.
-The Dock uses a flipped canvas, stable tile views, explicit frames, and native scroll
-views for overflowing sections. Native collection and table views power launchers,
+Its only appearance is a Windows 11–style taskbar (see below), drawn on a flipped
+canvas with stable tile views, explicit frames, and a native scroll view for
+overflowing app buttons. Native collection and table views power launchers,
 folder browsers, previews, and the editor. Settings uses a split-view sidebar and
-native controls. The existing custom glass backdrop remains a direct AppKit view.
+native controls.
 
-Models, preference keys, profiles, theme manifests, custom icons, window-management
-services, private APIs, Sparkle, and the Dock watchdog retain their existing formats
-and entry points. Supported `docky:` actions remain available. Community widget
+Models, preference keys, profiles, custom icons, window-management services,
+private APIs, Sparkle, and the Dock watchdog retain their existing formats and
+entry points. The theme system and the classic macOS-Dock look are gone; their
+preference keys stay in `UserDefaults` unread, and `.dockytheme` files no longer
+open in Docky. Supported `docky:` actions remain available. Community widget
 installation is disabled; see [legacy compatibility](external-widgets.md).
 
 ## Building
@@ -75,10 +78,10 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   changed switcher preferences and the frontmost app are restored.
 
 The integration checks validate native controller layout and lifecycle. They do not
-replace interactive checks for drag sessions, magnification, auto-hide, VoiceOver,
-permission grants, window-management actions, or physical display configurations.
-Verify those in a running build, along with themes, light/dark appearance, reduced
-motion, and reduced transparency.
+replace interactive checks for drag sessions, auto-hide, VoiceOver, permission
+grants, window-management actions, or physical display configurations. Verify those
+in a running build, along with light/dark appearance, reduced motion, and reduced
+transparency.
 
 Before finalizing, run `git diff --check`, search app sources for SwiftUI imports and
 hosting adapters, and inspect the main app and its app-owned helper binaries with
@@ -86,8 +89,8 @@ hosting adapters, and inspect the main app and its app-owned helper binaries wit
 
 ## Window switcher
 
-The window switcher looks and behaves like the Windows 11 Alt+Tab switcher in
-every theme. `WindowSwitcherController` centers an acrylic panel
+The window switcher looks and behaves like the Windows 11 Alt+Tab switcher.
+`WindowSwitcherController` centers an acrylic panel
 (`WindowsTaskbarPopupChrome`) of window cards on the dock's screen.
 `WindowSwitcherGeometry` gives every thumbnail one height (15% of the screen,
 96–160 points), takes each card's width from its window's aspect ratio, and wraps
@@ -145,16 +148,29 @@ the visibility state file records the override. Debug regressions never take
 The right-side tray includes a prototype for actual macOS menu extras. See
 [menu-extra behavior, validation, and native popup findings](menu-extras-prototype.md).
 
-The bundled `windows` theme uses the optional `behavior.taskbarStyle: "windows11"`
-preset. It resolves a bottom, full-width bar without rewriting saved placement,
-size, magnification, appearance overrides, or tile order. The bar is 48 points
-tall by default, with 40-point buttons, 24-point icons, and 44-point pitch.
+`WindowsTaskbarStyle` defines Docky's only appearance. The bar spans the full
+width of the bottom edge without rewriting the saved placement or tile order; it
+lays out horizontally only, so other edges wait on a vertical layout. Start and
+the app buttons sit on the bar, and most other tiles (folders, stacks, widgets)
+live in the tray's overflow popup, styled by `WindowsTaskbarStyle.Tray`. Trash
+has its own tray button: click to open it, right-click for its menu, and drop
+files, folders, or apps on it to move them to the Trash. It highlights red while
+it's the drop target and needs a drag source that allows moving. Running apps,
+Docky itself, apps dragged out of an app folder, and drops in edit mode never go
+to the Trash. Dragging a pinned taskbar button onto it unpins that app; a running
+app's button stays while it runs. Dropping a Finder folder anywhere else on the
+tray adds it to the overflow popup, just before Trash, and the overflow button
+highlights while it's the drop target. The editor palette, Smart Organize, and
+the macOS Dock import don't add spacers or dividers, since the taskbar never
+draws them; saved ones still load but stay hidden.
+Right-clicking empty taskbar space opens a menu with Activity Monitor, menu
+extras, Settings, hiding, Edit Taskbar, Sync Dock, About, and Quit. The bar is 48
+points tall by default, with 40-point buttons, 24-point icons, and 44-point pitch.
 Dragging its top edge, or the Taskbar Size field in Settings, sets the height
 from 32 to 96 points (`windowsTaskbarHeight`), and `WindowsTaskbarMetrics`
 scales every button, icon, indicator, badge, and tray control with it. Native
-menu extras keep their menu-bar size, so their slots grow but never shrink. Additional tiles remain
-available through the tray overflow; battery details are available in the battery
-context menu. Status controls reflect Mac state and open Mac settings.
+menu extras keep their menu-bar size, so their slots grow but never shrink. Battery
+details are available in the battery context menu. Status controls reflect Mac state and open Mac settings.
 
 App insertion and removal use keyframes sampled from `Windows Taskbar Behavior.mov`
 at source timestamps 11.742–12.033 and 14.175–14.408 seconds. The recording has
@@ -163,8 +179,8 @@ used for timing. Icon entrance samples at 11.933–12.433 seconds reproduce the
 delayed rise and damped bounce independently of recentering. Windows presentation
 uses AppKit and Core Animation throughout.
 
-The AppKit UI regression entry point includes taskbar geometry, theme round-tripping,
-preserved preferences, cancellation, and popup cleanup. To also write dark/light
+The AppKit UI regression entry point includes taskbar geometry, the background
+menu, the Taskbar Size setting, cancellation, and popup cleanup. To also write dark/light
 rendering snapshots to `/tmp/docky-windows-snapshots`, add
 `--windows-taskbar-snapshots` alongside `--appkit-ui-regression` when running a
 previously built Debug app (30-second runtime budget). These snapshots do not

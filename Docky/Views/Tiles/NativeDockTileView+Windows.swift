@@ -11,7 +11,6 @@ extension NativeDockTileView {
         imageView.layer?.masksToBounds = false
         hoverBackdrop.frame = bounds
         activeBackdrop.frame = bounds
-        pressOverlay.frame = .zero
         let indicatorWidth = metrics.activeIndicatorWidth
         indicator.frame = CGRect(
             x: (bounds.width - indicatorWidth) / 2, y: metrics.indicatorY,
@@ -34,7 +33,6 @@ extension NativeDockTileView {
         layer?.cornerRadius = cornerRadius
         shadow = nil
         alphaValue = 1
-        pressOverlay.opacity = 0
         hoverBackdrop.image = nil
         activeBackdrop.image = nil
         hoverBackdrop.isHidden = false

@@ -120,7 +120,6 @@ final class TileStore: ObservableObject {
         .store(in: &cancellables)
         observeChanges { [weak self] in
             _ = DockyPreferences.shared.showsGroupedOpenedAppsInDock
-            _ = DockyPreferences.shared.effectiveShowsActivePinnedSeparator
             _ = DockyPreferences.shared.showsRunningApps
             _ = DockyPreferences.shared.showsMinimizedWindows
             _ = DockyPreferences.shared.enablesShelveMode
@@ -900,28 +899,6 @@ final class TileStore: ObservableObject {
             span: resolvedSpan
         )
         preferences.appWidgetDisplays = displays
-    }
-
-    func insertPinnedItem(kind: PinnedTileItemKind, at destinationIndex: Int) {
-        let item: PinnedTileItem
-        switch kind {
-        case .app, .appFolder, .widget:
-            return
-        case .launchpad:
-            item = .launchpad()
-        case .startMenu:
-            item = .startMenu()
-        case .smartStack:
-            item = .smartStack()
-        case .spacer:
-            item = .spacer()
-        case .flexibleSpacer:
-            item = .flexibleSpacer()
-        case .divider:
-            item = .divider()
-        }
-
-        insertPinnedItem(item, at: destinationIndex)
     }
 
     func insertPinnedItem(_ item: PinnedTileItem, at destinationIndex: Int) {
@@ -2236,95 +2213,14 @@ final class TileStore: ObservableObject {
         let minimizedWindowTiles = preferences.showsMinimizedWindows
             ? WorkspaceService.shared.minimizedWindows.map(Self.tile(for:))
             : []
-        let mergedPinnedTiles = preferences.effectiveShowsActivePinnedSeparator
-            ? pinnedWithoutFinder
-            : pinnedWithoutFinder + runningTiles
-
         let leadingFinder: [Tile] = hidesFinder ? [] : [Self.finderTile()]
         var result: [Tile] = tilesWithWidgets(appendedTo: leadingFinder)
-        result.append(contentsOf: tilesWithWidgets(appendedTo: mergedPinnedTiles))
-        if preferences.effectiveShowsActivePinnedSeparator, !runningTiles.isEmpty {
-            result.append(Tile(id: "divider:running", content: .divider))
-            result.append(contentsOf: tilesWithWidgets(appendedTo: runningTiles))
-        }
+        result.append(contentsOf: tilesWithWidgets(appendedTo: pinnedWithoutFinder + runningTiles))
+        // Never drawn: marks where the pinned items end and the trailing items begin.
         result.append(Tile(id: "divider:trailing", content: .divider))
         let trailing = trailingTiles(withInsertedMinimizedWindows: minimizedWindowTiles)
         result.append(contentsOf: hidesTrash ? trailing.filter { !Self.isTrash($0) } : trailing)
         tiles = result.map(applyingAppWidgetDisplay(to:))
-    }
-
-    /// Inserts every `layout.insertions` entry the active theme defines
-    /// into the assembled tile list. Anchors are resolved against the
-    /// current list, so themes can target stable structural ids
-    /// (`divider:trailing`, `divider:running`) or any pinned/running
-    /// app by its bundle identifier. Insertions whose anchor doesn't
-    /// resolve are skipped silently, themes stay portable across
-    /// docks that don't happen to contain the referenced app.
-    ///
-    /// Called by `TileContainerView.displayTiles` rather than from
-    /// `rebuildTiles` so the inserted tiles survive the editor-preview
-    /// merge that re-builds the trailing section from
-    /// `previewTrailingSectionTiles` (anything in `tiles` past
-    /// `divider:trailing` would otherwise be dropped).
-    static func applyingThemeLayoutInsertions(
-        to tiles: [Tile], themeManager: ThemeManager = .shared
-    ) -> [Tile] {
-        guard let themeID = themeManager.activeThemeID,
-              let insertions = themeManager.activeManifest?.layout?.insertions,
-              !insertions.isEmpty else {
-            return tiles
-        }
-        let removedIDs = Set(themeManager.removedLayoutInsertionIDsByTheme[themeID] ?? [])
-        var result = tiles
-        for (index, insertion) in insertions.enumerated() {
-            let tileID = insertion.tileID(at: index)
-            guard !removedIDs.contains(tileID) else { continue }
-            guard let content = themeInsertionContent(insertion) else { continue }
-            let anchorAfter = insertion.after
-            let anchorBefore = insertion.before
-            guard let anchor = anchorAfter ?? anchorBefore else { continue }
-            guard let anchorIdx = themeInsertionAnchorIndex(in: result, anchor: anchor) else { continue }
-            let insertAt = anchorAfter != nil ? anchorIdx + 1 : anchorIdx
-            let tile = Tile(
-                id: tileID,
-                content: content
-            )
-            result.insert(tile, at: insertAt)
-        }
-        return result
-    }
-
-    /// Resolves a `ThemeLayoutInsertion` to a `TileContent`. Structural
-    /// primitives win first; otherwise the kind is parsed as a
-    /// `WidgetKind` raw value and materialized via `WidgetCatalog` so
-    /// a theme can drop e.g. a Search bar after Finder with the right
-    /// owner-bundle wiring without the user having to do anything.
-    private static func themeInsertionContent(_ insertion: ThemeLayoutInsertion) -> TileContent? {
-        switch insertion.kind {
-        case "spacer": return .spacer
-        case "flexibleSpacer": return .flexibleSpacer
-        case "divider": return .divider
-        default:
-            guard let widgetKind = WidgetKind(rawValue: insertion.kind),
-                  let registration = WidgetCatalog.registration(for: widgetKind) else {
-                return nil
-            }
-            let span: TileSpan = insertion.span
-                .flatMap(TileSpan.init(rawValue:)) ?? registration.defaultSpan
-            return .widget(registration.makeTile(span: span))
-        }
-    }
-
-    private static func themeInsertionAnchorIndex(in tiles: [Tile], anchor: String) -> Int? {
-        if let exact = tiles.firstIndex(where: { $0.id == anchor }) {
-            return exact
-        }
-        return tiles.firstIndex { tile in
-            if case .app(let app) = tile.content, app.bundleIdentifier == anchor {
-                return true
-            }
-            return false
-        }
     }
 
     private static func isTrash(_ tile: Tile) -> Bool {
@@ -2619,48 +2515,9 @@ final class TileStore: ObservableObject {
             return .startMenu(id: menu.identifier)
         case .widget, .smartStack:
             return nil
-        case .spacer:
-            return PinnedTileItem(
-                id: tile.id,
-                kind: .spacer,
-                bundleIdentifier: nil,
-                folderDisplayName: nil,
-                folderBundleIdentifiers: [],
-                appFolderDisplayMode: nil,
-                folderContentViewMode: nil,
-                widgetKind: nil,
-                widgetOwnerBundleIdentifier: nil,
-                widgetSpan: nil,
-                hiddenWidgetOwnerBundleIdentifiers: []
-            )
-        case .flexibleSpacer:
-            return PinnedTileItem(
-                id: tile.id,
-                kind: .flexibleSpacer,
-                bundleIdentifier: nil,
-                folderDisplayName: nil,
-                folderBundleIdentifiers: [],
-                appFolderDisplayMode: nil,
-                folderContentViewMode: nil,
-                widgetKind: nil,
-                widgetOwnerBundleIdentifier: nil,
-                widgetSpan: nil,
-                hiddenWidgetOwnerBundleIdentifiers: []
-            )
-        case .divider:
-            return PinnedTileItem(
-                id: tile.id,
-                kind: .divider,
-                bundleIdentifier: nil,
-                folderDisplayName: nil,
-                folderBundleIdentifiers: [],
-                appFolderDisplayMode: nil,
-                folderContentViewMode: nil,
-                widgetKind: nil,
-                widgetOwnerBundleIdentifier: nil,
-                widgetSpan: nil,
-                hiddenWidgetOwnerBundleIdentifiers: []
-            )
+        // The taskbar never draws spacers or dividers, so the import leaves them out.
+        case .spacer, .flexibleSpacer, .divider:
+            return nil
         case .folder, .trash, .minimizedWindow:
             return nil
         }

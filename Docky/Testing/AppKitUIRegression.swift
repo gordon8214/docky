@@ -9,7 +9,6 @@
             let started = ContinuousClock.now
             await checkSettings()
             checkWidgets()
-            await checkThemeWidgetRemoval()
             await checkWindowsTaskbar()
             checkWindowSwitcher()
             await checkSwitcherSpaceScope()
@@ -54,8 +53,8 @@
                         ownerBundleIdentifier: "test.legacy", defaultSpan: .three, includesInPalette: false,
                         includesInSmartStack: true)
                 ]
-            let legacy = WidgetCatalog.registration(for: .external("test.legacy.theme"))
-            precondition(legacy?.kind == .external("test.legacy.theme"), "Theme insertions preserve external kinds")
+            let legacy = WidgetCatalog.registration(for: .external("test.legacy.saved"))
+            precondition(legacy?.kind == .external("test.legacy.saved"), "Saved tiles preserve external widget kinds")
             precondition(legacy?.includesInPalette == false && legacy?.includesInSmartStack == false)
             let root = NSView(frame: CGRect(x: 0, y: 0, width: 500, height: 400))
             let window = NSWindow(contentRect: root.frame, styleMask: [], backing: .buffered, defer: false)

@@ -56,7 +56,9 @@ extension DockCanvasController {
             return true
         }
 
-        if let trashTargetTileID = trashDropTargetTileID(at: location, sourceTileID: tile.id) {
+        // Only tiles the Trash can remove (pinned or trailing items) target it.
+        if isPinnedReorderable(tileID: tile.id) || isTrailingReorderable(tileID: tile.id),
+            let trashTargetTileID = trashDropTargetTileID(at: location, sourceTileID: tile.id) {
             if draggedTrashTargetTileID != trashTargetTileID {
                 Self.logger.debug(
                     "Drag trash target tile=\(self.tileLogDescription(tile), privacy: .public)"

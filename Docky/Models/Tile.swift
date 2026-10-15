@@ -30,6 +30,13 @@ enum TileContent: Equatable {
     case trash
 }
 
+extension TileContent {
+    var isTrash: Bool {
+        if case .trash = self { return true }
+        return false
+    }
+}
+
 struct AppTile: Equatable {
     let bundleIdentifier: String
     let displayName: String
@@ -84,13 +91,9 @@ struct LaunchpadTile: Equatable {
     }
 }
 
-/// Tile that, when clicked, toggles Docky's Start menu overlay. Renders
-/// as a regular AppTileView pointed at Docky's own bundle id so the icon
-/// pipeline resolves to the running app icon (and the user can swap it
-/// out via the App Icons settings pane like the Launchpad tile).
+/// Tile that, when clicked, toggles Docky's Start menu overlay. The taskbar
+/// draws it as the Windows Start button.
 struct StartMenuTile: Equatable {
-    nonisolated static let iconBundleIdentifier = "gt.quintero.Docky"
-
     let identifier: String
     let title: String
 

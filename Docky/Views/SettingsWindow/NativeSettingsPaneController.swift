@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import UniformTypeIdentifiers
 
 final class NativeSettingsPaneController: NSViewController {
     let id: String
@@ -8,9 +7,6 @@ final class NativeSettingsPaneController: NSViewController {
     let document = NativeFormDocument()
     let stack = NSStackView()
     var subscriptions = Set<AnyCancellable>()
-    var attachment: URL?
-    /// Whether the tile layout pane shows the Windows taskbar's size instead of the tile size.
-    var showsTaskbarSize = false
     init(id: String) {
         self.id = id
         super.init(nibName: nil, bundle: nil)
@@ -33,21 +29,10 @@ final class NativeSettingsPaneController: NSViewController {
                 _ = ProfileService.shared.activeProfileID
                 self?.rebuild()
             }.store(in: &subscriptions)
-        } else if id == "appearanceThemes" {
-            observeChanges { [weak self] in
-                _ = ThemeManager.shared.installedThemes
-                _ = ThemeManager.shared.activeThemeID
-                self?.rebuild()
-            }.store(in: &subscriptions)
         } else if id == "hiddenApps" {
             observeChanges { [weak self] in
                 _ = DockyPreferences.shared.hiddenAppBundleIdentifiers
                 self?.rebuild()
-            }.store(in: &subscriptions)
-        } else if id == "appearanceTileLayout" {
-            observeChanges { [weak self] in
-                guard let self, WindowsTaskbarStyle.isActive != self.showsTaskbarSize else { return }
-                self.rebuild()
             }.store(in: &subscriptions)
         }
     }
@@ -71,9 +56,8 @@ final class NativeSettingsPaneController: NSViewController {
         for row in NativeSettingsFields.rows(for: id) { add(row) }
         let builders: [String: () -> Void] = [
             "appearanceGeneral": appearanceResetRows, "behaviorGeneral": behaviorResetRows,
-            "behaviorWidgets": widgetPreviewRows, "appearanceTileLayout": systemDockAppearanceRows,
-            "profiles": profileRows, "appearanceThemes": themeRows, "hiddenApps": hiddenAppRows,
-            "permissions": permissionRows, "updates": updateRows, "actions": actionRows, "feedback": feedbackRows
+            "behaviorWidgets": widgetPreviewRows, "profiles": profileRows, "hiddenApps": hiddenAppRows,
+            "permissions": permissionRows, "updates": updateRows, "actions": actionRows
         ]
         builders[id]?()
         view.needsLayout = true
@@ -131,32 +115,6 @@ final class NativeSettingsPaneController: NSViewController {
         alert.addButton(withTitle: String(localized: "Cancel"))
         return alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
     }
-    func systemDockAppearanceRows() {
-        let settings = DockSettingsService.shared
-        showsTaskbarSize = WindowsTaskbarStyle.isActive
-        if showsTaskbarSize {
-            let range = WindowsTaskbarMetrics.heightRange
-            add(
-                NativePreferenceField.number(
-                    String(localized: "Taskbar Size"), \.windowsTaskbarHeight,
-                    range: Double(range.lowerBound)...Double(range.upperBound)))
-        } else {
-            add(
-                NativePreferenceField.number(
-                    String(localized: "Tile Size"), get: { Double(settings.tileSize) },
-                    set: { settings.setTileSize(CGFloat($0)) }, range: 16...128))
-        }
-        let checkbox = NSButton(checkboxWithTitle: String(localized: "Magnification"), target: nil, action: nil)
-        let row = NativeFormRow(title: "", control: checkbox)
-        row.bind(checkbox) { settings.setMagnification(checkbox.state == .on) }
-        row.observe { [weak checkbox] in checkbox?.state = settings.magnification ? .on : .off }
-        add(row)
-        add(
-            NativePreferenceField.number(
-                String(localized: "Magnified Size"), get: { Double(settings.largeSize) },
-                set: { settings.setLargeSize(CGFloat($0)) }, range: Double(settings.tileSize)...256))
-    }
-    func show(_ error: Error) { NSAlert(error: error).runModal() }
 }
 
 final class NativeFormDocument: NSView { override var isFlipped: Bool { true } }

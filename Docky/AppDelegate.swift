@@ -123,50 +123,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Handles two entry points:
-    ///  - Double-clicking a `.dockytheme` bundle (or `.zip` of one) in
-    ///    Finder → imports each via `ThemeManager` and opens Settings.
-    ///  - `docky://<host>/<path>` deep links from automation tools
-    ///    (BTT, Raycast, Shortcuts, Stream Deck, ...). See
-    ///    `handleDockyURL` for the routing table.
+    /// Routes `docky://<host>/<path>` deep links from automation tools
+    /// (BTT, Raycast, Shortcuts, Stream Deck, ...). See `handleDockyURL`
+    /// for the routing table.
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard !urls.isEmpty else { return }
-
-        let dockyURLs = urls.filter { $0.scheme == "docky" }
-        let themeURLs = urls.filter { $0.scheme != "docky" }
-
-        for url in dockyURLs {
+        for url in urls where url.scheme == "docky" {
             handleDockyURL(url)
-        }
-
-        guard !themeURLs.isEmpty else { return }
-
-        var importedAny = false
-        var firstError: String?
-
-        for url in themeURLs {
-            do {
-                try ThemeManager.shared.importTheme(from: url)
-                importedAny = true
-            } catch {
-                if firstError == nil {
-                    firstError = (error as? LocalizedError)?.errorDescription
-                        ?? error.localizedDescription
-                }
-            }
-        }
-
-        if importedAny {
-            showSettingsWindow(nil)
-        }
-
-        if let firstError {
-            let alert = NSAlert()
-            alert.messageText = "Could not import theme"
-            alert.informativeText = firstError
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
         }
     }
 
@@ -674,8 +636,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Replace every `docky.*` UserDefaults key with the contents of
-    /// a plist (e.g. `docky-defaults.plist` from a user's feedback
-    /// bundle). The user is prompted to pick the file; existing
+    /// a plist (e.g. one written by `defaults export gt.quintero.Docky
+    /// docky-defaults.plist`). The user is prompted to pick the file; existing
     /// `docky.*` keys are cleared first so the resulting state is a
     /// faithful reproduction of the source, not a merge. Docky then
     /// relaunches so every preference observer re-reads.
@@ -686,7 +648,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.prompt = "Override"
-        panel.message = "Pick a docky-defaults.plist (from a feedback bundle, etc.) to replace all docky.* UserDefaults keys."
+        panel.message = "Pick a docky-defaults.plist to replace all docky.* UserDefaults keys."
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
@@ -767,19 +729,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return [
             "Docky Preferences",
             "---------------",
-            "tileVerticalPadding: \(preferences.tileVerticalPadding)",
-            "tileSpacing: \(preferences.tileSpacing)",
-            "windowCornerRadius: \(preferences.windowCornerRadius)",
-            "windowTintColor: \(preferences.windowTintColor.map { "r=\($0.red), g=\($0.green), b=\($0.blue)" } ?? "system")",
-            "windowTintOpacity: \(preferences.effectiveWindowTintOpacity)",
-            "windowBackgroundImagePath: \(preferences.windowBackgroundImagePath ?? "none")",
             "windowPosition: \(preferences.windowPosition.rawValue)",
             "windowDisplayTarget: \(preferences.windowDisplayTarget.rawValue)",
             "windowSpaceBehavior: \(preferences.windowSpaceBehavior.rawValue)",
             "autohidesWindow: \(preferences.autohidesWindow)",
             "autohideWindowDelay: \(preferences.autohideWindowDelay)",
-            "showsActivePinnedSeparator: \(preferences.showsActivePinnedSeparator)",
-            "activeIndicatorShape: \(preferences.activeIndicatorShape.rawValue)",
+            "windowsTaskbarHeight: \(preferences.windowsTaskbarHeight)",
             "pinnedAppBundleIdentifiers: \(formattedJSON(preferences.pinnedAppBundleIdentifiers))",
             "pinnedItems: \(formattedJSON(preferences.pinnedItems))",
             "widgetPlacements: \(formattedJSON(preferences.widgetPlacements))",
@@ -787,9 +742,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             "Dock Settings",
             "-------------",
             "orientation: \(dockSettings.orientation.rawValue)",
-            "tileSize: \(dockSettings.tileSize)",
-            "largeSize: \(dockSettings.largeSize)",
-            "magnification: \(dockSettings.magnification)",
             "autohide: \(dockSettings.autohide)",
             "autohideDelay: \(dockSettings.autohideDelay)",
             "autohideTimeModifier: \(dockSettings.autohideTimeModifier)",
@@ -832,9 +784,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // every relevant DockSettingsService change.
             let settings = DockSettingsService.shared
             _ = settings.orientation
-            _ = settings.tileSize
-            _ = settings.largeSize
-            _ = settings.magnification
             _ = settings.autohide
             _ = settings.autohideDelay
             _ = settings.autohideTimeModifier

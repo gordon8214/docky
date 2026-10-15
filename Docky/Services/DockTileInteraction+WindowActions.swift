@@ -71,7 +71,7 @@ extension DockTileInteraction {
         if isDockyPinnedTile || isDockyTrailingTile {
             actions.append(.divider)
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
@@ -118,7 +118,7 @@ extension DockTileInteraction {
 
         if canTogglePinned {
             actions.append(
-                .action(String(localized: "Keep in Dock"), isOn: isPinned) {
+                .action(String(localized: "Keep in Taskbar"), isOn: isPinned) {
                     _ = TileStore.shared.setPinnedApp(
                         bundleIdentifier: app.bundleIdentifier,
                         pinned: !isPinned

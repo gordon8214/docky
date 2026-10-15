@@ -10,9 +10,6 @@ import CoreGraphics
 enum DockEditPaletteItem: Equatable, Identifiable {
     case launchpad
     case startMenu
-    case spacer
-    case flexibleSpacer
-    case divider
     case widget(ownerBundleIdentifier: String, kind: WidgetKind)
     case smartStack
 
@@ -22,12 +19,6 @@ enum DockEditPaletteItem: Equatable, Identifiable {
             "launchpad"
         case .startMenu:
             "start-menu"
-        case .spacer:
-            "spacer"
-        case .flexibleSpacer:
-            "flexible-spacer"
-        case .divider:
-            "divider"
         case .widget(let ownerBundleIdentifier, let kind):
             "widget:\(ownerBundleIdentifier):\(kind.rawValue)"
         case .smartStack:

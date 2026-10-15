@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import QuartzCore
 
-/// A flipped canvas keeps hit testing, magnification, and drop geometry in one space.
+/// A flipped canvas keeps hit testing and drop geometry in one space.
 final class DockCanvasView: NSView {
     let controller = DockCanvasController()
     var tiles: [String: NativeDockTileView] = [:]
@@ -13,7 +13,6 @@ final class DockCanvasView: NSView {
     var isLayingOut = false
     var isUpdatingHierarchy: Bool { isLayingOut }
     var scrollObservers: [String: NSObjectProtocol] = [:]
-    var sectionTileIDs: [String: [String]] = [:]
     var dragPreviews: [NativeDockTileView] = []
     var dragPreviewIDs: [String] = []
     var dragTranslation: CGSize = .zero
@@ -21,7 +20,6 @@ final class DockCanvasView: NSView {
     var windowsTileIDs: [String] = []
     var windowsAnimationTimer: Timer?
     var windowsMetrics = WindowsTaskbarMetrics.standard
-    var groupBackdrops: [String: NSView] = [:]
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
@@ -30,7 +28,6 @@ final class DockCanvasView: NSView {
         controller.onChange = { [weak self] in self?.needsLayout = true }
         for publisher in [
             controller.store.objectWillChange.eraseToAnyPublisher(),
-            controller.layout.objectWillChange.eraseToAnyPublisher(),
             controller.editMode.objectWillChange.eraseToAnyPublisher(),
             controller.dockDrag.objectWillChange.eraseToAnyPublisher()
         ] {
@@ -40,16 +37,7 @@ final class DockCanvasView: NSView {
         }
         observeChanges { [weak self] in
             guard let self else { return }
-            _ = self.controller.preferences.effectiveTileSpacing
-            _ = ThemeManager.shared.removedLayoutInsertionIDsByTheme
-            _ = self.controller.preferences.effectiveTileVerticalPadding
             _ = self.controller.preferences.windowPosition
-            _ = self.controller.preferences.showsGroupedOpenedAppsBackdrop
-            _ = self.controller.preferences.overflowBehavior
-            if !WindowsTaskbarStyle.isActive {
-                _ = self.controller.magnification.pointerLocation
-                _ = self.controller.magnification.strength
-            }
             _ = self.controller.dockSettings.displayTileSize
             self.needsLayout = true
         }.store(in: &subscriptions)
@@ -98,25 +86,25 @@ final class DockCanvasView: NSView {
         controller.tileFrames.removeAll(keepingCapacity: true)
         controller.visibleTileFrames.removeAll(keepingCapacity: true)
         for (id, tile) in tiles {
-            let visual = WindowsTaskbarStyle.isActive
-                ? convert(tile.layer?.presentation()?.frame ?? tile.frame, from: tile.superview)
-                : convert(tile.bounds, from: tile)
+            // Taskbar tiles animate, so frames follow the presentation layer.
+            let visual = convert(tile.layer?.presentation()?.frame ?? tile.frame, from: tile.superview)
             controller.tileFrames[id] = visual
             if !tile.isHidden, tile.alphaValue > 0 {
-                let visible = WindowsTaskbarStyle.isActive
-                    ? visual.intersection(convert(tile.superview?.visibleRect ?? tile.bounds, from: tile.superview))
-                    : convert(tile.visibleRect, from: tile)
+                let visible =
+                    visual.intersection(convert(tile.superview?.visibleRect ?? tile.bounds, from: tile.superview))
                 if !visible.isEmpty { controller.visibleTileFrames[id] = visible }
             }
             if let window, let content = window.contentView {
-                let frame = WindowsTaskbarStyle.isActive ? convert(visual, to: nil) : tile.convert(tile.bounds, to: nil)
+                let frame = convert(visual, to: nil)
                 tile.interaction.globalTileFrame = CGRect(
                     x: frame.minX, y: content.bounds.height - frame.maxY, width: frame.width, height: frame.height)
-                if WindowsTaskbarStyle.isActive {
-                    WindowPreviewWindowController.shared.updateSourceFrame(
-                        tile.interaction.globalTileFrame, sourceTileID: id)
-                }
+                WindowPreviewWindowController.shared.updateSourceFrame(
+                    tile.interaction.globalTileFrame, sourceTileID: id)
             }
+        }
+        // The tray's Trash button takes drops for the Trash tile it stands for.
+        if let trashID = windowsStatus?.trashTile?.id, let frame = windowsStatus?.trashFrame(in: self) {
+            controller.visibleTileFrames[trashID] = frame
         }
         controller.updateExternalDragDestinationIndex(at: controller.dockDrag.cursorLocation)
         controller.updatePaletteDropDestinationFromCursor(at: controller.dockDrag.cursorLocation)
@@ -149,17 +137,13 @@ final class DockCanvasView: NSView {
         for (depth, preview) in dragPreviews.enumerated() {
             preview.interaction.renderedTileSize = controller.effectiveTileSize
             let tile = preview.interaction.tile
-            let size = controller.magnifiedTileFrame(for: tile, iconSize: controller.effectiveTileSize)
+            let size = controller.tileFrameSize(for: tile)
             let stackOffset = tile.id == source.id ? CGFloat(0) : CGFloat(depth + 1) * 3
             preview.frame = CGRect(
                 x: center.x + translation.width - size.width / 2 + stackOffset,
                 y: center.y + translation.height - size.height / 2 + stackOffset, width: size.width, height: size.height
             )
         }
-    }
-
-    func positioned(size: CGSize, offset: CGFloat, vertical: Bool) -> CGRect {
-        DockAxisGeometry.frame(size: size, offset: offset, canvas: bounds.size, edge: controller.position)
     }
 
     func view(for tile: Tile) -> NativeDockTileView {
@@ -179,10 +163,8 @@ final class DockCanvasView: NSView {
         controller.updateExternalDragDestinationIndex(at: location)
         controller.updatePaletteDropDestinationFromCursor(at: location)
     }
-    func configure(
-        _ view: NativeDockTileView, tile: Tile, magnification: DockCanvasController.MagnificationPass
-    ) {
-        view.interaction.renderedTileSize = magnification.iconSizes[tile.id] ?? controller.effectiveTileSize
+    func configure(_ view: NativeDockTileView, tile: Tile) {
+        view.interaction.renderedTileSize = controller.effectiveTileSize
         view.interaction.isDragging = controller.draggedTileID == tile.id
         view.interaction.isDocumentDropTarget = controller.dockDrag.documentTargetTileID == tile.id
         view.interaction.isAppFolderDropTarget = controller.draggedAppFolderTargetTileID == tile.id
@@ -190,19 +172,5 @@ final class DockCanvasView: NSView {
         view.interaction.globalTileFrame = convert(view.bounds, from: view)
         view.refresh()
         if controller.shouldHideDraggedOriginalTile(tileID: tile.id) { view.alphaValue = 0 }
-        if !view.hasAnimatedAppearance, view.window != nil {
-            view.hasAnimatedAppearance = true
-            if !WindowsTaskbarStyle.isActive, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                let animation = CABasicAnimation(keyPath: "opacity")
-                animation.fromValue = 0
-                animation.toValue = view.alphaValue
-                animation.duration = 0.18
-                view.layer?.add(animation, forKey: "appearance")
-            }
-        }
     }
-}
-
-final class FlippedDockSectionView: NSView {
-    override var isFlipped: Bool { true }
 }

@@ -25,9 +25,6 @@ final class DockSettingsService {
     }
 
     private(set) var orientation: Orientation = .bottom
-    private(set) var tileSize: CGFloat = 48
-    private(set) var largeSize: CGFloat = 64
-    private(set) var magnification: Bool = false
     private(set) var autohide: Bool = false
     private(set) var autohideDelay: TimeInterval = 0.5
     private(set) var autohideTimeModifier: Double = 1.0
@@ -36,19 +33,8 @@ final class DockSettingsService {
     private(set) var showRecents: Bool = true
     private(set) var showProcessIndicators: Bool = true
 
-    /// Effective tile size used by every dock-rendering surface. Falls
-    /// through to the active theme's `behavior.tileSize` when the user
-    /// hasn't moved the size slider in this build; otherwise returns
-    /// the user's value. Override marking happens in `setTileSize`.
-    var displayTileSize: CGFloat {
-        if WindowsTaskbarStyle.isActive { return WindowsTaskbarStyle.metrics.buttonSize }
-        if !DockyPreferences.shared.isAppearanceOverridden(Keys.tileSize),
-           let themed = ThemeManager.shared.activeManifest?.behavior?.tileSize,
-           themed > 0 {
-            return themed
-        }
-        return tileSize
-    }
+    /// Tile size used by every taskbar-rendering surface: the taskbar's button size.
+    var displayTileSize: CGFloat { WindowsTaskbarStyle.metrics.buttonSize }
 
     @ObservationIgnored private let defaults = UserDefaults.standard
 
@@ -66,39 +52,9 @@ final class DockSettingsService {
         persistValues(hasImportedSystemDockSettings: true)
     }
 
-    func setTileSize(_ size: CGFloat) {
-        tileSize = size
-        if largeSize < tileSize {
-            largeSize = tileSize
-        }
-        persistValues()
-        DockyPreferences.shared.markAppearanceOverride(Keys.tileSize)
-    }
-
-    func setLargeSize(_ size: CGFloat) {
-        largeSize = max(tileSize, size)
-        persistValues()
-        DockyPreferences.shared.markAppearanceOverride(Keys.largeSize)
-    }
-
-    func setMagnification(_ isEnabled: Bool) {
-        magnification = isEnabled
-        persistValues()
-        DockyPreferences.shared.markAppearanceOverride(Keys.magnification)
-    }
-
     private func loadPersistedValues() {
         if let raw = defaults.string(forKey: Keys.orientation), let value = Orientation(rawValue: raw) {
             orientation = value
-        }
-        if let value = defaults.object(forKey: Keys.tileSize) as? Double {
-            tileSize = CGFloat(value)
-        }
-        if let value = defaults.object(forKey: Keys.largeSize) as? Double {
-            largeSize = CGFloat(value)
-        }
-        if let value = defaults.object(forKey: Keys.magnification) as? Bool {
-            magnification = value
         }
         if let value = defaults.object(forKey: Keys.autohide) as? Bool {
             autohide = value
@@ -121,22 +77,11 @@ final class DockSettingsService {
         if let value = defaults.object(forKey: Keys.showProcessIndicators) as? Bool {
             showProcessIndicators = value
         }
-
-        clampLargeSize()
     }
 
     private func applyValues(_ values: [String: Any]) {
         if let raw = values["orientation"] as? String, let value = Orientation(rawValue: raw) {
             orientation = value
-        }
-        if let value = (values["tilesize"] as? NSNumber)?.doubleValue {
-            tileSize = CGFloat(value)
-        }
-        if let value = (values["largesize"] as? NSNumber)?.doubleValue {
-            largeSize = CGFloat(value)
-        }
-        if let value = (values["magnification"] as? NSNumber)?.boolValue {
-            magnification = value
         }
         if let value = (values["autohide"] as? NSNumber)?.boolValue {
             autohide = value
@@ -159,21 +104,10 @@ final class DockSettingsService {
         if let value = (values["show-process-indicators"] as? NSNumber)?.boolValue {
             showProcessIndicators = value
         }
-
-        clampLargeSize()
-    }
-
-    private func clampLargeSize() {
-        if largeSize < tileSize {
-            largeSize = tileSize
-        }
     }
 
     private func persistValues(hasImportedSystemDockSettings: Bool? = nil) {
         defaults.set(orientation.rawValue, forKey: Keys.orientation)
-        defaults.set(Double(tileSize), forKey: Keys.tileSize)
-        defaults.set(Double(largeSize), forKey: Keys.largeSize)
-        defaults.set(magnification, forKey: Keys.magnification)
         defaults.set(autohide, forKey: Keys.autohide)
         defaults.set(autohideDelay, forKey: Keys.autohideDelay)
         defaults.set(autohideTimeModifier, forKey: Keys.autohideTimeModifier)
@@ -190,9 +124,6 @@ final class DockSettingsService {
     private enum Keys {
         static let hasImportedSystemDockSettings = "docky.dockSettings.hasImportedSystemDockSettings"
         static let orientation = "docky.dockSettings.orientation"
-        static let tileSize = "docky.dockSettings.tileSize"
-        static let largeSize = "docky.dockSettings.largeSize"
-        static let magnification = "docky.dockSettings.magnification"
         static let autohide = "docky.dockSettings.autohide"
         static let autohideDelay = "docky.dockSettings.autohideDelay"
         static let autohideTimeModifier = "docky.dockSettings.autohideTimeModifier"

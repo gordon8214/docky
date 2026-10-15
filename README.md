@@ -42,9 +42,9 @@ system Dock, and it moves with your workflow instead of getting in the way.
 
 ### Tiles and layout
 
-Add and arrange anything in one strip: apps, widgets, Smart Stacks, folders,
-spacers, and dividers. Pin what you reach for, drag to reorder, and let the
-layout follow your workflow.
+Docky draws a Windows 11–style taskbar. The Start button and your apps sit on the
+bar, and folders, stacks, widgets, and Smart Stacks live in the tray. Pin what you
+reach for, drag to reorder, and resize the bar from its top edge.
 
 <div align="center"><img src="docs/images/feature-layout.jpg" alt="Tiles and layout" width="820"></div>
 
@@ -62,10 +62,10 @@ layout, and an optional global shortcut.
 
 <div align="center"><img src="docs/images/feature-launchpad.jpg" alt="Built-in Launchpad" width="820"></div>
 
-### Widgets in the dock
+### Widgets in the tray
 
 Built-in widgets (Calendar, Reminders, Batteries, System, Weather, Now Playing,
-and more) live right in the dock. Stack several into a single tile with **Smart
+and more) live in the taskbar's tray. Stack several into a single tile with **Smart
 Stacks** and cycle through them in place. This fork supports built-in widgets only.
 Saved community widgets appear as removable unsupported placeholders; their settings
 and placements are preserved, and installed bundles remain on disk.
@@ -85,8 +85,7 @@ Optionally show running apps inline so a folder doubles as a live workspace.
   widget-backed app.
 - **Scripted actions:** catalog-backed AppleScript and menu-click automation,
   plus curated commands.
-- **Themes and profiles:** themeable appearance and switchable configuration
-  profiles.
+- **Profiles:** switchable configuration profiles.
 
 ## Upstream downloads
 

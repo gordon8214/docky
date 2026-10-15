@@ -1,14 +1,8 @@
 import AppKit
-import Combine
-import UniformTypeIdentifiers
 
 final class NativeSettingsController: NSSplitViewController {
     static let panes: [(id: String, title: String)] = [
-        ("profiles", "Profiles"), ("appearanceThemes", "Themes"), ("appearanceGeneral", "Appearance — General"),
-        ("appearanceIndicators", "Indicators"), ("appearanceTileLayout", "Tile Layout"),
-        ("appearanceWindowShape", "Window Shape"),
-        ("appearanceWindowBackground", "Window Background"), ("appearanceWidgets", "Widget Appearance"),
-        ("appIcons", "App Icons"),
+        ("profiles", "Profiles"), ("appearanceGeneral", "Appearance"), ("appIcons", "App Icons"),
         ("behaviorGeneral", "Behavior — General"), ("behaviorPlacement", "Placement"),
         ("behaviorVisibility", "Visibility"),
         ("behaviorAppTileClick", "App Tile Click"), ("behaviorAppFolders", "App Folders"),
@@ -16,14 +10,12 @@ final class NativeSettingsController: NSSplitViewController {
         ("hiddenApps", "Hidden Apps"), ("launchpad", "Launchpad"), ("startMenu", "Start Menu"),
         ("windowManagement", "Window Management"), ("actions", "Actions"), ("behaviorLaunch", "Launch"),
         ("behaviorSystemDock", "System Dock"), ("menuExtras", "Menu Extras"),
-        ("permissions", "Permissions"), ("updates", "Updates"),
-        ("feedback", "Feedback")
+        ("permissions", "Permissions"), ("updates", "Updates")
     ]
     private let sidebar = NativeSettingsSidebarController()
     private var detail: NSSplitViewItem?
     private var navigationHistory = SettingsNavigationHistory()
     private var cache: [String: NSViewController] = [:]
-    private var subscriptions = Set<AnyCancellable>()
     override func viewDidLoad() {
         super.viewDidLoad()
         let item = NSSplitViewItem(sidebarWithViewController: sidebar)
@@ -34,12 +26,6 @@ final class NativeSettingsController: NSSplitViewController {
         sidebar.onBack = { [weak self] in self?.navigate(-1) }
         sidebar.onForward = { [weak self] in self?.navigate(1) }
         showPane("profiles")
-        observeChanges { [weak self] in
-            if let id = SettingsNavigator.shared.pendingPaneID {
-                SettingsNavigator.shared.pendingPaneID = nil
-                self?.showPane(id)
-            }
-        }.store(in: &subscriptions)
     }
     func showPane(_ id: String, addHistory: Bool = true) {
         guard Self.panes.contains(where: { $0.id == id }) else { return }

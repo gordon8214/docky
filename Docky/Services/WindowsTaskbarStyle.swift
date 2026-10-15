@@ -4,7 +4,6 @@ import QuartzCore
 /// Windows geometry uses logical pixels, independent of the display's backing scale.
 @MainActor
 enum WindowsTaskbarStyle {
-    static var isActive: Bool { ThemeManager.shared.activeManifest?.behavior?.taskbarStyle == "windows11" }
     /// The user's taskbar size, set by dragging the bar's top edge or from Settings.
     static var metrics: WindowsTaskbarMetrics {
         WindowsTaskbarMetrics(height: DockyPreferences.shared.windowsTaskbarHeight)
@@ -16,6 +15,18 @@ enum WindowsTaskbarStyle {
     static let popupDuration: TimeInterval = 0.16
     static var timingFunction: CAMediaTimingFunction { CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1) }
     static var reducesMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// Tiles off the taskbar (the tray's overflow popup of folders, stacks
+    /// and widgets, and drag previews) keep the generic tile layout with
+    /// these values.
+    enum Tray {
+        static let verticalPadding: CGFloat = 4
+        static let iconPadding: CGFloat = 6
+        static let indicatorScale: CGFloat = 0.7
+        static let indicatorOffset: CGFloat = -2
+        static var indicatorColor: NSColor { .controlAccentColor }
+        /// Widgets wider than one tile fill their tile edge to edge.
+        static func fillsTile(_ span: TileSpan) -> Bool { span != .one }
+    }
     static func font(size: CGFloat = 12) -> NSFont {
         NSFont(name: "SegoeUI", size: size) ?? NSFont(name: "Segoe UI", size: size)
             ?? .systemFont(ofSize: size)
@@ -156,6 +167,7 @@ struct WindowsTaskbarMetrics: Equatable, Sendable {
     var badgePadding: CGFloat { (6 * scale).rounded() }
     var overflowWidth: CGFloat { (32 * scale).rounded() }
     var overflowGlyphSize: CGFloat { (18 * scale).rounded() }
+    var trayIconSize: CGFloat { (20 * scale).rounded() }
     var clockWidth: CGFloat { (98 * scale).rounded() }
     var clockFontSize: CGFloat { 12 * scale }
     var clockInset: CGFloat { (7 * scale).rounded() }

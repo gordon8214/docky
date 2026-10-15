@@ -64,7 +64,7 @@ final class NativeDockHintController: NSViewController {
     override func loadView() {
         let stack = nativeStack(
             [
-                NativeActionButton(String(localized: "Edit Dock"), symbol: "slider.horizontal.3") {
+                NativeActionButton(String(localized: "Edit Taskbar"), symbol: "slider.horizontal.3") {
                     DockEditModeService.shared.enter()
                 },
                 NativeActionButton("", symbol: "xmark") { [weak self] in self?.onDismiss?() }
@@ -113,9 +113,6 @@ private final class NativeDockEditorBrowserController: NativeBrowserController {
         }
         append(.launchpad, title: String(localized: "Launchpad"), symbol: "square.grid.3x3")
         append(.startMenu, title: String(localized: "Start Menu"), symbol: "square.grid.2x2")
-        append(.spacer, title: String(localized: "Spacer"), symbol: "rectangle.dashed")
-        append(.flexibleSpacer, title: String(localized: "Flexible Spacer"), symbol: "arrow.left.and.right")
-        append(.divider, title: String(localized: "Divider"), symbol: "line.3.horizontal")
         append(.smartStack, title: String(localized: "Smart Stack"), symbol: "square.stack")
         for registration in WidgetCatalog.paletteRegistrations {
             for span in registration.kind.supportedSpans.filter({ $0 != .four }) {

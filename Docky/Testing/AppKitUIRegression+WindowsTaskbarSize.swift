@@ -2,7 +2,7 @@
     import AppKit
 
     extension AppKitUIRegression {
-        /// Runs with the Windows theme active and the taskbar at its standard height.
+        /// Runs with the taskbar at its standard height.
         static func checkWindowsTaskbarSize() async {
             let prefs = DockyPreferences.shared
             defer { prefs.windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight }
@@ -14,7 +14,7 @@
             checkWindowsLargeTaskbarViews()
             checkWindowsTaskbarDragEvents()
             checkWindowsResizeHandle()
-            await checkWindowsTaskbarSizeSetting()
+            checkWindowsTaskbarSizeSetting()
             print("Windows taskbar resize regressions passed")
         }
         private static func checkWindowsTaskbarMetrics() {
@@ -146,7 +146,6 @@
         }
         private static func checkWindowsResizeHandle() {
             let prefs = DockyPreferences.shared
-            let tileSize = DockSettingsService.shared.tileSize
             let root = DockRootView(frame: CGRect(x: 0, y: 0, width: 1000, height: 72))
             let window = WindowsResizeWindow(
                 contentRect: root.frame, styleMask: .borderless, backing: .buffered, defer: false)
@@ -184,7 +183,6 @@
             handle.mouseUp(with: event(.leftMouseUp, y: top.y - 1000))
             precondition(!handle.isDragging && !window.isResizing && window.endCount == 1)
             precondition(window.interactionTokens.count == held, "Releasing must free the taskbar hold")
-            precondition(DockSettingsService.shared.tileSize == tileSize, "The Dock's tile size must not change")
             var titles: [String] = []
             defer { ContextActionMenuPresenter.testInterceptor = nil }
             ContextActionMenuPresenter.testInterceptor = { menu, _, _ in titles = menu.items.map(\.title) }
@@ -195,21 +193,23 @@
             root.hitTest(top)?.rightMouseDown(with: event(.rightMouseDown, y: top.y))
             precondition(titles.contains(settings), "Right-clicking the top edge opens the taskbar menu")
         }
-        private static func checkWindowsTaskbarSizeSetting() async {
-            let controller = NativeSettingsPaneController(id: "appearanceTileLayout")
+        private static func checkWindowsTaskbarSizeSetting() {
+            let controller = NativeSettingsPaneController(id: "appearanceGeneral")
             _ = controller.view
-            func titles() -> [String] {
-                controller.stack.arrangedSubviews.compactMap { ($0 as? NativeFormRow)?.accessibilityLabel() }
+            let titles = controller.stack.arrangedSubviews.compactMap {
+                ($0 as? NativeFormRow)?.accessibilityLabel()
             }
-            precondition(controller.showsTaskbarSize && titles().contains(String(localized: "Taskbar Size")))
-            precondition(!titles().contains(String(localized: "Tile Size")))
-            let manager = ThemeManager.shared
-            manager.clearActive()
-            for _ in 0..<50 where controller.showsTaskbarSize { await Task.yield() }
-            precondition(!controller.showsTaskbarSize && titles().contains(String(localized: "Tile Size")))
-            manager.setActive("windows")
-            for _ in 0..<50 where !controller.showsTaskbarSize { await Task.yield() }
-            precondition(controller.showsTaskbarSize, "Switching back to Windows restores the taskbar size row")
+            precondition(titles.contains(String(localized: "Taskbar Size")), "Appearance must offer the taskbar size")
+            precondition(
+                controller.stack.arrangedSubviews.contains {
+                    ($0 as? NativeActionButton)?.title == String(localized: "Reset Appearance")
+                }, "Appearance must offer Reset Appearance")
+            let prefs = DockyPreferences.shared
+            prefs.windowsTaskbarHeight = 72
+            prefs.resetAppearanceToDefaults()
+            precondition(
+                prefs.windowsTaskbarHeight == WindowsTaskbarMetrics.standardHeight,
+                "Reset Appearance restores the standard taskbar size")
         }
     }
 

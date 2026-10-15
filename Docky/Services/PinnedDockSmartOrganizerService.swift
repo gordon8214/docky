@@ -19,7 +19,7 @@ private struct SmartPinnedLayoutSuggestion {
 @available(macOS 26.0, *)
 @Generable
 private struct SmartPinnedLayoutSuggestionItem {
-    @Guide(description: "One of: app, folder, divider, spacer, widget, smartStack, launchpad.")
+    @Guide(description: "One of: app, folder, widget, smartStack, launchpad.")
     var kind: String
 
     @Guide(description: "For app items, the bundle identifier to place.")
@@ -82,8 +82,6 @@ final class PinnedDockSmartOrganizerService {
     private enum SuggestedItem: Equatable {
         case app(String)
         case folder(title: String, bundleIdentifiers: [String])
-        case divider
-        case spacer
         case widget(kind: WidgetKind, ownerBundleIdentifier: String, span: TileSpan)
         case smartStack
         case launchpad
@@ -111,6 +109,7 @@ final class PinnedDockSmartOrganizerService {
                         displayName: appDisplayName(for: bundleIdentifier)
                     ))
                 }
+            // Saved spacers and dividers are dropped: the taskbar never draws them.
             case .launchpad, .startMenu, .widget, .smartStack, .spacer, .flexibleSpacer, .divider:
                 continue
             }
@@ -160,7 +159,7 @@ final class PinnedDockSmartOrganizerService {
 
             let session = LanguageModelSession(
                 model: model,
-                instructions: "You organize a macOS dock. Produce a compact, practical pinned layout. Group related apps into small folders when it improves scanning. Use at most two dividers and one spacer. Include up to two widgets only when they add clear value but no more than 2 in the whole layout. Keep common daily apps directly accessible. Do not invent bundle identifiers or widget owners."
+                instructions: "You organize a macOS dock. Produce a compact, practical pinned layout. Group related apps into small folders when it improves scanning. Include up to two widgets only when they add clear value but no more than 2 in the whole layout. Keep common daily apps directly accessible. Do not invent bundle identifiers or widget owners."
             )
 
             let appList = apps.map {
@@ -185,7 +184,6 @@ final class PinnedDockSmartOrganizerService {
             - Every app must appear exactly once, either directly or inside one folder.
             - Folder titles should be short and natural.
             - Do not create empty or one-app folders.
-            - Avoid leading or trailing dividers and spacers.
             - Return only the structured layout.
             - Avoid single app folders.
 
@@ -233,10 +231,6 @@ final class PinnedDockSmartOrganizerService {
             return .app(item.bundleIdentifier)
         case "folder":
             return .folder(title: item.title, bundleIdentifiers: item.bundleIdentifiers)
-        case "divider":
-            return .divider
-        case "spacer":
-            return .spacer
         case "widget":
             guard let kind = WidgetKind(rawValue: item.widgetKind) else {
                 return nil
@@ -266,29 +260,17 @@ final class PinnedDockSmartOrganizerService {
 
         if existingItems.contains(where: { $0.kind == .launchpad }) {
             result.append(.launchpad)
-            result.append(.divider)
         }
 
         for group in groupedApps {
-            if result.last == .divider, group.bundleIdentifiers.isEmpty {
-                continue
-            }
-
             if group.bundleIdentifiers.count >= 3 {
                 result.append(.folder(title: group.title, bundleIdentifiers: group.bundleIdentifiers))
             } else {
                 result.append(contentsOf: group.bundleIdentifiers.map(SuggestedItem.app))
             }
-
-            if group.insertDividerAfter {
-                result.append(.divider)
-            }
         }
 
         if let widget = preferredWidget(from: availableWidgets) {
-            if result.last != .divider, !result.isEmpty {
-                result.append(.divider)
-            }
             result.append(.widget(kind: widget.kind, ownerBundleIdentifier: widget.ownerBundleIdentifier, span: widget.defaultSpan))
         }
 
@@ -298,7 +280,6 @@ final class PinnedDockSmartOrganizerService {
     private struct HeuristicGroup {
         let title: String
         let bundleIdentifiers: [String]
-        let insertDividerAfter: Bool
     }
 
     private func groupedAppsByHeuristic(_ apps: [AvailableApp]) -> [HeuristicGroup] {
@@ -311,7 +292,7 @@ final class PinnedDockSmartOrganizerService {
         var remaining = apps
         var result: [HeuristicGroup] = []
 
-        for (index, bucket) in buckets.enumerated() {
+        for bucket in buckets {
             let matching = remaining.filter(bucket.matcher)
             guard !matching.isEmpty else {
                 continue
@@ -319,16 +300,14 @@ final class PinnedDockSmartOrganizerService {
             remaining.removeAll(where: bucket.matcher)
             result.append(HeuristicGroup(
                 title: bucket.title,
-                bundleIdentifiers: matching.map(\.bundleIdentifier),
-                insertDividerAfter: index < buckets.count - 1
+                bundleIdentifiers: matching.map(\.bundleIdentifier)
             ))
         }
 
         if !remaining.isEmpty {
             result.append(HeuristicGroup(
                 title: "Apps",
-                bundleIdentifiers: remaining.map(\.bundleIdentifier),
-                insertDividerAfter: false
+                bundleIdentifiers: remaining.map(\.bundleIdentifier)
             ))
         }
 
@@ -397,10 +376,6 @@ final class PinnedDockSmartOrganizerService {
                     bundleIdentifiers: uniqueBundleIdentifiers,
                     contentViewMode: .grid
                 ))
-            case .divider:
-                result.append(.divider())
-            case .spacer:
-                result.append(.spacer())
             case .widget(let kind, let ownerBundleIdentifier, let span):
                 let key = widgetKey(kind: kind, ownerBundleIdentifier: ownerBundleIdentifier)
                 guard let widget = availableWidgetsByKey[key], widgetKeys.insert(key).inserted else {
@@ -429,35 +404,6 @@ final class PinnedDockSmartOrganizerService {
 
         if hasLaunchpad, !hasLaunchpadItem {
             result.insert(.launchpad(), at: 0)
-        }
-
-        return normalizedPinnedItems(result)
-    }
-
-    private func normalizedPinnedItems(_ items: [PinnedTileItem]) -> [PinnedTileItem] {
-        var result: [PinnedTileItem] = []
-
-        for item in items {
-            switch item.kind {
-            case .divider, .spacer, .flexibleSpacer:
-                guard !result.isEmpty else {
-                    continue
-                }
-                guard let lastItem = result.last,
-                      lastItem.kind != .divider,
-                      lastItem.kind != .spacer,
-                      lastItem.kind != .flexibleSpacer else {
-                    continue
-                }
-                result.append(item)
-            case .app, .appFolder, .launchpad, .startMenu, .widget, .smartStack:
-                result.append(item)
-            }
-        }
-
-        while let lastItem = result.last,
-              lastItem.kind == .divider || lastItem.kind == .spacer || lastItem.kind == .flexibleSpacer {
-            result.removeLast()
         }
 
         return result

@@ -4,9 +4,10 @@ This file provides guidance to coding agents (Claude Code, Codex) when working w
 
 ## Project
 
-Docky is a Dock replacement for macOS 27+, Apple silicon only. This checkout is an
-AppKit fork (`origin` = `gordon8214/docky`, `upstream` = `josejuanqm/docky`). All
-app-owned UI uses AppKit and Core Animation. **The app does not use SwiftUI**, so
+Docky is a Dock replacement for macOS 27+, Apple silicon only, drawn as a
+Windows 11–style taskbar. This checkout is an AppKit fork (`origin` =
+`gordon8214/docky`, `upstream` = `josejuanqm/docky`). All app-owned UI uses
+AppKit and Core Animation. **The app does not use SwiftUI**, so
 don't add `import SwiftUI` or hosting views. Swift 6 with
 `SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated` and approachable concurrency. The
 only package dependency is Sparkle. Community widgets are disabled in this fork
@@ -88,8 +89,8 @@ bridge and lifecycle tests.
 
 Add `--windows-taskbar-snapshots` to `--appkit-ui-regression` to also write
 light and dark renders to `/tmp/docky-windows-snapshots`. These suites don't
-cover drag feel, magnification, auto-hide, VoiceOver, permission grants, or
-multi-display behavior. Check those in a running build.
+cover drag feel, auto-hide, VoiceOver, permission grants, or multi-display
+behavior. Check those in a running build.
 
 ## Architecture
 
@@ -138,14 +139,10 @@ App state lives in `@MainActor` singletons (`.shared`) in `Docky/Services/`:
   items.
 - `ProfileService`: mirrors the active profile into the top-level
   `DockyPreferences` keys.
-- `ThemeManager`: never writes into preferences. The `effective…` accessors on
-  `DockyPreferences` fall back to the active theme manifest when the user has
-  no override. Bundled themes in `BundledThemes/` are copied in at build time.
-  The `windows` theme's `behavior.taskbarStyle: "windows11"` turns on
-  `WindowsTaskbarStyle` and the `Windows*` views.
 
-Preference keys, profiles, theme manifests, and custom icon formats are
-compatibility contracts. Existing user data must still decode.
+Preference keys, profiles, and custom icon formats are compatibility contracts.
+Existing user data must still decode. Keys that nothing reads anymore, such as
+the old theme and classic-Dock appearance keys, stay in `UserDefaults` untouched.
 
 ### Observation
 
@@ -159,20 +156,28 @@ when reopened.
 
 ### UI
 
-- `AppDelegate` sets up services, routes `docky://` URLs (`handleDockyURL`),
-  and imports `.dockytheme` bundles.
+- `AppDelegate` sets up services and routes `docky://` URLs (`handleDockyURL`).
 - `MainWindowController` owns the overlay window controllers: Launchpad, window
   switcher, start menu, editor, and profile switcher.
-- The dock is `DockRootView` → `DockCanvasView`, a flipped view with explicit
-  frames. `DockCanvasController` drives it and holds layout and drag state
-  separately from the views.
+- The taskbar is `DockRootView` → `DockCanvasView`, a flipped view with
+  explicit frames. `DockCanvasController` drives it and holds layout and drag
+  state separately from the views. `WindowsTaskbarCanvas` lays out the Start
+  button and app buttons; most other tiles (folders, stacks, widgets) live in
+  the tray's overflow popup, and folders dropped on the tray join them. Trash
+  has its own tray button, which takes drops like the Trash tile.
+  The taskbar lays out horizontally only, so `effectiveWindowPosition` keeps it
+  at the bottom for now.
+- `WindowsTaskbarStyle` (a stateless enum) is Docky's only appearance. The
+  taskbar's colors, fonts, motion, and `WindowsTaskbarMetrics` live in code, and
+  `WindowsTaskbarStyle.Tray` styles tiles off the taskbar (the tray's overflow
+  popup and drag previews). There are no themes; build new appearances on this
+  type.
 - Tile behavior lives in the `DockTileInteraction` struct. Pure geometry is in
   `Dock*Geometry.swift` and `WindowSwitcherGeometry.swift`, which is why the
   standalone test scripts can compile it on its own.
 - The window switcher (`WindowSwitcherService` + `WindowSwitcherController`)
-  looks and behaves like Windows 11 Alt+Tab in every theme. "Replace macOS ⌘Tab"
-  turns off the system ⌘Tab through `SystemCommandTabService`. See
-  `docs/appkit-port.md`.
+  looks and behaves like Windows 11 Alt+Tab. "Replace macOS ⌘Tab" turns off the
+  system ⌘Tab through `SystemCommandTabService`. See `docs/appkit-port.md`.
 - Large types are split into `Type+Concern.swift` extensions.
 
 ## Conventions

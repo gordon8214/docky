@@ -47,11 +47,7 @@ extension DockCanvasController {
             result.append(tile)
         }
 
-        // Theme-level layout insertions apply after the editor-preview
-        // merge: applying them in `TileStore.rebuildTiles` would lose
-        // anything anchored past `divider:trailing` because this
-        // method re-builds that section from `previewTrailingSectionTiles`.
-        return TileStore.applyingThemeLayoutInsertions(to: result)
+        return result
     }
 
     var pinnedTiles: [Tile] {
@@ -166,16 +162,6 @@ extension DockCanvasController {
                 id: "editor-preview:start-menu",
                 content: .startMenu(StartMenuTile(identifier: "editor-preview:start-menu"))
             )
-        case .spacer:
-            return Tile(id: "editor-preview:spacer", content: .spacer)
-        case .flexibleSpacer:
-            // Render the in-dock drop preview as a fixed-size spacer so the
-            // user has a tile-sized target to land on; the dropped tile is
-            // still persisted as `.flexibleSpacer` via the palette item
-            // factory and stretches once committed.
-            return Tile(id: "editor-preview:flexible-spacer", content: .spacer)
-        case .divider:
-            return Tile(id: "editor-preview:divider", content: .divider)
         case .widget(let ownerBundleIdentifier, let kind):
             let span = resolvedPaletteWidgetSpan(
                 ownerBundleIdentifier: ownerBundleIdentifier,

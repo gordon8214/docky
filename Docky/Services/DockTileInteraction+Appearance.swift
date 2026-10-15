@@ -18,79 +18,6 @@ extension DockTileInteraction {
         }
     }
 
-    var isAppContent: Bool {
-        if case .app = tile.content { return true }
-        return false
-    }
-
-    /// Content types that participate in the press/drop-target darken.
-    /// Apps, folders (both kinds), and trash are launchable/drop targets
-    /// where the darken communicates "this is the thing you're acting
-    /// on"; widgets/spacers/dividers don't need the affordance.
-    var participatesInPressDarken: Bool {
-        switch tile.content {
-        case .app, .appFolder, .folder, .trash:
-            return true
-        case .minimizedWindow, .spacer, .flexibleSpacer, .divider, .launchpad, .startMenu, .widget, .smartStack:
-            return false
-        }
-    }
-
-    /// Combined darken trigger: pressed (mouse-down before release,
-    /// tracked by `TilePressService`'s NSEvent monitor) or active
-    /// drop-target. Drives the `.brightness` darken below.
-    var pressDarkenSignal: Bool {
-        participatesInPressDarken && (tilePress.pressedTileID == tile.id || isDocumentDropTarget)
-    }
-
-    var showsAppFolderDropBackdrop: Bool {
-        isAppContent && isAppFolderDropTarget
-    }
-
-    var tileBodyOpacity: Double {
-        1
-    }
-
-    /// `brightness(-0.35)` darkens icons in place without thinning them
-    /// out the way a 0.5 opacity dim would (since opacity also makes the
-    /// background show through, which on a transparent dock reads as
-    /// "fading away" rather than "being pressed").
-    var pressDarkenAmount: Double {
-        pressDarkenSignal ? -0.35 : 0
-    }
-
-    /// Background drawn behind the tile when the cursor is over it.
-    /// Drives the Win10-style "lighten on hover" treatment; respects
-    /// the theme/user-supplied color, image, opacity, and clip radius.
-    /// `EmptyView` when no source is set so the tile stays transparent.
-    var hasHoverBackground: Bool {
-        guard supportsHoverBackground else { return false }
-        return preferences.effectiveTileHoverBackgroundImageURL != nil
-            || preferences.effectiveTileHoverBackgroundColor != nil
-    }
-
-    /// Only "tappable" tiles (icons that act like apps or files) get
-    /// the hover treatment. Widgets, smart stacks, and structural
-    /// fixtures (dividers, spacers) stay flat, a hover halo on a
-    /// widget reads as a misfire.
-    var supportsHoverBackground: Bool {
-        switch tile.content {
-        case .app, .appFolder, .folder, .trash, .launchpad, .startMenu:
-            true
-        case .widget, .smartStack, .divider, .spacer, .flexibleSpacer,
-            .minimizedWindow:
-            false
-        }
-    }
-
-    /// Background drawn under the *foreground* (frontmost) app's tile.
-    /// Independent of hover, both can stack, with hover painted on top.
-    /// Updates live via `WorkspaceService.frontmostBundleIdentifier`.
-    var hasActiveBackground: Bool {
-        preferences.effectiveTileActiveBackgroundImageURL != nil
-            || preferences.effectiveTileActiveBackgroundColor != nil
-    }
-
     /// True when this tile represents the currently foreground app
     /// (or any app inside a grouped folder is foreground).
     var isFrontmostTile: Bool {
@@ -135,9 +62,7 @@ extension DockTileInteraction {
         }
     }
 
-    /// Effective drop shadow applied behind the tile's icon content.
-    /// Returns `Color.clear` when no shadow color is set, combined
-    /// with a 0 radius below, that makes `.shadow(...)` a true no-op.
+    /// Whether the tile shows the running-app indicator.
     var showsRunningIndicator: Bool {
         switch tile.content {
         case .app(let app):
@@ -153,51 +78,17 @@ extension DockTileInteraction {
         }
     }
 
+    /// An underline spanning the icon along the taskbar axis.
     var runningIndicatorSize: CGSize {
-        switch preferences.effectiveActiveIndicatorShape {
-        case .none:
-            .zero
-        case .dot:
-            CGSize(width: runningIndicatorThickness, height: runningIndicatorThickness)
-        case .pill:
-            if position.isVertical {
-                CGSize(width: runningIndicatorThickness, height: runningIndicatorLength)
-            } else {
-                CGSize(width: runningIndicatorLength, height: runningIndicatorThickness)
-            }
-        case .underline:
-            // Span the icon's full extent along the dock axis; stay
-            // thin along the screen-facing axis. The overlay alignment +
-            // existing offset keep it flush against the screen-facing
-            // edge.
-            if position.isVertical {
-                CGSize(width: runningIndicatorThickness, height: effectiveTileSize)
-            } else {
-                CGSize(width: effectiveTileSize, height: runningIndicatorThickness)
-            }
-        case .image:
-            if position.isVertical {
-                CGSize(width: runningIndicatorImageThickness, height: runningIndicatorImageLength)
-            } else {
-                CGSize(width: runningIndicatorImageLength, height: runningIndicatorImageThickness)
-            }
+        if position.isVertical {
+            CGSize(width: runningIndicatorThickness, height: effectiveTileSize)
+        } else {
+            CGSize(width: effectiveTileSize, height: runningIndicatorThickness)
         }
     }
 
     var runningIndicatorThickness: CGFloat {
         4 * runningIndicatorScale
-    }
-
-    var runningIndicatorLength: CGFloat {
-        12 * runningIndicatorScale
-    }
-
-    var runningIndicatorImageThickness: CGFloat {
-        10 * runningIndicatorScale
-    }
-
-    var runningIndicatorImageLength: CGFloat {
-        20 * runningIndicatorScale
     }
 
     var runningIndicatorInset: CGFloat {
@@ -206,12 +97,12 @@ extension DockTileInteraction {
 
     var runningIndicatorScale: CGFloat {
         let baseScale = max(0.5, min(1, effectiveTileSize / 48))
-        return baseScale * max(0.25, preferences.effectiveActiveIndicatorScale)
+        return baseScale * WindowsTaskbarStyle.Tray.indicatorScale
     }
 
     var runningIndicatorOffsetVector: CGSize {
-        let baseInward = max((layout.scaled(preferences.effectiveTileVerticalPadding) / 2), 2)
-        let totalInward = baseInward + preferences.effectiveActiveIndicatorOffset
+        let baseInward = max((WindowsTaskbarStyle.Tray.verticalPadding / 2), 2)
+        let totalInward = baseInward + WindowsTaskbarStyle.Tray.indicatorOffset
 
         switch position {
         case .top:
@@ -225,30 +116,18 @@ extension DockTileInteraction {
         }
     }
 
-    var runningIndicatorImage: NSImage? {
-        guard let url = preferences.effectiveActiveIndicatorImageURL else {
-            return nil
-        }
-
-        return NSImage(contentsOf: url)
-    }
-
     var contentPadding: CGFloat {
         switch tile.content {
         case .divider:
             0
         default:
-            layout.scaled(preferences.effectiveTileVerticalPadding)
+            WindowsTaskbarStyle.Tray.verticalPadding
         }
     }
 
     var nonAppContentPadding: CGFloat {
-        // Per-span widget override wins for widget-hosting tiles ,
-        // a theme/user can collapse padding to 0 on 2x/3x widgets for
-        // an edge-to-edge taskbar look without touching 1x.
-        if let span = widgetRenderedSpan,
-            let override = preferences.effectiveWidgetContentPadding(for: span) {
-            return override
+        if let span = widgetRenderedSpan, WindowsTaskbarStyle.Tray.fillsTile(span) {
+            return 0
         }
         switch tile.content {
         case .app(let app) where app.displayedWidget != nil:
@@ -260,22 +139,18 @@ extension DockTileInteraction {
         }
     }
 
-    /// Resolved tile icon padding. Widget tiles whose span opts out
-    /// (via the theme's `ignoresAddedPaddings` escape hatch) collapse
-    /// to zero so the widget can fill its tile box, needed when a
-    /// theme adds icon padding for chunky app tiles but wants 2x/3x
-    /// widgets edge-to-edge.
+    /// Resolved tile icon padding. Widgets wider than one tile drop it
+    /// so they fill their tile box.
     var appliedTileIconPadding: CGFloat {
-        if let span = widgetRenderedSpan,
-            preferences.effectiveWidgetIgnoresAddedPaddings(for: span) {
+        if let span = widgetRenderedSpan, WindowsTaskbarStyle.Tray.fillsTile(span) {
             return 0
         }
-        return layout.scaled(preferences.effectiveTileIconPadding)
+        return WindowsTaskbarStyle.Tray.iconPadding
     }
 
-    /// Returns the widget's *rendered* span (compressed to .one when
-    /// overflow compaction or vertical orientation forces it) for any
-    /// tile that hosts a widget. `nil` for non-widget tiles.
+    /// Returns the widget's *rendered* span (compressed to .one when a
+    /// vertical taskbar forces it) for any tile that hosts a widget. `nil`
+    /// for non-widget tiles.
     var widgetRenderedSpan: TileSpan? {
         switch tile.content {
         case .widget(let widget):
@@ -301,50 +176,23 @@ extension DockTileInteraction {
     }
 
     var effectiveTileSize: CGFloat {
-        renderedTileSize ?? layout.scaled(dockSettings.displayTileSize)
+        renderedTileSize ?? dockSettings.displayTileSize
     }
 
     func renderedWidgetSpan(for span: TileSpan) -> TileSpan {
-        if layout.compactsWidgetsForOverflow || position.isVertical {
+        if position.isVertical {
             return .one
         }
 
         return span
     }
 
-    var availableWidgetSpans: [TileSpan] {
-        // `.four` is theme-only: it can be injected via
-        // `layout.insertions` but is not surfaced in the user's "Span"
-        // submenu / palette so the widget editor stays focused on the
-        // three user-facing sizes.
-        let userFacing = TileSpan.allCases.filter { $0 != .four }
-        return position.isVertical ? [.one] : userFacing
-    }
-
     var nonAppTileCornerRadius: CGFloat {
-        let maximumCornerRadius = max(0, (effectiveTileSize - nonAppContentPadding * 2) / 2)
-        // Per-span override wins for widget tiles. Clamp to the
-        // maximum so a theme that sets `cornerRadius: 999` doesn't
-        // produce a malformed clip when the tile is small.
-        if let span = widgetRenderedSpan,
-            let override = preferences.effectiveWidgetCornerRadius(for: span) {
-            return min(override, maximumCornerRadius)
+        if let span = widgetRenderedSpan, WindowsTaskbarStyle.Tray.fillsTile(span) {
+            return 0
         }
-        return preferences.effectiveTileClipShape.resolvedCornerRadius(
-            base: effectiveTileSize * 0.225,
-            maximum: maximumCornerRadius
-        )
-    }
-
-    /// Corner radius used when painting the app-folder-drop intent backdrop
-    /// behind a plain `.app` tile. Mirrors `AppFolderTileView.iconGrid`'s
-    /// container so the in-progress folder visually matches a finished one.
-    var appFolderDropTargetCornerRadius: CGFloat {
-        let maximumCornerRadius = max(0, effectiveTileSize / 2)
-        return preferences.effectiveTileClipShape.resolvedCornerRadius(
-            base: effectiveTileSize * 0.225,
-            maximum: maximumCornerRadius
-        )
+        let maximumCornerRadius = max(0, (effectiveTileSize - nonAppContentPadding * 2) / 2)
+        return min(effectiveTileSize * 0.225, maximumCornerRadius)
     }
 
     var position: ResolvedDockWindowPosition {

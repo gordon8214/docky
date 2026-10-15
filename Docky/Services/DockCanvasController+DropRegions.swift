@@ -39,11 +39,19 @@ extension DockCanvasController {
         isTileDrag: Bool
     ) {
         let visibleTiles = previewTiles(for: section).filter { $0.id != sourceTileID }
-        let destinationIndex = DockAxisGeometry.insertionIndex(
-            at: positionValue,
-            frames: visibleTiles.map { tileFrames[$0.id] },
-            vertical: position.isVertical
-        )
+        let destinationIndex: Int
+        switch section {
+        case .pinned:
+            destinationIndex = DockAxisGeometry.insertionIndex(
+                at: positionValue,
+                frames: visibleTiles.map { tileFrames[$0.id] },
+                vertical: position.isVertical
+            )
+        case .trailing:
+            // Trailing items sit in the tray's popup rather than in a row, so drops join
+            // them just before Trash, like dropped folders.
+            destinationIndex = visibleTiles.firstIndex { $0.content.isTrash } ?? visibleTiles.count
+        }
 
         let currentDestinationIndex = currentDropDestinationIndex(for: section, isTileDrag: isTileDrag)
         guard currentDestinationIndex != destinationIndex else {

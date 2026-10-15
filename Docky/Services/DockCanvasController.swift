@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import OSLog
 
-struct CanvasGeometry { let size: CGSize }
 struct DockPointerDrag {
     let location: CGPoint
     let translation: CGSize
@@ -11,7 +10,6 @@ struct DockPointerDrag {
 /// Owns layout and drag state independently of the view hierarchy.
 @MainActor
 final class DockCanvasController {
-    static let edgePadding: CGFloat = DockTileGeometry.edgePadding
     static let logger = Logger(subsystem: "gt.quintero.Docky", category: "TileDrag")
     var onChange: (() -> Void)?
     func performTransition(_ changes: () -> Void) {
@@ -20,11 +18,9 @@ final class DockCanvasController {
     }
     var store = TileStore.shared
     let dockSettings = DockSettingsService.shared
-    var layout = DockLayoutService.shared
     var preferences = DockyPreferences.shared
     var editMode = DockEditModeService.shared
     var dockDrag = DockDragService.shared
-    let magnification = DockMagnificationService.shared
 
     var draggedTileID: String?
     var draggedTileOffset: CGFloat = 0
@@ -37,5 +33,8 @@ final class DockCanvasController {
     var draggedPickupCandidateTileID: String?
     var tileFrames: [String: CGRect] = [:]
     var visibleTileFrames: [String: CGRect] = [:]
+    /// The tray's frame in canvas coordinates. Trailing items (folders, stacks,
+    /// widgets, and Trash's button) live there, so it is where they are dropped.
+    var trayFrame: CGRect = .zero
 
 }

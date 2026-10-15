@@ -130,15 +130,6 @@ enum NativePreferenceField {
         let clear = NativeActionButton(String(localized: "Clear")) { DockyPreferences.shared[keyPath: key] = nil }
         return NativeFormRow(title: title, control: button, accessories: [clear])
     }
-    static func color(_ title: String, _ key: ReferenceWritableKeyPath<DockyPreferences, DockColor?>) -> NSView {
-        let well = NSColorWell()
-        let clear = NativeActionButton(String(localized: "Use Default")) { DockyPreferences.shared[keyPath: key] = nil }
-        let row = NativeFormRow(title: title, control: well, accessories: [clear])
-        row.bind(well) { DockyPreferences.shared[keyPath: key] = DockColor(nsColor: well.color) }
-        row.observe { [weak well] in well?.color = DockyPreferences.shared[keyPath: key]?.nsColor ?? .controlAccentColor
-        }
-        return row
-    }
     /// A shortcut recorder. While `override` returns a shortcut, the row shows
     /// that one instead and can't be edited.
     static func shortcut(

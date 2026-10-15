@@ -17,7 +17,7 @@ The script builds the `Docky` scheme in `Release` with the project's signing set
 - Preserve signing and entitlements. Resolve build failures before installing; never substitute a stale build or disable signing.
 - The existing app stays in place until the new bundle is staged and verified. The installer restores it if replacement or installed signature verification fails.
 - Quit Docky normally first so it can restore the system Dock. Wait for its watchdog to exit before replacing the bundle; do not kill the macOS Dock yourself.
-- Preserve preferences, themes, permissions, and user data. Replace only `/Applications/Docky.app`; leave app bundles in other directories alone after quitting them.
+- Preserve preferences, permissions, and user data. Replace only `/Applications/Docky.app`; leave app bundles in other directories alone after quitting them.
 - If `/Applications` is not writable, report the failure instead of silently changing the destination.
 
 For an explicitly requested build without installation or launch:

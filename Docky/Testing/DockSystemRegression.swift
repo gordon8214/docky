@@ -64,7 +64,7 @@ enum DockSystemRegression {
             window: window, size: CGSize(width: 600, height: 64), edge: .bottom, edgeGap: 12)
         let occupied = DockSystemGeometry.strip(screen: base, chrome: resting, edge: .bottom)
         precondition(occupied == CGRect(x: 1440, y: 100, width: 1280, height: 76),
-                     "Reserve the 64-point chrome and 12-point gap, excluding magnification headroom")
+                     "Reserve the 64-point chrome and 12-point gap, excluding the rest of the window")
         precondition(DockSystemGeometry.usableFrame(screen: base, strip: occupied, edge: .bottom)
                      == CGRect(x: 1440, y: 176, width: 1280, height: 824))
     }

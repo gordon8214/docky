@@ -21,58 +21,19 @@ final class DockRootView: NSView {
         addSubview(canvas)
         addSubview(resizeHandle)
         registerForDraggedTypes([.fileURL, .string])
-        DockLayoutService.shared.objectWillChange.sink { [weak self] in
-            DispatchQueue.main.async { self?.needsLayout = true }
-        }.store(in: &subscriptions)
-        DockChromeMetricsService.shared.objectWillChange.sink { [weak self] in
-            DispatchQueue.main.async { self?.needsLayout = true }
-        }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(
             for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
         )
         .sink { [weak self] _ in self?.chrome.refresh() }.store(in: &subscriptions)
-        observeChanges { [weak self] in
-            guard let self else { return }
-            _ = DockyPreferences.shared.effectiveWindowTintColor
-            _ = DockyPreferences.shared.effectiveWindowTintOpacity
-            _ = DockyPreferences.shared.effectiveWindowCornerRadiusTopLeading
-            _ = DockyPreferences.shared.effectiveWindowCornerRadiusTopTrailing
-            _ = DockyPreferences.shared.effectiveWindowCornerRadiusBottomLeading
-            _ = DockyPreferences.shared.effectiveWindowCornerRadiusBottomTrailing
-            _ = DockyPreferences.shared.effectiveWindowBorderWidth
-            _ = DockyPreferences.shared.effectiveWindowBackgroundImageMode
-            _ = DockyPreferences.shared.effectiveWindowCornerRadius
-            _ = DockyPreferences.shared.effectiveWindowBackgroundImageURL
-            _ = DockyPreferences.shared.effectiveWindowBorderColor
-            _ = DockyPreferences.shared.effectiveDisablesGlassLook
-            _ = DockyPreferences.shared.windowPosition
-            self.chrome.refresh()
-            self.needsLayout = true
-        }.store(in: &subscriptions)
     }
     required init?(coder: NSCoder) { nil }
     override func layout() {
         super.layout()
-        var size = DockLayoutService.shared.chromeSize
-        let prefs = DockyPreferences.shared
-        let position = prefs.effectiveWindowPosition.resolved(systemOrientation: DockSettingsService.shared.orientation)
-        let growth = DockChromeMetricsService.shared.alongAxisGrowth
-        if prefs.effectiveWindowAxisSizing != .fullAxis {
-            if position.isVertical { size.height += growth } else { size.width += growth }
-        }
-        if size.width <= 0 || size.height <= 0 { size = bounds.size }
-        let origin: CGPoint
-        switch position {
-        case .bottom: origin = CGPoint(x: (bounds.width - size.width) / 2, y: bounds.height - size.height)
-        case .top: origin = CGPoint(x: (bounds.width - size.width) / 2, y: 0)
-        case .left: origin = CGPoint(x: 0, y: (bounds.height - size.height) / 2)
-        case .right: origin = CGPoint(x: bounds.width - size.width, y: (bounds.height - size.height) / 2)
-        }
-        chrome.frame = CGRect(origin: origin, size: size)
+        // The taskbar fills its window, so the chrome follows the window even mid-animation.
+        chrome.frame = bounds
         chrome.refresh()
         canvas.frame = bounds
         canvas.needsLayout = true
-        resizeHandle.isHidden = !WindowsTaskbarStyle.isActive
         resizeHandle.frame = CGRect(
             x: 0, y: 0, width: bounds.width, height: WindowsTaskbarStyle.metrics.resizeHandleHeight)
     }
@@ -80,11 +41,7 @@ final class DockRootView: NSView {
         true
     }
     override func rightMouseDown(with event: NSEvent) {
-        if WindowsTaskbarStyle.isActive {
-            chrome.rightMouseDown(with: event)
-        } else {
-            super.rightMouseDown(with: event)
-        }
+        chrome.rightMouseDown(with: event)
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -101,7 +58,7 @@ final class DockRootView: NSView {
             DockDragService.shared.begin(kind: kind, at: location)
             canvas.updateDropLocation(location)
             updateSystemDragImageVisibility(in: sender)
-            return .copy
+            return dragOperation(for: sender)
         }
         if DockEditModeService.shared.paletteDrag != nil {
             NSLog(
@@ -140,7 +97,7 @@ final class DockRootView: NSView {
             DockDragService.shared.updateCursor(location)
             canvas.updateDropLocation(location)
             updateSystemDragImageVisibility(in: sender)
-            return .copy
+            return dragOperation(for: sender)
         }
         if DockEditModeService.shared.paletteDrag != nil {
             DockDragService.shared.cursorLocation = location
@@ -180,9 +137,10 @@ final class DockRootView: NSView {
     /// Drag-onto-tile (open-with) intentionally keeps the system preview because
     /// there's no insertion indicator competing for attention.
     private func updateSystemDragImageVisibility(in sender: any NSDraggingInfo) {
+        // The tray shows no insertion preview, so drops there keep the system one.
         let shouldHide =
-            DockDragService.shared.destinationIndex != nil
-            || DockEditModeService.shared.paletteDropDestination != nil
+            (DockDragService.shared.destinationIndex != nil && DockDragService.shared.destinationSection == .pinned)
+            || DockEditModeService.shared.paletteDropDestination?.section == .pinned
         if shouldHide {
             guard hiddenDragImageOriginals.isEmpty else { return }
             sender.enumerateDraggingItems(
@@ -213,6 +171,11 @@ final class DockRootView: NSView {
         defer { restoreSystemDragImage() }
         if let kind = DockDragService.shared.kind {
             defer { DockDragService.shared.clear() }
+            if isTrash(DockDragService.shared.documentTargetTileID) {
+                guard dragOperation(for: sender) == .move else { return false }
+                // Every dragged item goes, not just the one the drag preview stands for.
+                return commitTrashDrop(readURLs(from: sender))
+            }
             switch kind {
             case .app(_, let tile): return commitAppDrop(tile)
             case .folder(let url, let tile): return commitFolderDrop(url, tile: tile)
@@ -220,6 +183,12 @@ final class DockRootView: NSView {
             }
         }
         return commitPaletteDrop()
+    }
+
+    /// Trash drops move items, so they need a source that allows it and show no copy badge.
+    private func dragOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
+        guard isTrash(DockDragService.shared.documentTargetTileID) else { return .copy }
+        return sender.draggingSourceOperationMask.isDisjoint(with: [.move, .delete]) ? [] : .move
     }
 
     func readURLs(from sender: any NSDraggingInfo) -> [URL] {

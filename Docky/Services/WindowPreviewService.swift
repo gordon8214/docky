@@ -5,9 +5,8 @@
 //  State backing the per-tile hover window preview popover.
 //  WindowSwitcherService is the global Cmd-Tab-style switcher; this is the
 //  smaller hover-driven counterpart anchored to a single app tile.
-//  Visual layout choice is shared (`WindowSwitcherLayout`), and previews
-//  are sourced from the same WorkspaceService cache so we don't double-pay
-//  for capture.
+//  Previews are sourced from the same WorkspaceService cache so we don't
+//  double-pay for capture.
 //
 
 import AppKit
@@ -24,12 +23,6 @@ final class WindowPreviewService: ObservableObject {
     @Published private(set) var presentedBundleIdentifier: String?
 
     private(set) var windowPreviews: [String: NSImage] = [:]
-
-    var resolvedLayout: WindowSwitcherLayout {
-        let canCapture = PermissionsService.shared.screenCapture == .granted
-        return DockyPreferences.shared.windowPreviewLayout
-            .resolved(canCaptureThumbnails: canCapture)
-    }
 
     private init() {}
 

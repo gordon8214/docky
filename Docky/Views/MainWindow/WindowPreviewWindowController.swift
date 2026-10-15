@@ -5,14 +5,12 @@
 //  Hover-driven per-tile counterpart to WindowSwitcherOverlayWindowController.
 //  Mirrors WidgetExpansionWindowController's mechanics: a singleton custom
 //  borderless NSWindow at .mainMenu level that slide+fades into place over
-//  the source tile's frame. The native content (thumbnails or list) is the
-//  same as the global switcher's so the two presentations stay coherent
-//  without coupling their state.
+//  the source tile's frame. The content is `WindowsWindowPreviewController`'s
+//  row of window thumbnails.
 //
 
 import AppKit
 import Combine
-import Observation
 
 @MainActor
 final class WindowPreviewWindowController: NSWindowController, ObservableObject {
@@ -21,7 +19,6 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     @Published private(set) var activeSourceTileID: String?
 
     fileprivate static let contentPadding: CGFloat = 6
-    private static let animationDuration: TimeInterval = 0.18
     private static let slideOffset: CGFloat = 12
     private static let dismissGrace: Duration = .milliseconds(120)
 
@@ -33,8 +30,6 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     private weak var heldMainWindow: MainWindow?
     private var pendingDismissTask: Task<Void, Never>?
     private var dismissAnimationTask: Task<Void, Never>?
-    private var styleObservation: AnyCancellable?
-    private var presentedWindowsStyle: Bool?
     private weak var previousKeyWindow: NSWindow?
     private weak var previousFirstResponder: NSResponder?
 
@@ -50,15 +45,10 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
-        window.acceptsKeys = false
+        // Key-capable so the preview can take arrow keys once focused from its tile.
+        window.acceptsKeys = true
         window.hidesOnDeactivate = false
         super.init(window: window)
-        styleObservation = observeChanges { [weak self] in
-            let windowsStyle = WindowsTaskbarStyle.isActive
-            guard let self, let previousStyle = self.presentedWindowsStyle,
-                  previousStyle != windowsStyle else { return }
-            self.dismissImmediately()
-        }
     }
 
     @available(*, unavailable)
@@ -102,10 +92,8 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         )
         guard didLoad else { return false }
 
-        // Already showing for this tile — keep it, just refresh the frame in
-        // case the dock layout shifted (magnification, edit mode exit, etc.).
-        if currentTileID == sourceTileID, window.isVisible,
-            presentedWindowsStyle == WindowsTaskbarStyle.isActive {
+        // Already showing for this tile: keep it and cancel any pending dismiss.
+        if currentTileID == sourceTileID, window.isVisible {
             activeSourceTileID = sourceTileID
             pendingDismissTask?.cancel()
             pendingDismissTask = nil
@@ -137,8 +125,7 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
         window.orderFront(nil)
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = WindowsTaskbarStyle.reducesMotion ? 0
-                : WindowsTaskbarStyle.isActive ? WindowsTaskbarStyle.popupDuration : Self.animationDuration
+            context.duration = WindowsTaskbarStyle.reducesMotion ? 0 : WindowsTaskbarStyle.popupDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().setFrame(finalFrame, display: true)
             window.animator().alphaValue = 1
@@ -148,23 +135,12 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     }
     private func previewBrowser(sourceTileID: String) -> (NSViewController, CGSize) {
         WindowsTaskbarTooltip.shared.dismiss()
-        let windowsStyle = WindowsTaskbarStyle.isActive
-        configurePresenterStyle()
-        let browser: NSViewController = windowsStyle
-            ? WindowsWindowPreviewController() : NativeWindowBrowserController(source: .preview)
+        let browser = WindowsWindowPreviewController()
         let count = WindowPreviewService.shared.windows.count
-        let usesList = !windowsStyle && WindowPreviewService.shared.resolvedLayout == .list
-        let size = CGSize(
-            width: usesList ? 340 : CGFloat(min(max(count, 1), 4)) * 228 + 24,
-            height: usesList ? CGFloat(min(max(count, 1), 8)) * 52 + 24 : 200)
+        let size = CGSize(width: CGFloat(min(max(count, 1), 4)) * 228 + 24, height: 200)
         browser.view.frame = CGRect(origin: .zero, size: size)
-        (browser.view as? NativeHoverMaterialView)?.onHover = { [weak self] isHovered in
-            self?.setPreviewHovered(isHovered, sourceTileID: sourceTileID)
-        }
-        if let windowsBrowser = browser as? WindowsWindowPreviewController {
-            windowsBrowser.onHover = { [weak self] hovered in
-                self?.setPreviewHovered(hovered, sourceTileID: sourceTileID)
-            }
+        browser.onHover = { [weak self] hovered in
+            self?.setPreviewHovered(hovered, sourceTileID: sourceTileID)
         }
         return (browser, size)
     }
@@ -176,7 +152,6 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     }
     func dismissImmediately() {
         restoreKeyboardFocus()
-        presentedWindowsStyle = nil
         pendingDismissTask?.cancel()
         pendingDismissTask = nil
         dismissAnimationTask?.cancel()
@@ -194,7 +169,6 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     func dismiss(sourceTileID: String) {
         guard currentTileID == sourceTileID else { return }
         restoreKeyboardFocus()
-        presentedWindowsStyle = nil
         pendingDismissTask?.cancel()
         pendingDismissTask = nil
         isPreviewHovered = false
@@ -219,8 +193,7 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 NSAnimationContext.runAnimationGroup(
                     { context in
-                        context.duration = WindowsTaskbarStyle.reducesMotion ? 0
-                : WindowsTaskbarStyle.isActive ? WindowsTaskbarStyle.popupDuration : Self.animationDuration
+                        context.duration = WindowsTaskbarStyle.reducesMotion ? 0 : WindowsTaskbarStyle.popupDuration
                         context.timingFunction = CAMediaTimingFunction(name: .easeIn)
                         window.animator().alphaValue = 0
                     },
@@ -262,7 +235,7 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
     }
 
     /// Closes whichever tile's preview is currently showing. Used by the
-    /// native cards and rows since they only know about the window they
+    /// preview's thumbnails, which only know about the window they
     /// represent, not which source tile spawned the preview.
     func dismissCurrent() {
         guard let currentTileID else { return }
@@ -297,18 +270,13 @@ final class WindowPreviewWindowController: NSWindowController, ObservableObject 
 
 extension WindowPreviewWindowController {
     func focusForKeyboardInteraction() {
-        guard WindowsTaskbarStyle.isActive, let window, window.isVisible else { return }
+        guard let window, window.isVisible else { return }
         if !window.isKeyWindow {
             previousKeyWindow = NSApp.keyWindow
             previousFirstResponder = previousKeyWindow?.firstResponder
         }
         window.makeKey()
         window.makeFirstResponder(window.contentViewController?.view)
-    }
-    func configurePresenterStyle() {
-        let windowsStyle = WindowsTaskbarStyle.isActive
-        presentedWindowsStyle = windowsStyle
-        (window as? WindowsTaskbarPanel)?.acceptsKeys = windowsStyle
     }
     private func restoreKeyboardFocus() {
         if window?.isKeyWindow == true, let previousKeyWindow {

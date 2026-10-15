@@ -57,40 +57,8 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Docky Theme</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.docky.theme</string>
-			</array>
-		</dict>
-	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.docky.theme</string>
-			<key>UTTypeDescription</key>
-			<string>Docky Theme</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.zip-archive</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>dockytheme</string>
-				</array>
-			</dict>
-		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.docky.widget</string>

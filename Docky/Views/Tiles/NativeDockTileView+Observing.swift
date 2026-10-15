@@ -20,15 +20,8 @@ extension NativeDockTileView {
                 self?.refresh()
             }
         }.store(in: &subscriptions)
-        observeChanges { [weak self] in
-            guard let self else { return }
-            _ = self.interaction.preferences.effectiveTileIconPadding
-            _ = self.interaction.preferences.effectiveTileHoverScale
-            _ = self.interaction.preferences.effectiveTileHoverOpacity
-            _ = self.interaction.preferences.effectiveActiveIndicatorColor
-            _ = self.interaction.preferences.dimsIdleAppIcons
-            self.refresh()
-        }.store(in: &subscriptions)
+        // Re-runs whenever an observable value `refresh` reads changes.
+        observeChanges { [weak self] in self?.refresh() }.store(in: &subscriptions)
         DockDragService.shared.$springLoadedTileID.sink { [weak self] id in
             guard let self else { return }
             guard id == self.interaction.tile.id else {

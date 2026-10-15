@@ -7,14 +7,16 @@ and dismisses passive Dock-attached presentations. A deliberate edge dwell can
 reveal Docky over fullscreen content; explicit keyboard launchers and switchers
 retain their own presentation behavior.
 
-Fixed Docky reserves the resting chrome's depth across its screen edge,
-including any edge gap. Magnification headroom and expanded presentations do
-not increase this reservation. Autohide and fullscreen reserve nothing, even
-during a temporary reveal. Layout reads physical screen bounds and the display
-menu-bar height, never its own reduced `NSScreen.visibleFrame`. Top placement
-retains menu-bar clearance. While the Windows taskbar's top edge is dragged,
-the bar resizes without publishing; the new reservation is published once, when
-the drag ends.
+Fixed Docky reserves the resting chrome's depth across its screen edge. The
+taskbar sits flush against that edge, so there is no edge gap;
+`DockSystemGeometry.restingChrome(edgeGap:)` keeps the parameter, which only the
+regression exercises. Expanded presentations do not increase this reservation.
+Autohide and fullscreen reserve nothing, even during a temporary reveal. Layout
+reads physical screen bounds and the display menu-bar height, never its own
+reduced `NSScreen.visibleFrame`. Top placement retains menu-bar clearance once
+the taskbar supports other edges. While the Windows taskbar's top edge is
+dragged, the bar resizes without publishing; the new reservation is published
+once, when the drag ends.
 
 ## Private ABI verified on macOS 27.0.1 (26A434)
 
@@ -88,8 +90,7 @@ disappears, or Docky marks reservation ownership inactive after a backend
 failure. The existing independent watchdog preserves/restores Apple's original
 Dock preferences and restarts Dock after an unexpected owner exit. Docky
 reconnects after Apple Dock restarts. Backend and independent readback failures
-appear in Settings → Behavior → System Dock and feedback diagnostics; an
-explicit retry is available. There is no Accessibility resize fallback.
+appear in Settings → Behavior → System Dock; an explicit retry is available. There is no Accessibility resize fallback.
 
 ## Window list and thumbnails
 
@@ -178,8 +179,8 @@ Regression launches ignore saved-window restoration for that process only, so
 intentional crash fixtures cannot block later runs on AppKit's recovery dialog.
 
 Coverage includes managed Space classification, real window level, stale
-interaction clearing, legacy preference/profile migration, edge-gap and
-magnification geometry, negative/offset display coordinates, all four native
+interaction clearing, legacy preference/profile migration, edge-gap geometry,
+negative/offset display coordinates, all four native
 reservation orientations, independent AppKit readback, real fullscreen entry
 and exit, authenticated/stale IPC, helper-failure release, Dock restart, and
 forced-termination watchdog recovery. Focused payload tests exercise synthetic

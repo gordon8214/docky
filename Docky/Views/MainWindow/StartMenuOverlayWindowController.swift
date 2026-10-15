@@ -83,8 +83,8 @@ final class StartMenuOverlayWindowController: NSWindowController {
     }
 
     /// Re-anchor whenever the chrome rect inside the window shifts
-    /// (tile add/remove, magnification, axis-sizing toggle) or when the
-    /// parent's frame itself changes (edge change, screen change).
+    /// (taskbar resize) or when the parent's frame itself changes
+    /// (edge change, screen change).
     /// addChildWindow already translates the child for parent moves,
     /// but it can't see chrome shifts that happen inside the parent.
     private func observeChromeAndParent() {
@@ -146,22 +146,17 @@ final class StartMenuOverlayWindowController: NSWindowController {
         let position = DockyPreferences.shared.effectiveWindowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
 
-        // Anchor against the visible chrome rect when available; fall
-        // back to the window frame for the brief startup window before
-        // TileContainerView has reported its first geometry pass.
+        // Anchor against the taskbar chrome when available; fall back to
+        // the window frame before `MainWindow.applyCurrentFrame` first runs.
         let anchor = main.chromeScreenFrame() ?? main.frame
 
-        // Leading along-axis is the user's natural reading-start edge:
-        // left for horizontal docks, top for vertical docks. Trailing
-        // across-axis is the chrome's inward edge (the side that faces
-        // the rest of the screen). The panel hugs the corner where
-        // those two edges meet, then extends inward and along the axis.
+        // On the bottom taskbar the panel centers above the bar. The other
+        // edges hug the leading corner on the chrome's inward side.
         let size = panelSize
         let origin: CGPoint
         switch position {
         case .bottom:
-            origin = CGPoint(x: WindowsTaskbarStyle.isActive ? anchor.midX - size.width / 2 : anchor.minX,
-                             y: anchor.maxY + gap)
+            origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.maxY + gap)
         case .top:
             origin = CGPoint(x: anchor.minX, y: anchor.minY - size.height - gap)
         case .left:

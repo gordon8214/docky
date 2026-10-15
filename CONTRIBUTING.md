@@ -17,8 +17,7 @@ include:
 - macOS version and Mac model
 - Docky version (Settings shows the build)
 - Steps to reproduce
-- A diagnostic bundle: Settings -> Feedback builds one and reveals it in Finder,
-  so you can attach it to the issue.
+- Your Docky settings, if they matter: `defaults export gt.quintero.Docky -`
 
 ## Development setup
 

@@ -6,6 +6,7 @@
         static func checkWindowsReviewRegressions() async {
             checkWindowsSavedContent()
             checkWindowsEmptyDropRegion()
+            checkWindowsTrayFolderDrop()
             let root = DockRootView(frame: CGRect(x: 0, y: 0, width: 1000, height: 48))
             let window = WindowsReviewWindow(contentRect: root.frame, styleMask: .borderless,
                                              backing: .buffered, defer: false)
@@ -21,7 +22,7 @@
             checkWindowsBackgroundMenu(root: root)
             checkWindowsLayoutCleanup(root: root)
             await checkWindowsPresentationVisibility()
-            await checkWindowsPreviewKeyboard()
+            checkWindowsPreviewKeyboard()
         }
         private static func checkWindowsSavedContent() {
             var battery = WidgetCatalog.batteries.makeTile()
@@ -34,16 +35,31 @@
                 Tile(id: "calendar", content: .widget(calendar)),
                 Tile(id: "folder", content: .appFolder(AppFolderTile(
                     identifier: "folder", displayName: "Folder",
-                    apps: [AppTile(bundleIdentifier: "com.apple.finder", displayName: "Finder")])))
+                    apps: [AppTile(bundleIdentifier: "com.apple.finder", displayName: "Finder")]))),
+                Tile(id: "trash", content: .trash)
             ]
             let extras = DockCanvasView.windowsExtraTiles(from: tiles)
-            precondition(extras == [tiles[1], tiles[3]], "Saved battery widgets must remain in additional Dock items")
+            precondition(
+                extras == [tiles[1], tiles[3]],
+                "Saved battery widgets stay in the overflow popup, and Trash has its own tray button")
             let overflow = NativeDockTileView(tile: tiles[3])
             overflow.frame = CGRect(x: 0, y: 0, width: 84, height: 60)
             overflow.refresh()
             overflow.layoutSubtreeIfNeeded()
             precondition(overflow.windowsIndicator.isHidden)
             precondition(abs(overflow.indicator.frame.midX - overflow.imageView.frame.midX) < 0.001)
+            precondition(
+                overflow.indicator.layer?.backgroundColor == WindowsTaskbarStyle.Tray.indicatorColor.cgColor,
+                "Tray tiles keep the accent underline")
+            precondition(
+                overflow.interaction.appliedTileIconPadding == WindowsTaskbarStyle.Tray.iconPadding
+                    && overflow.interaction.contentPadding == WindowsTaskbarStyle.Tray.verticalPadding)
+            let wide = NativeDockTileView(tile: Tile(
+                id: "wide", content: .widget(WidgetCatalog.batteries.makeTile(span: .two))))
+            precondition(
+                wide.interaction.nonAppContentPadding == 0 && wide.interaction.appliedTileIconPadding == 0
+                    && wide.interaction.nonAppTileCornerRadius == 0,
+                "Wide tray widgets fill their tile")
         }
         private static func checkWindowsEmptyDropRegion() {
             let controller = DockCanvasController()
@@ -57,6 +73,21 @@
             precondition(controller.dockDrag.destinationIndex == 0)
             precondition(controller.dockDrag.destinationSection == .pinned)
             controller.dockDrag.clear()
+        }
+        private static func checkWindowsTrayFolderDrop() {
+            let controller = DockCanvasController()
+            controller.store = TileStore.makeEmptyForTesting()
+            controller.tileFrames = ["windows:start": CGRect(x: 100, y: 4, width: 40, height: 40)]
+            controller.visibleTileFrames = controller.tileFrames
+            controller.trayFrame = CGRect(x: 800, y: 0, width: 200, height: 48)
+            defer { controller.dockDrag.clear() }
+            controller.updateExternalFolderDrop(at: CGPoint(x: 400, y: 20))
+            precondition(controller.dockDrag.destinationIndex == nil, "Folders don't drop among the app buttons")
+            controller.updateExternalFolderDrop(at: CGPoint(x: 900, y: 20))
+            precondition(
+                controller.dockDrag.destinationSection == .trailing && controller.dockDrag.destinationIndex == 0
+                    && controller.isTrayDropTarget,
+                "A folder dropped on the tray joins the trailing items")
         }
         private static func checkWindowsPopupOverflow(anchor: NSView) {
             let visible = anchor.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
@@ -84,6 +115,8 @@
                 windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else {
                 preconditionFailure("Right-click fixture required")
             }
+            let prefs = DockyPreferences.shared
+            let hidesWindow = prefs.autohidesWindow
             let held = window.interactionTokens.count
             var items: [NSMenuItem] = []
             var anchor = CGRect.null
@@ -96,28 +129,40 @@
                 anchorView = view
             }
             root.hitTest(point)?.rightMouseDown(with: click)
+            let titles = items.map(\.title)
             precondition(
-                items.contains { $0.title == String(localized: "Settings...") },
+                titles.contains(String(localized: "Settings...")),
                 "Blank canvas clicks must reach the native background menu")
-            // Quit ends the menu, set apart and red like the divider tile's.
-            guard let quit = items.last, items.count >= 2 else { preconditionFailure("Background menu items required") }
+            let hidingTitle = hidesWindow ? String(localized: "Turn Hiding Off") : String(localized: "Turn Hiding On")
+            guard let hiding = items.first(where: { $0.title == hidingTitle }) else {
+                preconditionFailure("The menu's hiding item must match the current hiding setting")
+            }
+            precondition(titles.contains(String(localized: "Edit Taskbar...")), "The menu must enter edit mode")
+            precondition(
+                items.first { $0.title == String(localized: "Troubleshoot") }?.submenu?.items.map(\.title)
+                    == [String(localized: "Sync Dock")],
+                "Troubleshoot must offer Sync Dock")
+            // About and a red Quit end the menu, set apart by a divider.
+            guard let quit = items.last, items.count >= 3 else { preconditionFailure("Background menu items required") }
             precondition(
                 quit.title == String(localized: "Quit Docky")
                     && (quit.representedObject as? ContextAction)?.isDestructive == true
-                    && items[items.count - 2].isSeparatorItem,
-                "The background menu must end with Quit Docky below a divider")
+                    && items[items.count - 2].title == String(localized: "About Docky")
+                    && items[items.count - 3].isSeparatorItem,
+                "The background menu must end with About Docky and Quit Docky below a divider")
             precondition(
                 anchorView === chrome && abs(anchor.minX - chrome.convert(point, from: nil).x) < 0.001
                     && anchor.height == chrome.bounds.height,
                 "The background menu must open at the pointer")
             precondition(window.interactionTokens.count == held, "Closing a menu must release the taskbar hold")
+            // Toggle and restore before asserting, so a failure can't leave the real setting flipped.
+            (hiding.representedObject as? ContextAction)?.handler()
+            let toggled = prefs.autohidesWindow
+            prefs.autohidesWindow = hidesWindow
+            precondition(toggled != hidesWindow, "The hiding item must toggle hiding")
         }
         private static func checkWindowsLayoutCleanup(root: DockRootView) {
-            let backdrop = NSView()
-            root.canvas.addSubview(backdrop)
-            root.canvas.groupBackdrops["old-theme"] = backdrop
             root.canvas.layoutWindowsTaskbar()
-            precondition(root.canvas.groupBackdrops.isEmpty && backdrop.superview == nil)
             checkWindowsRemovalGhost(canvas: root.canvas)
             guard let tile = root.canvas.tiles.values.first else { preconditionFailure("Taskbar tile required") }
             let motion = CABasicAnimation(keyPath: "position")
@@ -154,8 +199,7 @@
             window.contentView = canvas
             let document = WindowsTaskbarDocumentView(frame: CGRect(x: 0, y: 0, width: 500, height: 48))
             document.wantsLayer = true
-            canvas.configureSectionHost(document, id: "fixture", frame: canvas.bounds,
-                                        scrolling: true, vertical: false)
+            canvas.configureSectionHost(document, id: "fixture", frame: canvas.bounds, vertical: false)
             let tile = canvas.view(for: Tile(id: "fixture", content: .app(
                 AppTile(bundleIdentifier: "com.apple.finder", displayName: "Finder"))))
             document.addSubview(tile)
@@ -182,7 +226,7 @@
             window.contentView = nil
             window.close()
         }
-        private static func checkWindowsPreviewKeyboard() async {
+        private static func checkWindowsPreviewKeyboard() {
             let controller = WindowPreviewWindowController.shared
             guard let panel = controller.window as? WindowsTaskbarPanel else {
                 preconditionFailure("Preview must use a nonactivating key-capable panel")
@@ -194,20 +238,14 @@
             viewController.view = content
             panel.contentViewController = viewController
             panel.setContentSize(content.frame.size)
-            controller.configurePresenterStyle()
             panel.orderFront(nil)
             precondition(!panel.isKeyWindow, "Hover presentation must remain passive")
             controller.focusForKeyboardInteraction()
             precondition(panel.firstResponder === content && panel.isKeyWindow)
             panel.sendEvent(windowsKey(124, window: panel))
             precondition(delivered == 1, "Preview keys must travel through the window responder chain")
-            ThemeManager.shared.clearActive()
-            let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-            while panel.isVisible {
-                precondition(ContinuousClock.now < deadline, "Theme switching must dismiss the old preview")
-                await Task.yield()
-            }
-            ThemeManager.shared.setActive("windows")
+            controller.dismissImmediately()
+            precondition(!panel.isVisible && !panel.isKeyWindow, "Dismissing must close the preview")
             panel.contentViewController = nil
         }
         private static func windowsKey(_ code: UInt16, window: NSWindow? = nil) -> NSEvent {

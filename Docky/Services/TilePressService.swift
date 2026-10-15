@@ -9,12 +9,9 @@
 //  layer side-steps SwiftUI's gesture-claim contest entirely — local
 //  monitors return the event unchanged so normal dispatch still happens.
 //
-//  Press identity is resolved via the tile's own `.onHover` state, not
-//  by hit-testing stored frames. SwiftUI's hover already accounts for
-//  `.scaleEffect` (magnification), so we always agree with the tile the
-//  user visually sees under the cursor — manual hit-testing against the
-//  unscaled layout frame would otherwise pick the next tile over when
-//  the hovered tile's magnified edge spills past its layout bounds.
+//  Press identity is resolved via the tile's own hover state, not by
+//  hit-testing stored frames, so it always agrees with the tile the user
+//  sees under the cursor while taskbar buttons animate.
 //
 
 import AppKit
@@ -45,7 +42,7 @@ final class TilePressService: ObservableObject {
         }
     }
 
-    /// Called from `TileView.onHover`. The most recently entered tile is
+    /// Called from `NativeDockTileView.hover(_:)`. The most recently entered tile is
     /// the one that "owns" the cursor for press purposes.
     func registerHover(tileID: String, isHovering: Bool) {
         if isHovering {

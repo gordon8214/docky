@@ -7,15 +7,10 @@
 
 import AppKit
 import Combine
-import Observation
 
 final class MainWindowContainerView: NSView {
     private let contentView = DockRootView(frame: .zero)
     private var trackingArea: NSTrackingArea?
-    private var topConstraint: NSLayoutConstraint!
-    private var bottomConstraint: NSLayoutConstraint!
-    private var leadingConstraint: NSLayoutConstraint!
-    private var trailingConstraint: NSLayoutConstraint!
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -30,55 +25,12 @@ final class MainWindowContainerView: NSView {
     private func setup() {
         contentView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(contentView)
-
-        topConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
-        bottomConstraint = bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
-        leadingConstraint = contentView.leadingAnchor.constraint(equalTo: leadingAnchor)
-        trailingConstraint = trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
-
         NSLayoutConstraint.activate([
-            topConstraint, bottomConstraint, leadingConstraint, trailingConstraint
+            contentView.topAnchor.constraint(equalTo: topAnchor),
+            bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         ])
-
-        applyContentInsets()
-        observePreferencesForInsets()
-    }
-
-    /// Re-applies the per-edge content padding. Full-axis mode forces
-    /// every edge to 0 so the chrome bleeds to the panel border; in
-    /// fit-content mode each edge picks up its own theme/user override
-    /// from `DockyPreferences`.
-    private func applyContentInsets() {
-        let prefs = DockyPreferences.shared
-        let fullAxis = prefs.effectiveWindowAxisSizing == .fullAxis
-        let top = fullAxis ? 0 : prefs.effectiveWindowContentInsetTop
-        let leading = fullAxis ? 0 : prefs.effectiveWindowContentInsetLeading
-        let bottom = fullAxis ? 0 : prefs.effectiveWindowContentInsetBottom
-        let trailing = fullAxis ? 0 : prefs.effectiveWindowContentInsetTrailing
-        topConstraint.constant = top
-        bottomConstraint.constant = bottom
-        leadingConstraint.constant = leading
-        trailingConstraint.constant = trailing
-    }
-
-    /// Observation-framework wiring: every read inside the closure is
-    /// tracked; the `onChange` callback fires once per change, then we
-    /// re-register by recursing. Same pattern AppKit code elsewhere in
-    /// the project uses to bridge from `@Observable` into NSView land.
-    private func observePreferencesForInsets() {
-        withObservationTracking {
-            _ = DockyPreferences.shared.effectiveWindowAxisSizing
-            _ = DockyPreferences.shared.effectiveWindowContentInsetTop
-            _ = DockyPreferences.shared.effectiveWindowContentInsetLeading
-            _ = DockyPreferences.shared.effectiveWindowContentInsetBottom
-            _ = DockyPreferences.shared.effectiveWindowContentInsetTrailing
-        } onChange: { [weak self] in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.applyContentInsets()
-                self.observePreferencesForInsets()
-            }
-        }
     }
 
     override func updateTrackingAreas() {
@@ -90,7 +42,7 @@ final class MainWindowContainerView: NSView {
 
         let trackingArea = NSTrackingArea(
             rect: .zero,
-            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited],
             owner: self,
             userInfo: nil
         )
@@ -101,61 +53,11 @@ final class MainWindowContainerView: NSView {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         (window as? MainWindow)?.pointerDidEnterWindow()
-        forwardMagnificationPointer(from: event)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        super.mouseMoved(with: event)
-        forwardMagnificationPointer(from: event)
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         (window as? MainWindow)?.pointerDidExitWindow()
-        DockMagnificationService.shared.clearPointer()
-    }
-
-    /// Pushes the live pointer position into the magnification service in
-    /// the hosting view's top-left origin coordinate space, same as what
-    /// native tile views report. Caller flips Y
-    /// when the underlying DockRootView isn't already flipped.
-    ///
-    /// We only forward when the cursor is within the chrome's cross-axis
-    /// strip. The window is taller (or wider, for side docks) than the
-    /// chrome to make room for magnified icons, so a window-wide tracking
-    /// area would magnify tiles as soon as the pointer entered the empty
-    /// headroom above the chrome, well before it ever touched a tile.
-    private func forwardMagnificationPointer(from event: NSEvent) {
-        let inHosting = contentView.convert(event.locationInWindow, from: nil)
-        let topLeft: CGPoint =
-            contentView.isFlipped
-            ? inHosting
-            : CGPoint(x: inHosting.x, y: contentView.bounds.height - inHosting.y)
-        guard cursorIsAtChromeFringe(topLeft, canvasSize: contentView.bounds.size) else {
-            DockMagnificationService.shared.clearPointer()
-            return
-        }
-        DockMagnificationService.shared.updatePointer(at: topLeft)
-    }
-
-    /// Cross-axis bounds check against the resting chrome. We don't gate
-    /// on the along-axis (proximity to dock edge in that direction is the
-    /// whole point of the cosine falloff), only the cross-axis fringe.
-    private func cursorIsAtChromeFringe(_ point: CGPoint, canvasSize: CGSize) -> Bool {
-        let chromeSize = DockLayoutService.shared.chromeSize
-        guard chromeSize.width > 0, chromeSize.height > 0 else { return true }
-        let position = DockyPreferences.shared.effectiveWindowPosition
-            .resolved(systemOrientation: DockSettingsService.shared.orientation)
-        switch position {
-        case .bottom:
-            return point.y >= canvasSize.height - chromeSize.height
-        case .top:
-            return point.y <= chromeSize.height
-        case .left:
-            return point.x <= chromeSize.width
-        case .right:
-            return point.x >= canvasSize.width - chromeSize.width
-        }
     }
 }
 
@@ -186,9 +88,7 @@ final class MainWindow: NSPanel {
     let dockSettings = DockSettingsService.shared
     let preferences = DockyPreferences.shared
     let layout = DockLayoutService.shared
-    let tileStore = TileStore.shared
     let editMode = DockEditModeService.shared
-    let minimumWidth: CGFloat = 120
     var cancellables: Set<AnyCancellable> = []
     var hideWorkItem: DispatchWorkItem?
     var fullscreenRecheckWorkItem: DispatchWorkItem?
@@ -222,20 +122,15 @@ final class MainWindow: NSPanel {
 
     var isContentOverlapActive: Bool { isFullscreenActiveOnTargetScreen }
 
-    /// Screen-coordinate rect of the visible chrome (the dock pill itself,
-    /// not the magnification headroom around it). Built from `chromeSize`
-    /// rather than crossing the view/window coordinate boundary, since the
-    /// chrome is always centered along-axis within the window (in
-    /// full-axis mode it just happens to span edge-to-edge), and pinned
-    /// to the inward cross-axis edge with magnification headroom on the
-    /// other side. Overlays that need to align to chrome edges read this.
+    /// Screen-coordinate rect of the taskbar chrome. Built from `chromeSize`
+    /// rather than crossing the view/window coordinate boundary. Overlays
+    /// that need to align to chrome edges read this.
     func chromeScreenFrame() -> CGRect? {
         let chromeSize = DockLayoutService.shared.chromeSize
         guard chromeSize.width > 0, chromeSize.height > 0 else { return nil }
         let position = DockyPreferences.shared.effectiveWindowPosition
             .resolved(systemOrientation: DockSettingsService.shared.orientation)
-        return DockSystemGeometry.restingChrome(
-            window: frame, size: chromeSize, edge: position, edgeGap: chromeEdgeGap(position))
+        return DockSystemGeometry.restingChrome(window: frame, size: chromeSize, edge: position)
     }
 
     override init(
@@ -275,10 +170,10 @@ final class MainWindow: NSPanel {
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         alphaValue = 0
-        // Magnification tracking lives on the content view's NSTrackingArea
-        // (.mouseMoved + .activeAlways). Enabling mouseMoved on the window
-        // itself ensures AppKit routes those events through the responder
-        // chain even though this panel never becomes key.
+        // The taskbar's resize handle tracks `.mouseMoved` to set its cursor.
+        // Enabling mouseMoved on the window itself ensures AppKit routes those
+        // events through the responder chain even though this panel never
+        // becomes key.
         acceptsMouseMovedEvents = true
         applyCollectionBehavior()
         observeFrameInputs()

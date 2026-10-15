@@ -22,12 +22,7 @@ extension NativeDockTileView {
                 prefs.effectiveLaunchpadIconOverrideURL.flatMap {
                     IconCacheService.shared.image(forImageFileURL: $0)
                 } ?? IconCacheService.shared.icon(forBundleIdentifier: LaunchpadTile.spotlightBundleIdentifier)
-        case .startMenu:
-            if WindowsTaskbarStyle.isActive { imageView.image = WindowsTaskbarStyle.startImage(); break }
-            imageView.image =
-                prefs.effectiveStartMenuIconOverrideURL.flatMap {
-                    IconCacheService.shared.image(forImageFileURL: $0)
-                } ?? IconCacheService.shared.icon(forBundleIdentifier: StartMenuTile.iconBundleIdentifier)
+        case .startMenu: imageView.image = WindowsTaskbarStyle.startImage()
         case .trash:
             let state: TrashIconState = TrashService.shared.isEmpty ? .empty : .full
             imageView.image =
@@ -44,14 +39,6 @@ extension NativeDockTileView {
         imageView.image =
             override.flatMap { IconCacheService.shared.image(forImageFileURL: $0) }
             ?? IconCacheService.shared.icon(forBundleIdentifier: app.bundleIdentifier)
-        let idle =
-            WorkspaceService.shared.isHidden(bundleIdentifier: app.bundleIdentifier)
-            || (PermissionsService.shared.accessibility == .granted
-                && WindowRegistry.shared.windows(forBundleIdentifier: app.bundleIdentifier).isEmpty)
-        imageView.alphaValue =
-            !WindowsTaskbarStyle.isActive && prefs.dimsIdleAppIcons
-                && WorkspaceService.shared.isRunning(bundleIdentifier: app.bundleIdentifier)
-                && idle ? 0.5 : 1
     }
 
     func loadFolderIcon(_ folder: FolderTile) {

@@ -1,6 +1,9 @@
 import AppKit
+import OSLog
 
 extension DockRootView {
+    private static let logger = Logger(subsystem: "gt.quintero.Docky", category: "TrashDrop")
+
     func commitAppDrop(_ tile: AppTile) -> Bool {
         let service = DockDragService.shared
         if let targetID = service.documentTargetTileID, targetID != service.sourceFolderTileID {
@@ -20,12 +23,8 @@ extension DockRootView {
         return TileStore.shared.pinApp(bundleIdentifier: tile.bundleIdentifier, at: index)
     }
     func commitFolderDrop(_ url: URL, tile: FolderTile) -> Bool {
-        if let targetID = DockDragService.shared.documentTargetTileID,
-            let target = TileStore.shared.tiles.first(where: { $0.id == targetID }),
-            case .app(let app) = target.content {
-            WorkspaceService.shared.open(fileURLs: [url], withApplicationBundleIdentifier: app.bundleIdentifier)
-            return true
-        }
+        // A folder dropped on an app opens with it.
+        if DockDragService.shared.documentTargetTileID != nil { return commitDocumentDrop([url]) }
         guard let index = DockDragService.shared.destinationIndex else { return false }
         TileStore.shared.insertTrailingItem(.folder(url: url, displayName: tile.displayName), at: index)
         return true
@@ -34,16 +33,29 @@ extension DockRootView {
         guard let targetID = DockDragService.shared.documentTargetTileID,
             let target = TileStore.shared.tiles.first(where: { $0.id == targetID })
         else { return false }
-        if case .trash = target.content {
-            var trashed = false
-            for url in urls where (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil {
-                trashed = true
-            }
-            return trashed
-        }
+        if target.content.isTrash { return commitTrashDrop(urls) }
         guard case .app(let app) = target.content, !app.bundleIdentifier.isEmpty else { return false }
         WorkspaceService.shared.open(fileURLs: urls, withApplicationBundleIdentifier: app.bundleIdentifier)
         return true
+    }
+    /// Moves dropped items to the Trash. Running apps, Docky itself, and apps dragged out
+    /// of an app folder stay where they are.
+    func commitTrashDrop(_ urls: [URL]) -> Bool {
+        guard DockDragService.shared.sourceFolderTileID == nil else { return false }
+        var trashed = false
+        for url in urls where url.isFileURL && DockCanvasController.canTrash(url) {
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                trashed = true
+            } catch {
+                Self.logger.error(
+                    "Couldn't move \(url.path, privacy: .public) to the Trash: \(error, privacy: .public)")
+            }
+        }
+        return trashed
+    }
+    func isTrash(_ tileID: String?) -> Bool {
+        TileStore.shared.tiles.first { $0.id == tileID }?.content.isTrash == true
     }
     func commitPaletteDrop() -> Bool {
         guard let drag = DockEditModeService.shared.paletteDrag,

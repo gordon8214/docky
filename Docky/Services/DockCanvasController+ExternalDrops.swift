@@ -20,15 +20,31 @@ extension DockCanvasController {
         }
     }
     func updateExternalDocumentDrop(at location: CGPoint) {
-        let target = documentDropTargetTileID(at: location) ?? trashDropTargetTileID(at: location, sourceTileID: "")
+        let target = documentDropTargetTileID(at: location) ?? externalTrashTargetTileID(at: location)
         if dockDrag.documentTargetTileID != target { dockDrag.documentTargetTileID = target }
         clearExternalInsertion()
     }
+    /// The Trash under the cursor, when a drag from outside the taskbar may go there. Edit
+    /// mode and drags out of an app folder never target it: an app folder's apps are
+    /// entries in a group, and dropping one on Trash must not uninstall the app.
+    func externalTrashTargetTileID(at location: CGPoint) -> String? {
+        guard !editMode.isActive, dockDrag.sourceFolderTileID == nil else { return nil }
+        if case .app(let url, _) = dockDrag.kind, !Self.canTrash(url) { return nil }
+        return trashDropTargetTileID(at: location, sourceTileID: "")
+    }
+    /// Running apps, Docky included, stay out of the Trash.
+    static func canTrash(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        if path == Bundle.main.bundleURL.standardizedFileURL.path { return false }
+        return !NSWorkspace.shared.runningApplications.contains { $0.bundleURL?.standardizedFileURL.path == path }
+    }
     func updateExternalAppDrop(at location: CGPoint) {
-        let target = displayTiles.reversed().first { tile in
-            if case .appFolder = tile.content { return visibleTileFrames[tile.id]?.contains(location) == true }
-            return false
-        }?.id
+        let target =
+            externalTrashTargetTileID(at: location)
+            ?? displayTiles.reversed().first { tile in
+                if case .appFolder = tile.content { return visibleTileFrames[tile.id]?.contains(location) == true }
+                return false
+            }?.id
         if dockDrag.documentTargetTileID != target { dockDrag.documentTargetTileID = target }
         if target != nil {
             clearExternalInsertion()
@@ -45,25 +61,19 @@ extension DockCanvasController {
         if dockDrag.destinationSection != .pinned { dockDrag.destinationSection = .pinned }
     }
     func updateExternalFolderDrop(at location: CGPoint) {
-        let target = documentDropTargetTileID(at: location)
+        let target = documentDropTargetTileID(at: location) ?? externalTrashTargetTileID(at: location)
         if dockDrag.documentTargetTileID != target { dockDrag.documentTargetTileID = target }
         guard target == nil else {
             clearExternalInsertion()
             return
         }
-        let positionValue = projected(point: location)
-        guard isPointInTrailingDropRegion(positionValue) else {
+        guard isPointInTrailingDropRegion(projected(point: location)) else {
             clearExternalInsertion()
             return
         }
-        let trashIndex =
-            trailingTiles.firstIndex {
-                if case .trash = $0.content { return true }
-                return false
-            } ?? trailingTiles.count
-        let insertion = DockAxisGeometry.insertionIndex(
-            at: positionValue, frames: trailingTiles.map { tileFrames[$0.id] }, vertical: position.isVertical)
-        let index = min(insertion, trashIndex)
+        // The tray shows trailing items in a popup rather than in a row, so a
+        // dropped folder joins them just before Trash.
+        let index = trailingTiles.firstIndex { $0.content.isTrash } ?? trailingTiles.count
         if dockDrag.destinationIndex != index { dockDrag.destinationIndex = index }
         if dockDrag.destinationSection != .trailing { dockDrag.destinationSection = .trailing }
     }
@@ -122,70 +132,31 @@ extension DockCanvasController {
         return nil
     }
 
+    /// The pinned region spans the taskbar's app buttons, or the Start button when there are none.
     func isPointInPinnedDropRegion(_ positionValue: CGFloat) -> Bool {
-        if WindowsTaskbarStyle.isActive {
-            let frames = displayTiles.compactMap { tile -> CGRect? in
-                guard case .app = tile.content else { return nil }
-                return visibleTileFrames[tile.id]
-            }
-            guard let first = frames.map(\.minX).min(), let last = frames.map(\.maxX).max() else {
-                guard let start = visibleTileFrames["windows:start"] ?? displayTiles.first(where: {
-                    if case .startMenu = $0.content { return true }
-                    return false
-                }).flatMap({ visibleTileFrames[$0.id] }) else { return false }
-                return positionValue >= start.minX && positionValue <= start.maxX + 8
-            }
-            return positionValue >= first - 8 && positionValue <= last + 8
+        let frames = displayTiles.compactMap { tile -> CGRect? in
+            guard case .app = tile.content else { return nil }
+            return visibleTileFrames[tile.id]
         }
-        guard let trailingBoundaryFrame = tileFrames[pinnedTrailingBoundaryTileID],
-            let lowerBound = pinnedDropRegionLowerBound
-        else {
-            return false
+        guard let first = frames.map(\.minX).min(), let last = frames.map(\.maxX).max() else {
+            guard let start = visibleTileFrames["windows:start"] ?? displayTiles.first(where: {
+                if case .startMenu = $0.content { return true }
+                return false
+            }).flatMap({ visibleTileFrames[$0.id] }) else { return false }
+            return positionValue >= start.minX && positionValue <= start.maxX + 8
         }
-
-        let upperBound = projected(point: trailingBoundaryFrame.origin)
-        return positionValue >= lowerBound && positionValue <= upperBound
+        return positionValue >= first - 8 && positionValue <= last + 8
     }
 
-    /// Leading edge of the pinned drop region. Normally this is the trailing
-    /// edge of the fixed Finder fixture, so drops never land before it. Shelve
-    /// mode can hide the Finder tile, in which case there's nothing to anchor
-    /// against, so fall back to the dock's leading content edge. Without this
-    /// fallback the whole pinned section becomes undroppable (issue #13).
-    var pinnedDropRegionLowerBound: CGFloat? {
-        if let finderFrame = tileFrames["pinned:com.apple.finder"] {
-            return projected(point: finderFrame.origin) + projected(size: finderFrame.size)
-        }
-        return tileFrames.values.map { projected(point: $0.origin) }.min()
-    }
-
-    var pinnedTrailingBoundaryTileID: String {
-        tileFrames.keys.contains("divider:running") ? "divider:running" : "divider:trailing"
-    }
-
+    /// The trailing region is the whole tray, where trailing items live.
     func isPointInTrailingDropRegion(_ positionValue: CGFloat) -> Bool {
-        guard let dividerFrame = tileFrames["divider:trailing"] else {
-            return false
-        }
-
-        // With trailing tiles present the region spans from the divider's
-        // trailing edge to the last tile's trailing edge. Shelve mode can hide
-        // Trash and leave the trailing section empty, so there's no tile past
-        // the divider to anchor against, and the dock shrinks to content,
-        // leaving no empty space either. Treat the divider tile itself as the
-        // drop target so widgets can still be dropped there (issue #13).
-        guard let lastTrailingTileID = previewTrailingTiles.last?.id,
-            let trailingBoundaryFrame = tileFrames[lastTrailingTileID]
-        else {
-            let lowerBound = projected(point: dividerFrame.origin)
-            let upperBound = projected(point: dividerFrame.origin) + projected(size: dividerFrame.size)
-            return positionValue >= lowerBound && positionValue <= upperBound
-        }
-
-        let lowerBound = projected(point: dividerFrame.origin) + projected(size: dividerFrame.size)
-        let upperBound = projected(point: trailingBoundaryFrame.origin) + projected(size: trailingBoundaryFrame.size)
-        return positionValue >= lowerBound && positionValue <= upperBound
+        guard !trayFrame.isEmpty else { return false }
+        let lowerBound = projected(point: trayFrame.origin)
+        return positionValue >= lowerBound && positionValue <= lowerBound + projected(size: trayFrame.size)
     }
+
+    /// Whether a drag will drop into the tray, so the tray can show it.
+    var isTrayDropTarget: Bool { activeTrailingDropDestinationIndex != nil }
 
     func previewTiles(for section: DockEditDropSection) -> [Tile] {
         switch section {

@@ -9,10 +9,8 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
     var interaction: DockTileInteraction
     let imageView = NSImageView()
     let minimizedAppIcon = NSImageView()
-    var hasAnimatedAppearance = false
     let hoverBackdrop = NSImageView()
     let activeBackdrop = NSImageView()
-    let pressOverlay = CALayer()
     var fan: NativeFolderFanController?
     var folderIconKey: String?
     var folderIconImage: NSImage?
@@ -81,10 +79,6 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         badgeShadow.shadowOffset = CGSize(width: 0, height: -3)
         minimizedAppIcon.shadow = badgeShadow
         addSubview(minimizedAppIcon)
-        pressOverlay.backgroundColor = NSColor.black.cgColor
-        pressOverlay.cornerRadius = 10
-        pressOverlay.zPosition = 10
-        layer?.addSublayer(pressOverlay)
         addSubview(indicator)
         addSubview(badge)
         installObservers()
@@ -110,10 +104,6 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
         super.layout()
         layoutTile()
     }
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        drawTile(dirtyRect)
-    }
     func update(tile: Tile) {
         if interaction.tile != tile {
             interaction.tile = tile
@@ -123,82 +113,35 @@ final class NativeDockTileView: NSView, NSPopoverDelegate {
 
     func refresh() {
         let tile = interaction.tile
-        let prefs = interaction.preferences
-        toolTip = WindowsTaskbarStyle.isActive ? nil : interaction.tooltipTitle
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(interaction.tooltipTitle)
         setAccessibilityIdentifier(tile.id)
         setAccessibilityValue(interaction.badgeText)
-        updateTileAppearance()
+        updateWindowsAppearance()
         minimizedAppIcon.isHidden = true
         updateTileContent()
         imageView.isHidden = content != nil
         badge.stringValue = Self.badgeDisplayText(interaction.badgeText ?? "")
         badge.isHidden = interaction.badgeText == nil
-        indicator.isHidden = !interaction.showsRunningIndicator || prefs.effectiveActiveIndicatorShape == .none
-        indicator.image = interaction.runningIndicatorImage
+        indicator.isHidden = !interaction.showsRunningIndicator
         indicator.wantsLayer = true
-        let windowsLayout = WindowsTaskbarStyle.isActive && canvas != nil
+        indicator.layer?.cornerRadius = 0
+        // Taskbar tiles draw the Windows indicator; tiles off the taskbar (the tray
+        // popup, drag previews) keep an underline.
+        let windowsLayout = canvas != nil
         windowsIndicator.isHidden = !windowsLayout
-        if !windowsLayout { windowsIndicator.removeAllAnimations() }
-        indicator.layer?.backgroundColor = indicator.image == nil ? prefs.effectiveActiveIndicatorColor.cgColor : nil
-        indicator.layer?.cornerRadius =
-            prefs.effectiveActiveIndicatorShape == .underline ? 0 : max(1, interaction.runningIndicatorThickness / 2)
-        if windowsLayout { updateWindowsIndicator() }
+        if windowsLayout {
+            updateWindowsIndicator()
+        } else {
+            windowsIndicator.removeAllAnimations()
+            indicator.layer?.backgroundColor = WindowsTaskbarStyle.Tray.indicatorColor.cgColor
+        }
         needsLayout = true
-        needsDisplay = true
     }
     static func badgeDisplayText(_ text: String) -> String {
         if let value = Int(text), value > 999 { return "999+" }
         return String(text.prefix(4))
-    }
-
-    func updateTileAppearance() {
-        if WindowsTaskbarStyle.isActive { updateWindowsAppearance(); return }
-        let prefs = interaction.preferences
-        badge.font = .systemFont(ofSize: 10, weight: .semibold)
-        badge.layer?.cornerRadius = 8
-        for view in [hoverBackdrop, activeBackdrop, imageView] { view.layer?.removeAllAnimations() }
-        let selected =
-            interaction.isAppFolderDropTarget || interaction.isTrashDropTarget || interaction.isDocumentDropTarget
-        layer?.backgroundColor = selected ? NSColor.controlAccentColor.withAlphaComponent(0.3).cgColor : nil
-        layer?.cornerRadius = interaction.nonAppTileCornerRadius
-        hoverBackdrop.isHidden = !interaction.isHovering || !interaction.supportsHoverBackground
-        activeBackdrop.isHidden = !interaction.isFrontmostTile
-        hoverBackdrop.image = prefs.effectiveTileHoverBackgroundImageURL.flatMap {
-            IconCacheService.shared.image(forImageFileURL: $0)
-        }
-        activeBackdrop.image = prefs.effectiveTileActiveBackgroundImageURL.flatMap {
-            IconCacheService.shared.image(forImageFileURL: $0)
-        }
-        hoverBackdrop.layer?.backgroundColor = prefs.effectiveTileHoverBackgroundColor?.cgColor
-        activeBackdrop.layer?.backgroundColor = prefs.effectiveTileActiveBackgroundColor?.cgColor
-        hoverBackdrop.layer?.cornerRadius = prefs.effectiveTileHoverBackgroundCornerRadius
-        activeBackdrop.layer?.cornerRadius = prefs.effectiveTileActiveBackgroundCornerRadius
-        hoverBackdrop.alphaValue = prefs.effectiveTileHoverBackgroundOpacity
-        activeBackdrop.alphaValue = prefs.effectiveTileActiveBackgroundOpacity
-        pressOverlay.opacity = Float(max(0, -interaction.pressDarkenAmount))
-        let scale = interaction.isHovering ? prefs.effectiveTileHoverScale : 1
-        imageView.layer?.setAffineTransform(CGAffineTransform(scaleX: scale, y: scale))
-        content?.layer?.setAffineTransform(CGAffineTransform(scaleX: scale, y: scale))
-        imageView.layer?.cornerRadius =
-            prefs.effectiveTileClipShape == .circle ? min(imageView.bounds.width, imageView.bounds.height) / 2 : 0
-        imageView.layer?.masksToBounds = prefs.effectiveTileClipShape == .circle
-        alphaValue = CGFloat(
-            interaction.tileBodyOpacity * (interaction.isHovering ? prefs.effectiveTileHoverOpacity : 1))
-        // Through `NSView.shadow`. AppKit clips a view with a corner radius to
-        // its bounds unless the view has one, which hid a layer shadow here.
-        let opacity = prefs.effectiveIconShadowOpacity
-        shadow = prefs.effectiveIconShadowColor.flatMap { color in
-            guard opacity > 0 else { return nil }
-            let shadow = NSShadow()
-            shadow.shadowColor = color.withAlphaComponent(color.alphaComponent * opacity)
-            shadow.shadowBlurRadius = prefs.effectiveIconShadowRadius
-            // The tile is flipped, so a positive offset falls downward.
-            shadow.shadowOffset = CGSize(width: 0, height: 3)
-            return shadow
-        }
     }
 
     func updateTileContent() {

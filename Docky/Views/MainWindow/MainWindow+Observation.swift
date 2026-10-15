@@ -4,63 +4,24 @@ import QuartzCore
 
 extension MainWindow {
     func observeFrameInputs() {
-        // DockyPreferences is now `@Observable` so we read its
-        // properties through `observeChanges` (Observation framework
-        // auto-tracks). DockSettingsService / DockDragService /
-        // DockEditModeService are still ObservableObject; their
-        // `@Published` projections are merged via Combine below.
-        let layoutSignals: [AnyPublisher<Void, Never>] = [
-            editMode.$paletteDrag.map { _ in () }.eraseToAnyPublisher(),
-            editMode.$paletteDropDestination.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$kind.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$documentTargetTileID.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$destinationIndex.map { _ in () }.eraseToAnyPublisher(),
-            DockDragService.shared.$destinationSection.map { _ in () }.eraseToAnyPublisher()
-        ]
-        Publishers.MergeMany(layoutSignals)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
-            }
-            .store(in: &cancellables)
-
         observeChanges { [weak self] in
             guard let self else { return }
-            // Touch every preference and dock-setting that drives frame
-            // layout. The Observation framework tracks these reads and
-            // re-runs the closure on any change.
-            _ = preferences.effectiveTileVerticalPadding
-            _ = preferences.effectiveTileSpacing
-            _ = preferences.overflowBehavior
-            _ = preferences.effectiveWindowAxisSizing
-            _ = preferences.effectiveWindowContentInsetTop
-            _ = preferences.effectiveWindowContentInsetBottom
-            _ = preferences.effectiveWindowContentInsetLeading
-            _ = preferences.effectiveWindowContentInsetTrailing
+            // Touch every preference and dock setting that drives the frame.
+            // The Observation framework tracks these reads and re-runs the
+            // closure on any change. Position and orientation don't move the
+            // taskbar until it supports every screen edge.
             _ = preferences.windowPosition
             _ = preferences.windowDisplayTarget
             _ = dockSettings.orientation
-            _ = dockSettings.tileSize
-            _ = dockSettings.largeSize
-            _ = dockSettings.magnification
             _ = preferences.windowsTaskbarHeight
             self.applyCurrentFrame(animated: true, duration: self.tileMutationAnimationDuration)
         }
         .store(in: &cancellables)
 
-        observeTileAndInteractionInputs()
+        observeInteractionInputs()
     }
 
-    func observeTileAndInteractionInputs() {
-        tileStore.$tiles
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyCurrentFrame(animated: true, duration: self?.tileMutationAnimationDuration)
-            }
-            .store(in: &cancellables)
-
+    func observeInteractionInputs() {
         editMode.$isActive
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isActive in

@@ -39,7 +39,7 @@
         },
         {
           "id": "app.toggle-pin",
-          "title": "Keep in Dock",
+          "title": "Keep in Taskbar",
           "kind": "builtin",
           "builtinIdentifier": "togglePinnedApp",
           "tileTypes": ["app"],

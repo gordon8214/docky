@@ -26,15 +26,12 @@ struct DockTileInteraction {
     var isDocumentDropTarget: Bool
     var isAppFolderDropTarget: Bool
     var isTrashDropTarget: Bool
-    /// Caller-supplied icon extent, set when magnification is active so
-    /// proportional metrics (corner radius, content padding) scale with
-    /// the rendered frame instead of staying at the resting tile size.
-    /// `nil` falls back to the shared `DockLayoutService` size.
+    /// Caller-supplied icon extent, so proportional metrics (corner radius,
+    /// content padding) follow the rendered frame. `nil` falls back to the
+    /// taskbar's button size.
     var renderedTileSize: CGFloat?
     let dockSettings = DockSettingsService.shared
-    var layout = DockLayoutService.shared
     var preferences = DockyPreferences.shared
-    var themeManager = ThemeManager.shared
     var workspace = WorkspaceService.shared
     var mediaPlayback = MediaPlaybackService.shared
     var editMode = DockEditModeService.shared
@@ -54,7 +51,6 @@ struct DockTileInteraction {
     @DockInteractionState var lastFolderPopoverDismissedAt: TimeInterval = 0
     @DockInteractionState var windowPreviewDelayTask: Task<Void, Never>?
     var windowPreview = WindowPreviewWindowController.shared
-    var tilePress = TilePressService.shared
     var dockBadges = DockBadgeService.shared
 
     static let finderBundleIdentifier = "com.apple.finder"

@@ -15,7 +15,6 @@ final class WindowsTaskbarPopup {
     var onDismiss: (() -> Void)?
     private var localMonitor: Any?
     private var globalMonitor: Any?
-    private var observation: AnyCancellable?
     private weak var mainWindow: MainWindow?
     private var interactionToken: UUID?
     private var isPresented = false
@@ -83,9 +82,6 @@ final class WindowsTaskbarPopup {
             globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: outsideEvents) { [weak self] _ in
                 self?.dismiss()
             }
-            observation = observeChanges { [weak self] in
-                if !WindowsTaskbarStyle.isActive { self?.dismiss() }
-            }
         }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = WindowsTaskbarStyle.reducesMotion ? 0 : WindowsTaskbarStyle.popupDuration
@@ -107,8 +103,6 @@ final class WindowsTaskbarPopup {
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         localMonitor = nil
         globalMonitor = nil
-        observation?.cancel()
-        observation = nil
         mainWindow?.endInteraction(interactionToken)
         mainWindow = nil
         interactionToken = nil
@@ -187,7 +181,7 @@ final class WindowsTaskbarTooltip {
         task = Task { @MainActor [weak self, weak tile] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled, let self, let tile, tile.interaction.isHovering,
-                tile.window != nil, WindowsTaskbarStyle.isActive,
+                tile.window != nil,
                 !tile.interaction.isContextMenuPresented,
                 WindowPreviewWindowController.shared.presentedSourceTileID != tile.interaction.tile.id,
                 let title = tile.interaction.tooltipTitle

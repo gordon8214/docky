@@ -100,9 +100,8 @@ enum WidgetCatalog {
         kind: .search,
         ownerBundleIdentifier: WidgetOwnerBundleIdentifiers.search,
         defaultSpan: .two,
-        // Theme-only widget: kept out of the dock editor palette so
-        // it can't be dragged in manually. Themes can still inject it
-        // via `layout.insertions` when widget injection lands.
+        // Kept out of the editor palette so it can't be added manually;
+        // tiles saved with it still load.
         includesInPalette: false,
         includesInSmartStack: false
     )

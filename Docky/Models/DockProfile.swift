@@ -6,7 +6,7 @@
 //  profile owns its own pinned/trailing items, widget placements, app
 //  widget displays, and hidden-app list. The user switches between them
 //  via the profile-switcher ball at the leading edge of the dock; the
-//  remaining preferences (theme, sizing, behavior, shortcuts) stay global.
+//  remaining preferences (appearance, sizing, behavior, shortcuts) stay global.
 //
 
 import Foundation

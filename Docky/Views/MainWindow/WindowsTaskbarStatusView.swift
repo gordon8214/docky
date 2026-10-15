@@ -2,17 +2,42 @@ import AppKit
 import Combine
 
 final class WindowsTaskbarStatusView: NSView {
-    var extraTiles: [Tile] = [] { didSet { overflow.isHidden = extraTiles.isEmpty } }
+    var extraTiles: [Tile] = [] {
+        didSet {
+            overflow.isHidden = extraTiles.isEmpty
+            needsLayout = true
+        }
+    }
+    /// Highlights the overflow button while a drag will drop into the tray.
+    var isDropTarget: Bool {
+        get { overflow.isDropTarget }
+        set { overflow.isDropTarget = newValue }
+    }
     var calendarTile: Tile?
+    /// The Trash tile the tray's Trash button stands for. Nil hides the button,
+    /// as when Shelve mode hides Trash.
+    var trashTile: Tile? {
+        didSet {
+            guard trashTile?.id != oldValue?.id else { return }
+            trash.isHidden = trashTile == nil
+            needsLayout = true
+        }
+    }
+    /// Highlights the Trash button while a drag will drop onto it.
+    var isTrashDropTarget: Bool {
+        get { trash.isDropTarget }
+        set { trash.isDropTarget = newValue }
+    }
     var metrics = WindowsTaskbarMetrics.standard {
         didSet {
             guard metrics != oldValue else { return }
-            for button in [overflow, clock] { button.metrics = metrics }
+            for button in [overflow, trash, clock] { button.metrics = metrics }
             menuExtras.metrics = metrics
             needsLayout = true
         }
     }
     private let overflow = WindowsStatusButton(glyph: "overflow", label: "Show additional Dock items")
+    private let trash = WindowsStatusButton(glyph: "trash", label: String(localized: "Trash"))
     private let clock = WindowsStatusButton(glyph: "clock", label: "Date and time")
     private let menuExtras = WindowsMenuExtrasView()
     private let ownerID = UUID()
@@ -20,15 +45,26 @@ final class WindowsTaskbarStatusView: NSView {
     private var popup: WindowsTaskbarPopup?
     override var isFlipped: Bool { true }
     var preferredWidth: CGFloat {
-        (extraTiles.isEmpty ? 0 : metrics.overflowWidth) + menuExtras.preferredWidth + metrics.clockWidth
-            + metrics.margin
+        (extraTiles.isEmpty ? 0 : metrics.overflowWidth) + (trashTile == nil ? 0 : metrics.overflowWidth)
+            + menuExtras.preferredWidth + metrics.clockWidth + metrics.margin
     }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for button in [overflow, clock] { addSubview(button) }
+        for button in [overflow, trash, clock] { addSubview(button) }
         overflow.isHidden = extraTiles.isEmpty
+        trash.isHidden = true
+        trash.isDestructive = true
+        updateTrash(isEmpty: TrashService.shared.isEmpty)
         addSubview(menuExtras)
         overflow.onActivate = { [weak self] in self?.showExtras() }
+        trash.onActivate = { Task { await FileBrowserService.shared.openTrash() } }
+        trash.contextActions = { [weak self] in
+            guard let tile = self?.trashTile else { return [] }
+            return DockTileInteraction(
+                tile: tile, isDragging: false, isDocumentDropTarget: false, isAppFolderDropTarget: false,
+                isTrashDropTarget: false, renderedTileSize: nil
+            ).contextActions(modifierFlags: [])
+        }
         clock.onActivate = { [weak self] in self?.showCalendar() }
     }
     required init?(coder: NSCoder) { nil }
@@ -48,7 +84,22 @@ final class WindowsTaskbarStatusView: NSView {
             _ = MenuExtrasNativeBridge.shared.hostedIDs
             self?.refresh()
         }.store(in: &subscriptions)
+        // Tracks the user's Trash icons; the sink below tracks whether Trash is empty.
+        observeChanges { [weak self] in
+            self?.updateTrash(isEmpty: TrashService.shared.isEmpty)
+        }.store(in: &subscriptions)
+        TrashService.shared.$isEmpty.sink { [weak self] isEmpty in
+            self?.updateTrash(isEmpty: isEmpty)
+        }.store(in: &subscriptions)
         refresh()
+    }
+    private func updateTrash(isEmpty: Bool) {
+        let state: TrashIconState = isEmpty ? .empty : .full
+        trash.image =
+            DockyPreferences.shared.effectiveTrashIconOverrideURL(forState: state)
+            .flatMap { IconCacheService.shared.image(forImageFileURL: $0) }
+            ?? NSImage(named: state.systemImageName)
+        trash.setAccessibilityValue(state.title)
     }
     func refresh() {
         let status = WindowsTaskbarStatusService.shared
@@ -67,11 +118,19 @@ final class WindowsTaskbarStatusView: NSView {
         let height = metrics.buttonSize
         var offset: CGFloat = overflow.isHidden ? 0 : metrics.overflowWidth
         overflow.frame = CGRect(x: 0, y: inset, width: metrics.overflowWidth, height: height)
+        trash.frame = CGRect(x: offset, y: inset, width: metrics.overflowWidth, height: height)
+        if !trash.isHidden { offset += metrics.overflowWidth }
         let extrasWidth = min(menuExtras.preferredWidth,
                               max(0, bounds.width - preferredWidth + menuExtras.preferredWidth))
         menuExtras.frame = CGRect(x: offset, y: inset, width: extrasWidth, height: height)
         offset += extrasWidth
         clock.frame = CGRect(x: offset, y: inset, width: metrics.clockWidth, height: height)
+    }
+    /// The Trash button's frame in `view`'s coordinates, or nil while it's hidden.
+    func trashFrame(in view: NSView) -> CGRect? {
+        guard !trash.isHidden else { return nil }
+        layoutSubtreeIfNeeded()
+        return view.convert(trash.bounds, from: trash)
     }
     func dismissPopup() {
         popup?.dismiss()
@@ -164,11 +223,19 @@ final class WindowsStatusButton: NSView {
     var clockText = "" { didSet { needsDisplay = true } }
     var metrics = WindowsTaskbarMetrics.standard { didSet { needsDisplay = true } }
     var onActivate: (() -> Void)?
+    /// Drawn centered in place of a glyph, like a tray icon.
+    var image: NSImage? { didSet { needsDisplay = true } }
+    /// The button's right-click menu, when it has one.
+    var contextActions: (() -> [ContextAction])?
+    var isDropTarget = false { didSet { if isDropTarget != oldValue { needsDisplay = true } } }
+    /// Drops here destroy things, so the drop-target fill is red rather than the accent.
+    var isDestructive = false
     private var hovered = false
     private var pressed = false
     private var tracking: NSTrackingArea?
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     init(glyph: String, label: String) {
         self.glyph = glyph
         super.init(frame: .zero)
@@ -197,13 +264,30 @@ final class WindowsStatusButton: NSView {
         needsDisplay = true
     }
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), contextActions != nil {
+            rightMouseDown(with: event)
+            return
+        }
         pressed = true
         needsDisplay = true
     }
     override func mouseUp(with event: NSEvent) {
+        let wasPressed = pressed
         pressed = false
         needsDisplay = true
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onActivate?() }
+        if wasPressed, bounds.contains(convert(event.locationInWindow, from: nil)) { onActivate?() }
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        guard let actions = contextActions?() else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)
+    }
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard let actions = contextActions?(), !actions.isEmpty else { return false }
+        ContextActionMenuPresenter.popUpMenu(actions: actions, from: self)
+        return true
     }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 49 { onActivate?() } else { super.keyDown(with: event) }
@@ -213,7 +297,12 @@ final class WindowsStatusButton: NSView {
         needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
-        if hovered || pressed {
+        if isDropTarget {
+            // The accent fill matches taskbar buttons that are drop targets.
+            (isDestructive ? NSColor.systemRed : WindowsTaskbarStyle.accent(effectiveAppearance))
+                .withAlphaComponent(0.2).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: metrics.cornerRadius, yRadius: metrics.cornerRadius).fill()
+        } else if hovered || pressed {
             WindowsTaskbarStyle.highlight(effectiveAppearance, pressed: pressed).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: metrics.cornerRadius, yRadius: metrics.cornerRadius).fill()
         }
@@ -231,6 +320,13 @@ final class WindowsStatusButton: NSView {
                     .font: WindowsTaskbarStyle.font(size: metrics.clockFontSize), .foregroundColor: color,
                     .paragraphStyle: paragraph
                 ])
+            return
+        }
+        if let image {
+            let size = metrics.trayIconSize
+            image.draw(
+                in: CGRect(x: (bounds.width - size) / 2, y: (bounds.height - size) / 2, width: size, height: size),
+                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             return
         }
         let size = metrics.overflowGlyphSize

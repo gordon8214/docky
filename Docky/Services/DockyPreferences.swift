@@ -153,54 +153,6 @@ struct PinnedTileItem: Codable, Equatable, Identifiable {
             hiddenWidgetOwnerBundleIdentifiers: hiddenWidgetOwnerBundleIdentifiers
         )
     }
-
-    nonisolated static func spacer() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .spacer,
-            bundleIdentifier: nil,
-            folderDisplayName: nil,
-            folderBundleIdentifiers: [],
-            appFolderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
-
-    nonisolated static func flexibleSpacer() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .flexibleSpacer,
-            bundleIdentifier: nil,
-            folderDisplayName: nil,
-            folderBundleIdentifiers: [],
-            appFolderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
-
-    nonisolated static func divider() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .divider,
-            bundleIdentifier: nil,
-            folderDisplayName: nil,
-            folderBundleIdentifiers: [],
-            appFolderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
 }
 
 struct TrailingTileItem: Codable, Equatable, Identifiable {
@@ -356,54 +308,6 @@ struct TrailingTileItem: Codable, Equatable, Identifiable {
             hiddenWidgetOwnerBundleIdentifiers: hiddenWidgetOwnerBundleIdentifiers
         )
     }
-
-    nonisolated static func spacer() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .spacer,
-            sourceTileID: nil,
-            folderURL: nil,
-            folderDisplayName: nil,
-            folderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
-
-    nonisolated static func flexibleSpacer() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .flexibleSpacer,
-            sourceTileID: nil,
-            folderURL: nil,
-            folderDisplayName: nil,
-            folderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
-
-    nonisolated static func divider() -> Self {
-        Self(
-            id: "custom:\(UUID().uuidString)",
-            kind: .divider,
-            sourceTileID: nil,
-            folderURL: nil,
-            folderDisplayName: nil,
-            folderDisplayMode: nil,
-            folderContentViewMode: nil,
-            widgetKind: nil,
-            widgetOwnerBundleIdentifier: nil,
-            widgetSpan: nil,
-            hiddenWidgetOwnerBundleIdentifiers: []
-        )
-    }
 }
 
 enum DockWindowPosition: String, CaseIterable, Identifiable {
@@ -481,71 +385,6 @@ enum DockWindowSpaceBehavior: String, CaseIterable, Identifiable {
 
 }
 
-enum DockOverflowBehavior: String, CaseIterable, Identifiable {
-    case rescale
-    case scroll
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .rescale: String(localized: "Rescale")
-        case .scroll: String(localized: "Scroll")
-        }
-    }
-}
-
-enum DockWindowAxisSizing: String, CaseIterable, Identifiable {
-    case fitContent
-    case fullAxis
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .fitContent: String(localized: "Fit Content")
-        case .fullAxis: String(localized: "Full Axis")
-        }
-    }
-}
-
-enum DockBackgroundImageMode: String, CaseIterable, Identifiable {
-    case fill
-    case sprite
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .fill: String(localized: "Fill")
-        case .sprite: String(localized: "Sprite")
-        }
-    }
-}
-
-enum DockClipShape: String, CaseIterable, Identifiable {
-    case rounded
-    case circle
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .rounded: String(localized: "Rounded")
-        case .circle: String(localized: "Circle")
-        }
-    }
-
-    func resolvedCornerRadius(base: CGFloat, maximum: CGFloat) -> CGFloat {
-        switch self {
-        case .rounded:
-            min(base, maximum)
-        case .circle:
-            maximum
-        }
-    }
-}
-
 /// Behavior when an app tile is clicked while that app is already frontmost
 /// with at least one visible (non-minimized) window. Default `.none` keeps the
 /// click as a no-op so existing users don't change behavior on upgrade.
@@ -566,26 +405,6 @@ enum AppTileFrontmostClickBehavior: String, CaseIterable, Identifiable {
         }
     }
 
-}
-
-enum DockTileIndicatorShape: String, CaseIterable, Identifiable {
-    case none
-    case dot
-    case pill
-    case underline
-    case image
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .none: String(localized: "None")
-        case .dot: String(localized: "Dot")
-        case .pill: String(localized: "Pill")
-        case .underline: String(localized: "Underline")
-        case .image: String(localized: "Custom Image")
-        }
-    }
 }
 
 struct AppIconOverride: Codable, Equatable, Identifiable {
@@ -679,34 +498,6 @@ struct FolderIconOverride: Codable, Equatable, Identifiable {
         }
 
         return URL(fileURLWithPath: iconPath)
-    }
-}
-
-struct DockColor: Codable, Equatable {
-    let red: Double
-    let green: Double
-    let blue: Double
-
-    init(red: Double, green: Double, blue: Double) {
-        self.red = red
-        self.green = green
-        self.blue = blue
-    }
-
-    init?(nsColor: NSColor) {
-        guard let rgbColor = nsColor.usingColorSpace(.deviceRGB) else {
-            return nil
-        }
-
-        self.init(
-            red: Double(rgbColor.redComponent),
-            green: Double(rgbColor.greenComponent),
-            blue: Double(rgbColor.blueComponent)
-        )
-    }
-
-    var nsColor: NSColor {
-        NSColor(deviceRed: red, green: green, blue: blue, alpha: 1)
     }
 }
 
@@ -882,42 +673,6 @@ enum WindowSwitcherSpaceScope: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-enum WindowSwitcherLayout: String, CaseIterable, Codable, Identifiable {
-    case auto
-    case thumbnails
-    case list
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .auto: String(localized: "Auto")
-        case .thumbnails: String(localized: "Thumbnails")
-        case .list: String(localized: "List")
-        }
-    }
-
-    var summary: String {
-        switch self {
-        case .auto:
-            String(localized: "Use thumbnails when screen recording permission is granted; fall back to a compact list when previews aren't available.")
-        case .thumbnails:
-            String(localized: "Always show window thumbnails. Requires screen recording permission to render preview images.")
-        case .list:
-            String(localized: "Always show a compact vertical list with app icons and window titles. No screen recording required.")
-        }
-    }
-
-    /// Resolves `.auto` based on whether thumbnail capture is currently
-    /// possible. Always returns either `.thumbnails` or `.list`.
-    func resolved(canCaptureThumbnails: Bool) -> WindowSwitcherLayout {
-        switch self {
-        case .auto: canCaptureThumbnails ? .thumbnails : .list
-        case .thumbnails, .list: self
-        }
-    }
-}
-
 enum LaunchpadLayoutAxis: String, CaseIterable, Codable, Identifiable {
     /// Apple's classic paged Launchpad: a fixed grid per page, scrolls
     /// horizontally one screenful at a time.
@@ -981,679 +736,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
 @Observable final class DockyPreferences {
     static let shared = DockyPreferences()
 
-    /// Set of `Keys.*` strings the user has explicitly customized. Each
-    /// appearance setter inserts its key; setters that clear a value
-    /// (e.g. setting `windowTintColor` back to `nil`) remove it.
-    ///
-    /// This is the predicate the theme override layer uses: when a key
-    /// is *not* in this set, `effective<X>` reads fall through to the
-    /// active theme's manifest, then the built-in default. When the
-    /// key *is* in this set, the user's explicit value wins.
-    ///
-    /// Persisted to `UserDefaults` so override status survives relaunch.
-    /// Populated on first launch via the migration in `init` (any key
-    /// already present in `UserDefaults` at upgrade time is treated as
-    /// user-overridden, better to over-respect existing customizations
-    /// than to let a theme silently replace them).
-    var userOverriddenAppearanceKeys: Set<String> = []
-
-    /// All preference keys that participate in the theme override
-    /// layer (i.e. the appearance subset). Used by `init` migration
-    /// and by `clearAllAppearanceOverrides()`.
-    static let appearanceKeys: Set<String> = [
-        Keys.disablesGlassLook,
-        Keys.tileVerticalPadding,
-        Keys.tileSpacing,
-        Keys.tileClipShape,
-        Keys.tileIconPadding,
-        Keys.tileHoverOpacity,
-        Keys.tileHoverScale,
-        Keys.tileHoverBackgroundColor,
-        Keys.tileHoverBackgroundImagePath,
-        Keys.tileHoverBackgroundOpacity,
-        Keys.tileHoverBackgroundCornerRadius,
-        Keys.tileActiveBackgroundColor,
-        Keys.tileActiveBackgroundImagePath,
-        Keys.tileActiveBackgroundOpacity,
-        Keys.tileActiveBackgroundCornerRadius,
-        Keys.widget1xContentPadding,
-        Keys.widget1xCornerRadius,
-        Keys.widget2xContentPadding,
-        Keys.widget2xCornerRadius,
-        Keys.widget3xContentPadding,
-        Keys.widget3xCornerRadius,
-        Keys.widget4xContentPadding,
-        Keys.widget4xCornerRadius,
-        Keys.windowCornerRadius,
-        Keys.windowCornerRadiusTopLeading,
-        Keys.windowCornerRadiusTopTrailing,
-        Keys.windowCornerRadiusBottomLeading,
-        Keys.windowCornerRadiusBottomTrailing,
-        Keys.windowContentInsetTop,
-        Keys.windowContentInsetLeading,
-        Keys.windowContentInsetBottom,
-        Keys.windowContentInsetTrailing,
-        Keys.windowClipShape,
-        Keys.windowTintColor,
-        Keys.windowTintOpacity,
-        Keys.windowBackgroundImagePath,
-        Keys.windowBackgroundImageMode,
-        Keys.activeIndicatorShape,
-        Keys.activeIndicatorImagePath,
-        Keys.activeIndicatorColor,
-        Keys.activeIndicatorOffset,
-        Keys.activeIndicatorScale,
-        Keys.dividerImagePath,
-        Keys.leftDividerImagePath,
-        Keys.rightDividerImagePath,
-        Keys.mirrorsLeftDividerOnRight,
-        Keys.dividerPaddingFraction,
-        Keys.dividerImageScale,
-        Keys.dividerOffset,
-        Keys.dividerOpacity,
-        Keys.dividerColor,
-        Keys.windowBorderColor,
-        Keys.windowBorderWidth,
-        Keys.iconShadowColor,
-        Keys.iconShadowRadius,
-        Keys.iconShadowOpacity,
-        Keys.showsActivePinnedSeparator,
-    ]
-
-    /// Whether the user has an explicit override for this preference
-    /// key. Used by Settings UI to show an "override / theme value"
-    /// affordance, and by `effective<X>` accessors to decide which
-    /// value to return.
-    func isAppearanceOverridden(_ key: String) -> Bool {
-        userOverriddenAppearanceKeys.contains(key)
-    }
-
-    /// Marks an appearance key as user-overridden. Idempotent.
-    /// Called from every appearance setter alongside the persist write.
-    /// Internal (not fileprivate) so other services that own their own
-    /// preference storage (e.g. `DockSettingsService` for tile size /
-    /// magnification) can participate in the same override layer when a
-    /// theme tries to provide a `behavior.*` value.
-    func markAppearanceOverride(_ key: String) {
-        guard !userOverriddenAppearanceKeys.contains(key) else { return }
-        userOverriddenAppearanceKeys.insert(key)
-        persistUserOverriddenAppearanceKeys()
-    }
-
-    /// Clears the override flag for a single appearance key. The
-    /// stored value is left untouched, `effective<X>` simply starts
-    /// preferring the theme value (or built-in default). Used by the
-    /// Settings UI "revert to theme" affordance.
-    func clearAppearanceOverride(_ key: String) {
-        guard userOverriddenAppearanceKeys.contains(key) else { return }
-        userOverriddenAppearanceKeys.remove(key)
-        persistUserOverriddenAppearanceKeys()
-    }
-
-    /// Clears every appearance override. Used by the "use theme as-is"
-    /// flow and by `resetAppearanceToDefaults()`.
-    func clearAllAppearanceOverrides() {
-        guard !userOverriddenAppearanceKeys.isEmpty else { return }
-        userOverriddenAppearanceKeys.removeAll()
-        persistUserOverriddenAppearanceKeys()
-    }
-
-    private func persistUserOverriddenAppearanceKeys() {
-        defaults.set(
-            Array(userOverriddenAppearanceKeys),
-            forKey: Keys.userOverriddenAppearanceKeys
-        )
-    }
-
-    /// Padding applied inside each dock tile above and below the icon content.
-    /// Total window height becomes `iconHeight + tileVerticalPadding * 2`.
-    var tileVerticalPadding: CGFloat {
-        didSet {
-            guard tileVerticalPadding != oldValue else { return }
-            defaults.set(Double(tileVerticalPadding), forKey: Keys.tileVerticalPadding)
-            markAppearanceOverride(Keys.tileVerticalPadding)
-        }
-    }
-
-    /// Spacing applied between adjacent dock tiles.
-    var tileSpacing: CGFloat {
-        didSet {
-            guard tileSpacing != oldValue else { return }
-            defaults.set(Double(tileSpacing), forKey: Keys.tileSpacing)
-            markAppearanceOverride(Keys.tileSpacing)
-        }
-    }
-
-    /// Clip shape applied to Docky-rendered tile chrome.
-    var tileClipShape: DockClipShape {
-        didSet {
-            guard tileClipShape != oldValue else { return }
-            defaults.set(tileClipShape.rawValue, forKey: Keys.tileClipShape)
-            markAppearanceOverride(Keys.tileClipShape)
-        }
-    }
-
-    /// Extra padding inside each tile around the icon, shrinks the
-    /// rendered icon while leaving the tile bounds untouched.
-    var tileIconPadding: CGFloat {
-        didSet {
-            guard tileIconPadding != oldValue else { return }
-            defaults.set(Double(tileIconPadding), forKey: Keys.tileIconPadding)
-            markAppearanceOverride(Keys.tileIconPadding)
-        }
-    }
-
-    /// Optional tile-hover effects. Each property is nullable; if the
-    /// user clears one (sets it back to its absent state) the override
-    /// flag is cleared so the active theme can resume providing the
-    /// value.
-    var tileHoverOpacity: CGFloat? {
-        didSet {
-            guard tileHoverOpacity != oldValue else { return }
-            persistOptionalDouble(tileHoverOpacity, forKey: Keys.tileHoverOpacity)
-            if tileHoverOpacity == nil {
-                clearAppearanceOverride(Keys.tileHoverOpacity)
-            } else {
-                markAppearanceOverride(Keys.tileHoverOpacity)
-            }
-        }
-    }
-
-    var tileHoverScale: CGFloat? {
-        didSet {
-            guard tileHoverScale != oldValue else { return }
-            persistOptionalDouble(tileHoverScale, forKey: Keys.tileHoverScale)
-            if tileHoverScale == nil {
-                clearAppearanceOverride(Keys.tileHoverScale)
-            } else {
-                markAppearanceOverride(Keys.tileHoverScale)
-            }
-        }
-    }
-
-    var tileHoverBackgroundColor: DockColor? {
-        didSet {
-            guard tileHoverBackgroundColor != oldValue else { return }
-            persistOptionalColor(tileHoverBackgroundColor, forKey: Keys.tileHoverBackgroundColor)
-            if tileHoverBackgroundColor == nil {
-                clearAppearanceOverride(Keys.tileHoverBackgroundColor)
-            } else {
-                markAppearanceOverride(Keys.tileHoverBackgroundColor)
-            }
-        }
-    }
-
-    var tileHoverBackgroundImagePath: String? {
-        didSet {
-            guard tileHoverBackgroundImagePath != oldValue else { return }
-            if let path = tileHoverBackgroundImagePath, !path.isEmpty {
-                defaults.set(path, forKey: Keys.tileHoverBackgroundImagePath)
-                markAppearanceOverride(Keys.tileHoverBackgroundImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.tileHoverBackgroundImagePath)
-                clearAppearanceOverride(Keys.tileHoverBackgroundImagePath)
-            }
-        }
-    }
-
-    var tileHoverBackgroundOpacity: CGFloat? {
-        didSet {
-            guard tileHoverBackgroundOpacity != oldValue else { return }
-            persistOptionalDouble(tileHoverBackgroundOpacity, forKey: Keys.tileHoverBackgroundOpacity)
-            if tileHoverBackgroundOpacity == nil {
-                clearAppearanceOverride(Keys.tileHoverBackgroundOpacity)
-            } else {
-                markAppearanceOverride(Keys.tileHoverBackgroundOpacity)
-            }
-        }
-    }
-
-    var tileHoverBackgroundCornerRadius: CGFloat? {
-        didSet {
-            guard tileHoverBackgroundCornerRadius != oldValue else { return }
-            persistOptionalDouble(tileHoverBackgroundCornerRadius, forKey: Keys.tileHoverBackgroundCornerRadius)
-            if tileHoverBackgroundCornerRadius == nil {
-                clearAppearanceOverride(Keys.tileHoverBackgroundCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.tileHoverBackgroundCornerRadius)
-            }
-        }
-    }
-
-    /// Active-tile background, same surface as the hover background
-    /// but painted under every running app tile, regardless of hover.
-    /// Used together with the underline / dot / pill indicator for
-    /// Windows-style "highlighted active app" looks.
-    var tileActiveBackgroundColor: DockColor? {
-        didSet {
-            guard tileActiveBackgroundColor != oldValue else { return }
-            persistOptionalColor(tileActiveBackgroundColor, forKey: Keys.tileActiveBackgroundColor)
-            if tileActiveBackgroundColor == nil {
-                clearAppearanceOverride(Keys.tileActiveBackgroundColor)
-            } else {
-                markAppearanceOverride(Keys.tileActiveBackgroundColor)
-            }
-        }
-    }
-
-    var tileActiveBackgroundImagePath: String? {
-        didSet {
-            guard tileActiveBackgroundImagePath != oldValue else { return }
-            if let path = tileActiveBackgroundImagePath, !path.isEmpty {
-                defaults.set(path, forKey: Keys.tileActiveBackgroundImagePath)
-                markAppearanceOverride(Keys.tileActiveBackgroundImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.tileActiveBackgroundImagePath)
-                clearAppearanceOverride(Keys.tileActiveBackgroundImagePath)
-            }
-        }
-    }
-
-    var tileActiveBackgroundOpacity: CGFloat? {
-        didSet {
-            guard tileActiveBackgroundOpacity != oldValue else { return }
-            persistOptionalDouble(tileActiveBackgroundOpacity, forKey: Keys.tileActiveBackgroundOpacity)
-            if tileActiveBackgroundOpacity == nil {
-                clearAppearanceOverride(Keys.tileActiveBackgroundOpacity)
-            } else {
-                markAppearanceOverride(Keys.tileActiveBackgroundOpacity)
-            }
-        }
-    }
-
-    var tileActiveBackgroundCornerRadius: CGFloat? {
-        didSet {
-            guard tileActiveBackgroundCornerRadius != oldValue else { return }
-            persistOptionalDouble(tileActiveBackgroundCornerRadius, forKey: Keys.tileActiveBackgroundCornerRadius)
-            if tileActiveBackgroundCornerRadius == nil {
-                clearAppearanceOverride(Keys.tileActiveBackgroundCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.tileActiveBackgroundCornerRadius)
-            }
-        }
-    }
-
-    /// Per-span widget chrome overrides. Each property is `nil` by
-    /// default; widgets at that span fall through to
-    /// `nonAppContentPadding` / `nonAppTileCornerRadius` (the tile
-    /// chrome inset + global clip-shape). Setting any of these
-    /// lets a theme (or the user) tune individual rendering sizes ,
-    /// e.g. 3x widgets with zero padding and zero corner radius for
-    /// a Windows-style edge-to-edge look, without affecting 1x/2x.
-    var widget1xContentPadding: CGFloat? {
-        didSet {
-            guard widget1xContentPadding != oldValue else { return }
-            persistOptionalDouble(widget1xContentPadding, forKey: Keys.widget1xContentPadding)
-            if widget1xContentPadding == nil {
-                clearAppearanceOverride(Keys.widget1xContentPadding)
-            } else {
-                markAppearanceOverride(Keys.widget1xContentPadding)
-            }
-        }
-    }
-
-    var widget1xCornerRadius: CGFloat? {
-        didSet {
-            guard widget1xCornerRadius != oldValue else { return }
-            persistOptionalDouble(widget1xCornerRadius, forKey: Keys.widget1xCornerRadius)
-            if widget1xCornerRadius == nil {
-                clearAppearanceOverride(Keys.widget1xCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.widget1xCornerRadius)
-            }
-        }
-    }
-
-    var widget2xContentPadding: CGFloat? {
-        didSet {
-            guard widget2xContentPadding != oldValue else { return }
-            persistOptionalDouble(widget2xContentPadding, forKey: Keys.widget2xContentPadding)
-            if widget2xContentPadding == nil {
-                clearAppearanceOverride(Keys.widget2xContentPadding)
-            } else {
-                markAppearanceOverride(Keys.widget2xContentPadding)
-            }
-        }
-    }
-
-    var widget2xCornerRadius: CGFloat? {
-        didSet {
-            guard widget2xCornerRadius != oldValue else { return }
-            persistOptionalDouble(widget2xCornerRadius, forKey: Keys.widget2xCornerRadius)
-            if widget2xCornerRadius == nil {
-                clearAppearanceOverride(Keys.widget2xCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.widget2xCornerRadius)
-            }
-        }
-    }
-
-    var widget3xContentPadding: CGFloat? {
-        didSet {
-            guard widget3xContentPadding != oldValue else { return }
-            persistOptionalDouble(widget3xContentPadding, forKey: Keys.widget3xContentPadding)
-            if widget3xContentPadding == nil {
-                clearAppearanceOverride(Keys.widget3xContentPadding)
-            } else {
-                markAppearanceOverride(Keys.widget3xContentPadding)
-            }
-        }
-    }
-
-    var widget3xCornerRadius: CGFloat? {
-        didSet {
-            guard widget3xCornerRadius != oldValue else { return }
-            persistOptionalDouble(widget3xCornerRadius, forKey: Keys.widget3xCornerRadius)
-            if widget3xCornerRadius == nil {
-                clearAppearanceOverride(Keys.widget3xCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.widget3xCornerRadius)
-            }
-        }
-    }
-
-    var widget4xContentPadding: CGFloat? {
-        didSet {
-            guard widget4xContentPadding != oldValue else { return }
-            persistOptionalDouble(widget4xContentPadding, forKey: Keys.widget4xContentPadding)
-            if widget4xContentPadding == nil {
-                clearAppearanceOverride(Keys.widget4xContentPadding)
-            } else {
-                markAppearanceOverride(Keys.widget4xContentPadding)
-            }
-        }
-    }
-
-    var widget4xCornerRadius: CGFloat? {
-        didSet {
-            guard widget4xCornerRadius != oldValue else { return }
-            persistOptionalDouble(widget4xCornerRadius, forKey: Keys.widget4xCornerRadius)
-            if widget4xCornerRadius == nil {
-                clearAppearanceOverride(Keys.widget4xCornerRadius)
-            } else {
-                markAppearanceOverride(Keys.widget4xCornerRadius)
-            }
-        }
-    }
-
-    /// Resolves the effective content padding override for a widget
-    /// rendered at the given span. Returns `nil` if neither the user
-    /// nor the theme provided one, caller falls back to its own
-    /// default (typically `nonAppContentPadding`).
-    func effectiveWidgetContentPadding(for span: TileSpan) -> CGFloat? {
-        let (userKey, userValue) = widgetContentPaddingPair(for: span)
-        let themed = themedWidgetSpan(for: span)?.contentPadding
-        if isAppearanceOverridden(userKey), let userValue {
-            return max(0, userValue)
-        }
-        if let themed {
-            return max(0, themed)
-        }
-        return nil
-    }
-
-    func effectiveWidgetCornerRadius(for span: TileSpan) -> CGFloat? {
-        let (userKey, userValue) = widgetCornerRadiusPair(for: span)
-        let themed = themedWidgetSpan(for: span)?.cornerRadius
-        if isAppearanceOverridden(userKey), let userValue {
-            return max(0, userValue)
-        }
-        if let themed {
-            return max(0, themed)
-        }
-        return nil
-    }
-
-    private func widgetContentPaddingPair(for span: TileSpan) -> (String, CGFloat?) {
-        switch span {
-        case .one: (Keys.widget1xContentPadding, widget1xContentPadding)
-        case .two: (Keys.widget2xContentPadding, widget2xContentPadding)
-        case .three: (Keys.widget3xContentPadding, widget3xContentPadding)
-        case .four: (Keys.widget4xContentPadding, widget4xContentPadding)
-        }
-    }
-
-    private func widgetCornerRadiusPair(for span: TileSpan) -> (String, CGFloat?) {
-        switch span {
-        case .one: (Keys.widget1xCornerRadius, widget1xCornerRadius)
-        case .two: (Keys.widget2xCornerRadius, widget2xCornerRadius)
-        case .three: (Keys.widget3xCornerRadius, widget3xCornerRadius)
-        case .four: (Keys.widget4xCornerRadius, widget4xCornerRadius)
-        }
-    }
-
-    /// Theme-only flag (no user override surface). Returns `true` when
-    /// the active theme says this span's widgets should ignore the
-    /// theme-level tile icon padding.
-    func effectiveWidgetIgnoresAddedPaddings(for span: TileSpan) -> Bool {
-        themedWidgetSpan(for: span)?.ignoresAddedPaddings ?? false
-    }
-
-    private func themedWidgetSpan(for span: TileSpan) -> ThemeWidgetSpan? {
-        let widgets = ThemeManager.shared.activeManifest?.appearance.widgets
-        switch span {
-        case .one: return widgets?.oneX
-        case .two: return widgets?.twoX
-        case .three: return widgets?.threeX
-        case .four: return widgets?.fourX
-        }
-    }
-
-    /// Corner radius applied to the main dock window.
-    var windowCornerRadius: CGFloat {
-        didSet {
-            guard windowCornerRadius != oldValue else { return }
-            defaults.set(Double(windowCornerRadius), forKey: Keys.windowCornerRadius)
-            markAppearanceOverride(Keys.windowCornerRadius)
-        }
-    }
-
-    /// Per-corner overrides; `nil` inherits `windowCornerRadius`. Lets a
-    /// theme keep only the screen-facing edge rounded (taskbar look).
-    var windowCornerRadiusTopLeading: CGFloat? {
-        didSet {
-            guard windowCornerRadiusTopLeading != oldValue else { return }
-            persistOptionalDouble(windowCornerRadiusTopLeading, forKey: Keys.windowCornerRadiusTopLeading)
-            markAppearanceOverride(Keys.windowCornerRadiusTopLeading)
-        }
-    }
-
-    var windowCornerRadiusTopTrailing: CGFloat? {
-        didSet {
-            guard windowCornerRadiusTopTrailing != oldValue else { return }
-            persistOptionalDouble(windowCornerRadiusTopTrailing, forKey: Keys.windowCornerRadiusTopTrailing)
-            markAppearanceOverride(Keys.windowCornerRadiusTopTrailing)
-        }
-    }
-
-    var windowCornerRadiusBottomLeading: CGFloat? {
-        didSet {
-            guard windowCornerRadiusBottomLeading != oldValue else { return }
-            persistOptionalDouble(windowCornerRadiusBottomLeading, forKey: Keys.windowCornerRadiusBottomLeading)
-            markAppearanceOverride(Keys.windowCornerRadiusBottomLeading)
-        }
-    }
-
-    var windowCornerRadiusBottomTrailing: CGFloat? {
-        didSet {
-            guard windowCornerRadiusBottomTrailing != oldValue else { return }
-            persistOptionalDouble(windowCornerRadiusBottomTrailing, forKey: Keys.windowCornerRadiusBottomTrailing)
-            markAppearanceOverride(Keys.windowCornerRadiusBottomTrailing)
-        }
-    }
-
-    /// Per-edge padding between the dock panel and the chrome view.
-    /// Defaults to 2pt; full-axis mode forces 0 at the
-    /// `MainWindowContainerView` layer regardless of this setting.
-    var windowContentInsetTop: CGFloat {
-        didSet {
-            guard windowContentInsetTop != oldValue else { return }
-            defaults.set(Double(windowContentInsetTop), forKey: Keys.windowContentInsetTop)
-            markAppearanceOverride(Keys.windowContentInsetTop)
-        }
-    }
-
-    var windowContentInsetLeading: CGFloat {
-        didSet {
-            guard windowContentInsetLeading != oldValue else { return }
-            defaults.set(Double(windowContentInsetLeading), forKey: Keys.windowContentInsetLeading)
-            markAppearanceOverride(Keys.windowContentInsetLeading)
-        }
-    }
-
-    var windowContentInsetBottom: CGFloat {
-        didSet {
-            guard windowContentInsetBottom != oldValue else { return }
-            defaults.set(Double(windowContentInsetBottom), forKey: Keys.windowContentInsetBottom)
-            markAppearanceOverride(Keys.windowContentInsetBottom)
-        }
-    }
-
-    var windowContentInsetTrailing: CGFloat {
-        didSet {
-            guard windowContentInsetTrailing != oldValue else { return }
-            defaults.set(Double(windowContentInsetTrailing), forKey: Keys.windowContentInsetTrailing)
-            markAppearanceOverride(Keys.windowContentInsetTrailing)
-        }
-    }
-
-    private func persistOptionalDouble(_ value: CGFloat?, forKey key: String) {
-        if let value {
-            defaults.set(Double(value), forKey: key)
-        } else {
-            defaults.removeObject(forKey: key)
-        }
-    }
-
-    /// Clip shape applied to the main dock chrome.
-    var windowClipShape: DockClipShape {
-        didSet {
-            guard windowClipShape != oldValue else { return }
-            defaults.set(windowClipShape.rawValue, forKey: Keys.windowClipShape)
-            markAppearanceOverride(Keys.windowClipShape)
-        }
-    }
-
-    /// Optional tint override for the main dock window. `nil` follows the system material tint.
-    var windowTintColor: DockColor? {
-        didSet {
-            guard windowTintColor != oldValue else { return }
-            persistWindowTintColor(windowTintColor)
-            if windowTintColor == nil {
-                clearAppearanceOverride(Keys.windowTintColor)
-            } else {
-                markAppearanceOverride(Keys.windowTintColor)
-            }
-        }
-    }
-
-    /// Opacity applied to the main dock window tint.
-    var windowTintOpacity: CGFloat {
-        didSet {
-            guard windowTintOpacity != oldValue else { return }
-            defaults.set(Double(windowTintOpacity), forKey: Keys.windowTintOpacity)
-            markAppearanceOverride(Keys.windowTintOpacity)
-        }
-    }
-
-    /// Whether the main dock window should suppress its gradient border chrome.
-    var disablesGlassLook: Bool {
-        didSet {
-            guard disablesGlassLook != oldValue else { return }
-            defaults.set(disablesGlassLook, forKey: Keys.disablesGlassLook)
-            markAppearanceOverride(Keys.disablesGlassLook)
-        }
-    }
-
-    /// Optional flat-color outline drawn around the dock chrome. When
-    /// `nil` the chrome falls back to the default glass border (or no
-    /// border when glass is disabled).
-    var windowBorderColor: DockColor? {
-        didSet {
-            guard windowBorderColor != oldValue else { return }
-            persistOptionalColor(windowBorderColor, forKey: Keys.windowBorderColor)
-            if windowBorderColor == nil {
-                clearAppearanceOverride(Keys.windowBorderColor)
-            } else {
-                markAppearanceOverride(Keys.windowBorderColor)
-            }
-        }
-    }
-
-    /// Stroke width applied to `windowBorderColor`. Ignored when the
-    /// color is nil. Stored even when there's no color so the slider
-    /// remembers its position between toggles.
-    var windowBorderWidth: CGFloat {
-        didSet {
-            guard windowBorderWidth != oldValue else { return }
-            defaults.set(Double(windowBorderWidth), forKey: Keys.windowBorderWidth)
-            markAppearanceOverride(Keys.windowBorderWidth)
-        }
-    }
-
-    /// Optional drop shadow color applied behind icon-bearing tiles.
-    /// `nil` disables the shadow regardless of the radius/opacity
-    /// values, those are kept around so the user's slider state
-    /// persists across toggles.
-    var iconShadowColor: DockColor? {
-        didSet {
-            guard iconShadowColor != oldValue else { return }
-            persistOptionalColor(iconShadowColor, forKey: Keys.iconShadowColor)
-            if iconShadowColor == nil {
-                clearAppearanceOverride(Keys.iconShadowColor)
-            } else {
-                markAppearanceOverride(Keys.iconShadowColor)
-            }
-        }
-    }
-
-    /// Blur radius of the icon shadow in points.
-    var iconShadowRadius: CGFloat {
-        didSet {
-            guard iconShadowRadius != oldValue else { return }
-            defaults.set(Double(iconShadowRadius), forKey: Keys.iconShadowRadius)
-            markAppearanceOverride(Keys.iconShadowRadius)
-        }
-    }
-
-    /// Alpha multiplier applied to `iconShadowColor`. 1.0 = full
-    /// strength, 0 = invisible. Multiplied with the color's own alpha
-    /// at render time.
-    var iconShadowOpacity: CGFloat {
-        didSet {
-            guard iconShadowOpacity != oldValue else { return }
-            defaults.set(Double(iconShadowOpacity), forKey: Keys.iconShadowOpacity)
-            markAppearanceOverride(Keys.iconShadowOpacity)
-        }
-    }
-
-    /// Optional image path used as the main dock window background.
-    var windowBackgroundImagePath: String? {
-        didSet {
-            guard windowBackgroundImagePath != oldValue else { return }
-
-            if let windowBackgroundImagePath, !windowBackgroundImagePath.isEmpty {
-                defaults.set(windowBackgroundImagePath, forKey: Keys.windowBackgroundImagePath)
-                markAppearanceOverride(Keys.windowBackgroundImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.windowBackgroundImagePath)
-                clearAppearanceOverride(Keys.windowBackgroundImagePath)
-            }
-        }
-    }
-
-    /// How the background image is rendered inside the chrome. `fill` scales
-    /// to cover the chrome while `sprite` clips the leading/trailing thirds
-    /// and stretches the middle along the dock's axis.
-    var windowBackgroundImageMode: DockBackgroundImageMode {
-        didSet {
-            guard windowBackgroundImageMode != oldValue else { return }
-            defaults.set(windowBackgroundImageMode.rawValue, forKey: Keys.windowBackgroundImageMode)
-            markAppearanceOverride(Keys.windowBackgroundImageMode)
-        }
-    }
-
-    /// Edge Docky anchors itself to. `system` mirrors the macOS Dock.
+    /// Edge Docky anchors itself to. `system` mirrors the macOS Dock. Stored for
+    /// screen-edge support; the taskbar follows `effectiveWindowPosition` meanwhile.
     var windowPosition: DockWindowPosition {
         didSet {
             guard windowPosition != oldValue else { return }
@@ -1693,16 +777,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard showsAppBadges != oldValue else { return }
             defaults.set(showsAppBadges, forKey: Keys.showsAppBadges)
-        }
-    }
-
-    /// Whether app tiles fade to half opacity while their app is idle —
-    /// hidden (Cmd+H) or running with no windows open. Off keeps icons
-    /// fully opaque regardless of state.
-    var dimsIdleAppIcons: Bool {
-        didSet {
-            guard dimsIdleAppIcons != oldValue else { return }
-            defaults.set(dimsIdleAppIcons, forKey: Keys.dimsIdleAppIcons)
         }
     }
 
@@ -1772,27 +846,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Duration of Docky's autohide slide (show/hide) window animation. A value
-    /// of 0 snaps the window into place instantly.
-    var autohideAnimationDuration: TimeInterval {
-        didSet {
-            let clampedValue = min(max(0, autohideAnimationDuration), 1)
-            guard clampedValue != oldValue else {
-                if autohideAnimationDuration != clampedValue {
-                    autohideAnimationDuration = clampedValue
-                }
-                return
-            }
-
-            if autohideAnimationDuration != clampedValue {
-                autohideAnimationDuration = clampedValue
-                return
-            }
-
-            defaults.set(clampedValue, forKey: Keys.autohideAnimationDuration)
-        }
-    }
-
     /// Height of the Windows 11 taskbar, in whole points. Dragging the bar's
     /// top edge or the Settings field changes it; the bar's buttons, icons,
     /// and tray scale with it.
@@ -1859,47 +912,10 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Layout for the per-tile hover window preview. Independent from the
-    /// global switcher's layout so users can prefer thumbnails in one and
-    /// list in the other.
-    var windowPreviewLayout: WindowSwitcherLayout {
-        didSet {
-            guard windowPreviewLayout != oldValue else { return }
-            defaults.set(windowPreviewLayout.rawValue, forKey: Keys.windowPreviewLayout)
-        }
-    }
-
-    /// How Docky handles overflow when tiles exceed the screen on the dock axis.
-    var overflowBehavior: DockOverflowBehavior {
-        didSet {
-            guard overflowBehavior != oldValue else { return }
-            defaults.set(overflowBehavior.rawValue, forKey: Keys.overflowBehavior)
-        }
-    }
-
-    /// Whether Docky's window hugs its content or stretches across the full dock axis.
-    var windowAxisSizing: DockWindowAxisSizing {
-        didSet {
-            guard windowAxisSizing != oldValue else { return }
-            defaults.set(windowAxisSizing.rawValue, forKey: Keys.windowAxisSizing)
-            markAppearanceOverride(Keys.windowAxisSizing)
-        }
-    }
-
-    /// The Windows presentation fixes placement without rewriting the stored preference.
+    /// The taskbar lays out horizontally only, so it stays at the bottom
+    /// without rewriting the stored preference.
     var effectiveWindowPosition: DockWindowPosition {
-        WindowsTaskbarStyle.isActive ? .bottom : windowPosition
-    }
-
-    var effectiveWindowAxisSizing: DockWindowAxisSizing {
-        if WindowsTaskbarStyle.isActive { return .fullAxis }
-        let themed = ThemeManager.shared.activeManifest?.behavior?.windowAxisSizing
-            .flatMap(DockWindowAxisSizing.init(rawValue:))
-        return appearanceOverride(
-            Keys.windowAxisSizing,
-            raw: windowAxisSizing,
-            themed: themed
-        )
+        .bottom
     }
 
     /// Whether hovering an expandable widget tile presents the expanded preview window.
@@ -1936,25 +952,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
 
             defaults.set(clampedValue, forKey: Keys.widgetHoverPreviewDelay)
         }
-    }
-
-    /// Whether Docky shows the divider between pinned apps and unpinned running apps.
-    var showsActivePinnedSeparator: Bool {
-        didSet {
-            guard showsActivePinnedSeparator != oldValue else { return }
-            defaults.set(showsActivePinnedSeparator, forKey: Keys.showsActivePinnedSeparator)
-            markAppearanceOverride(Keys.showsActivePinnedSeparator)
-        }
-    }
-
-    /// Theme-aware accessor. Themes can suppress the pinned/active
-    /// divider for taskbar-style layouts; user overrides win when set.
-    var effectiveShowsActivePinnedSeparator: Bool {
-        appearanceOverride(
-            Keys.showsActivePinnedSeparator,
-            raw: showsActivePinnedSeparator,
-            themed: ThemeManager.shared.activeManifest?.behavior?.showsActivePinnedSeparator
-        )
     }
 
     /// Whether Docky surfaces unpinned running apps. Disable to use Docky as a static shelf alongside the system Dock.
@@ -2043,169 +1040,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Shape used for the active app indicator.
-    var activeIndicatorShape: DockTileIndicatorShape {
-        didSet {
-            guard activeIndicatorShape != oldValue else { return }
-            defaults.set(activeIndicatorShape.rawValue, forKey: Keys.activeIndicatorShape)
-            markAppearanceOverride(Keys.activeIndicatorShape)
-        }
-    }
-
-    /// Optional image path used for the custom active app indicator.
-    var activeIndicatorImagePath: String? {
-        didSet {
-            guard activeIndicatorImagePath != oldValue else { return }
-
-            if let activeIndicatorImagePath, !activeIndicatorImagePath.isEmpty {
-                defaults.set(activeIndicatorImagePath, forKey: Keys.activeIndicatorImagePath)
-                markAppearanceOverride(Keys.activeIndicatorImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.activeIndicatorImagePath)
-                clearAppearanceOverride(Keys.activeIndicatorImagePath)
-            }
-        }
-    }
-
-    /// Optional color override used for dot and pill active app indicators.
-    var activeIndicatorColor: DockColor? {
-        didSet {
-            guard activeIndicatorColor != oldValue else { return }
-            persistActiveIndicatorColor(activeIndicatorColor)
-            if activeIndicatorColor == nil {
-                clearAppearanceOverride(Keys.activeIndicatorColor)
-            } else {
-                markAppearanceOverride(Keys.activeIndicatorColor)
-            }
-        }
-    }
-
-    /// Optional image path used as the default divider image (applies to all dividers).
-    var dividerImagePath: String? {
-        didSet {
-            guard dividerImagePath != oldValue else { return }
-
-            if let dividerImagePath, !dividerImagePath.isEmpty {
-                defaults.set(dividerImagePath, forKey: Keys.dividerImagePath)
-                markAppearanceOverride(Keys.dividerImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.dividerImagePath)
-                clearAppearanceOverride(Keys.dividerImagePath)
-            }
-        }
-    }
-
-    /// Optional image path that overrides the global divider image for the leading section divider.
-    var leftDividerImagePath: String? {
-        didSet {
-            guard leftDividerImagePath != oldValue else { return }
-
-            if let leftDividerImagePath, !leftDividerImagePath.isEmpty {
-                defaults.set(leftDividerImagePath, forKey: Keys.leftDividerImagePath)
-                markAppearanceOverride(Keys.leftDividerImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.leftDividerImagePath)
-                clearAppearanceOverride(Keys.leftDividerImagePath)
-            }
-        }
-    }
-
-    /// Optional image path that overrides the global divider image for the trailing section divider.
-    var rightDividerImagePath: String? {
-        didSet {
-            guard rightDividerImagePath != oldValue else { return }
-
-            if let rightDividerImagePath, !rightDividerImagePath.isEmpty {
-                defaults.set(rightDividerImagePath, forKey: Keys.rightDividerImagePath)
-                markAppearanceOverride(Keys.rightDividerImagePath)
-            } else {
-                defaults.removeObject(forKey: Keys.rightDividerImagePath)
-                clearAppearanceOverride(Keys.rightDividerImagePath)
-            }
-        }
-    }
-
-    /// When true, the trailing divider mirrors the leading divider's image instead of using its own override.
-    var mirrorsLeftDividerOnRight: Bool {
-        didSet {
-            guard mirrorsLeftDividerOnRight != oldValue else { return }
-            defaults.set(mirrorsLeftDividerOnRight, forKey: Keys.mirrorsLeftDividerOnRight)
-            markAppearanceOverride(Keys.mirrorsLeftDividerOnRight)
-        }
-    }
-
-    /// Extra inward offset applied to the active app indicator, in points.
-    /// Positive values pull the indicator further from the screen edge.
-    var activeIndicatorOffset: CGFloat {
-        didSet {
-            guard activeIndicatorOffset != oldValue else { return }
-            defaults.set(activeIndicatorOffset, forKey: Keys.activeIndicatorOffset)
-            markAppearanceOverride(Keys.activeIndicatorOffset)
-        }
-    }
-
-    /// Scale multiplier applied to the active app indicator's rendered size.
-    var activeIndicatorScale: CGFloat {
-        didSet {
-            guard activeIndicatorScale != oldValue else { return }
-            defaults.set(activeIndicatorScale, forKey: Keys.activeIndicatorScale)
-            markAppearanceOverride(Keys.activeIndicatorScale)
-        }
-    }
-
-    /// Fraction of the tile size used to inset the divider along its short axis.
-    /// 0 produces an edge-to-edge divider; 0.25 matches the legacy default.
-    var dividerPaddingFraction: CGFloat {
-        didSet {
-            guard dividerPaddingFraction != oldValue else { return }
-            defaults.set(dividerPaddingFraction, forKey: Keys.dividerPaddingFraction)
-            markAppearanceOverride(Keys.dividerPaddingFraction)
-        }
-    }
-
-    /// Scale multiplier applied to custom divider images.
-    var dividerImageScale: CGFloat {
-        didSet {
-            guard dividerImageScale != oldValue else { return }
-            defaults.set(dividerImageScale, forKey: Keys.dividerImageScale)
-            markAppearanceOverride(Keys.dividerImageScale)
-        }
-    }
-
-    /// Offset applied to dividers along the dock's main axis, in points.
-    /// Positive shifts toward the dock's trailing direction.
-    var dividerOffset: CGFloat {
-        didSet {
-            guard dividerOffset != oldValue else { return }
-            defaults.set(dividerOffset, forKey: Keys.dividerOffset)
-            markAppearanceOverride(Keys.dividerOffset)
-        }
-    }
-
-    /// Alpha multiplier applied to dividers. 1.0 = fully opaque, 0 = invisible.
-    var dividerOpacity: CGFloat {
-        didSet {
-            guard dividerOpacity != oldValue else { return }
-            defaults.set(dividerOpacity, forKey: Keys.dividerOpacity)
-            markAppearanceOverride(Keys.dividerOpacity)
-        }
-    }
-
-    /// Optional flat fill color used when no divider image is set.
-    /// `nil` falls back to SwiftUI's hierarchical `.primary` so the
-    /// divider tracks the system label color by default.
-    var dividerColor: DockColor? {
-        didSet {
-            guard dividerColor != oldValue else { return }
-            persistOptionalColor(dividerColor, forKey: Keys.dividerColor)
-            if dividerColor == nil {
-                clearAppearanceOverride(Keys.dividerColor)
-            } else {
-                markAppearanceOverride(Keys.dividerColor)
-            }
-        }
-    }
-
     /// Optional per-app icon overrides used by app tiles.
     var appIconOverrides: [AppIconOverride] {
         didSet {
@@ -2257,32 +1091,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Optional image path used to replace the Start Menu tile's icon.
-    var startMenuIconPath: String? {
-        didSet {
-            guard startMenuIconPath != oldValue else { return }
-
-            if let startMenuIconPath, !startMenuIconPath.isEmpty {
-                defaults.set(startMenuIconPath, forKey: Keys.startMenuIconPath)
-            } else {
-                defaults.removeObject(forKey: Keys.startMenuIconPath)
-            }
-        }
-    }
-
-    /// Optional padding fraction applied around the Start Menu override icon.
-    var startMenuIconPaddingFraction: CGFloat? {
-        didSet {
-            guard startMenuIconPaddingFraction != oldValue else { return }
-
-            if let startMenuIconPaddingFraction {
-                defaults.set(Double(startMenuIconPaddingFraction), forKey: Keys.startMenuIconPaddingFraction)
-            } else {
-                defaults.removeObject(forKey: Keys.startMenuIconPaddingFraction)
-            }
-        }
-    }
-
     /// Bundle identifiers hidden from Docky's app tile surfaces.
     var hiddenAppBundleIdentifiers: [String] {
         didSet {
@@ -2309,16 +1117,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         didSet {
             guard showsGroupedOpenedAppsInDock != oldValue else { return }
             defaults.set(showsGroupedOpenedAppsInDock, forKey: Keys.showsGroupedOpenedAppsInDock)
-        }
-    }
-
-    /// Whether the rounded backdrop should be drawn around the folder tile and
-    /// its grouped opened apps. Independent of `showsGroupedOpenedAppsInDock`
-    /// so users can keep the grouping without the visual halo.
-    var showsGroupedOpenedAppsBackdrop: Bool {
-        didSet {
-            guard showsGroupedOpenedAppsBackdrop != oldValue else { return }
-            defaults.set(showsGroupedOpenedAppsBackdrop, forKey: Keys.showsGroupedOpenedAppsBackdrop)
         }
     }
 
@@ -2587,16 +1385,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Former layout choice for the window switcher overlay. The Windows 11–style
-    /// switcher always shows thumbnail cards, so nothing reads this any more. It
-    /// stays so stored preferences, profiles and Settings history still decode.
-    var windowSwitcherLayout: WindowSwitcherLayout {
-        didSet {
-            guard windowSwitcherLayout != oldValue else { return }
-            defaults.set(windowSwitcherLayout.rawValue, forKey: Keys.windowSwitcherLayout)
-        }
-    }
-
     /// Single-key (no modifier — switcher's own modifier is already held)
     /// pressed inside the open switcher to minimize the selected window.
     var switcherMinimizeKeyCode: UInt16 {
@@ -2733,606 +1521,12 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         ProfileService.shared.updateActiveProfile(mutate)
     }
 
-    // MARK: - Effective appearance values (theme override layer)
-    //
-    // Each `effective<X>` accessor returns `userValue` when
-    // `isAppearanceOverridden(Keys.X)` is true, otherwise falls
-    // through to the active theme's manifest value (if any), then
-    // finally to the raw stored value (which is initialized to the
-    // built-in default when the key isn't in UserDefaults).
-    //
-    // Consumers in `Views/` should read `effective<X>` rather than
-    // the raw stored property. Settings UI is the exception, its
-    // sliders/pickers bind to the raw stored property so the user
-    // sees and edits their own value, not the theme's.
-
-    /// Returns `raw` when the user has overridden this key, otherwise
-    /// the supplied theme value (when present), otherwise `raw` again
-    /// (which equals the built-in default when no override exists).
-    private func appearanceOverride<T>(_ key: String, raw: T, themed: T?) -> T {
-        if isAppearanceOverridden(key) { return raw }
-        return themed ?? raw
-    }
-
-    var effectiveTileVerticalPadding: CGFloat {
-        appearanceOverride(
-            Keys.tileVerticalPadding,
-            raw: tileVerticalPadding,
-            themed: ThemeManager.shared.activeManifest?.appearance.tile?.verticalPadding
-        )
-    }
-
-    var effectiveTileSpacing: CGFloat {
-        appearanceOverride(
-            Keys.tileSpacing,
-            raw: tileSpacing,
-            themed: ThemeManager.shared.activeManifest?.appearance.tile?.spacing
-        )
-    }
-
-    var effectiveTileClipShape: DockClipShape {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.clipShape
-            .flatMap(DockClipShape.init(rawValue:))
-        return appearanceOverride(Keys.tileClipShape, raw: tileClipShape, themed: themed)
-    }
-
-    var effectiveTileIconPadding: CGFloat {
-        let resolved = appearanceOverride(
-            Keys.tileIconPadding,
-            raw: tileIconPadding,
-            themed: ThemeManager.shared.activeManifest?.appearance.tile?.iconPadding
-        )
-        return max(0, resolved)
-    }
-
-    /// Hover opacity multiplier; 1.0 when no theme/user value is set.
-    var effectiveTileHoverOpacity: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.opacity
-        if isAppearanceOverridden(Keys.tileHoverOpacity), let user = tileHoverOpacity {
-            return max(0, min(1, user))
-        }
-        if let themed {
-            return max(0, min(1, themed))
-        }
-        return 1
-    }
-
-    /// Hover scale; 1.0 when no theme/user value is set.
-    var effectiveTileHoverScale: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.scale
-        if isAppearanceOverridden(Keys.tileHoverScale), let user = tileHoverScale {
-            return max(0.1, user)
-        }
-        if let themed {
-            return max(0.1, themed)
-        }
-        return 1
-    }
-
-    var effectiveTileHoverBackgroundColor: NSColor? {
-        if isAppearanceOverridden(Keys.tileHoverBackgroundColor), let user = tileHoverBackgroundColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.backgroundColor,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return nil
-    }
-
-    var effectiveTileHoverBackgroundImageURL: URL? {
-        if isAppearanceOverridden(Keys.tileHoverBackgroundImagePath),
-           let path = tileHoverBackgroundImagePath, !path.isEmpty,
-           FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.backgroundImage,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-        return nil
-    }
-
-    var effectiveTileHoverBackgroundOpacity: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.backgroundOpacity
-        if isAppearanceOverridden(Keys.tileHoverBackgroundOpacity), let user = tileHoverBackgroundOpacity {
-            return max(0, min(1, user))
-        }
-        if let themed {
-            return max(0, min(1, themed))
-        }
-        return 1
-    }
-
-    var effectiveTileHoverBackgroundCornerRadius: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.hover?.backgroundCornerRadius
-        if isAppearanceOverridden(Keys.tileHoverBackgroundCornerRadius), let user = tileHoverBackgroundCornerRadius {
-            return max(0, user)
-        }
-        if let themed {
-            return max(0, themed)
-        }
-        return 0
-    }
-
-    var effectiveTileActiveBackgroundColor: NSColor? {
-        if isAppearanceOverridden(Keys.tileActiveBackgroundColor), let user = tileActiveBackgroundColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.tile?.active?.backgroundColor,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return nil
-    }
-
-    var effectiveTileActiveBackgroundImageURL: URL? {
-        if isAppearanceOverridden(Keys.tileActiveBackgroundImagePath),
-           let path = tileActiveBackgroundImagePath, !path.isEmpty,
-           FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.tile?.active?.backgroundImage,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-        return nil
-    }
-
-    var effectiveTileActiveBackgroundOpacity: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.active?.backgroundOpacity
-        if isAppearanceOverridden(Keys.tileActiveBackgroundOpacity), let user = tileActiveBackgroundOpacity {
-            return max(0, min(1, user))
-        }
-        if let themed {
-            return max(0, min(1, themed))
-        }
-        return 1
-    }
-
-    var effectiveTileActiveBackgroundCornerRadius: CGFloat {
-        let themed = ThemeManager.shared.activeManifest?.appearance.tile?.active?.backgroundCornerRadius
-        if isAppearanceOverridden(Keys.tileActiveBackgroundCornerRadius), let user = tileActiveBackgroundCornerRadius {
-            return max(0, user)
-        }
-        if let themed {
-            return max(0, themed)
-        }
-        return 0
-    }
-
-    var effectiveWindowCornerRadius: CGFloat {
-        appearanceOverride(
-            Keys.windowCornerRadius,
-            raw: windowCornerRadius,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.cornerRadius
-        )
-    }
-
-    /// Resolves a single corner's radius. Layered the same as every
-    /// other appearance value (user override > theme value > fallback),
-    /// with the *fallback* being the uniform `effectiveWindowCornerRadius`
-    /// rather than a hardcoded default, so a theme that only specifies
-    /// e.g. `bottomLeading: 0` flattens just that corner and leaves the
-    /// rest at the uniform value.
-    private func effectiveCornerRadius(
-        userKey: String,
-        userValue: CGFloat?,
-        themed: CGFloat?
-    ) -> CGFloat {
-        if isAppearanceOverridden(userKey), let userValue {
-            return max(0, userValue)
-        }
-        if let themed {
-            return max(0, themed)
-        }
-        return effectiveWindowCornerRadius
-    }
-
-    var effectiveWindowCornerRadiusTopLeading: CGFloat {
-        effectiveCornerRadius(
-            userKey: Keys.windowCornerRadiusTopLeading,
-            userValue: windowCornerRadiusTopLeading,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.cornerRadii?.topLeading
-        )
-    }
-
-    var effectiveWindowCornerRadiusTopTrailing: CGFloat {
-        effectiveCornerRadius(
-            userKey: Keys.windowCornerRadiusTopTrailing,
-            userValue: windowCornerRadiusTopTrailing,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.cornerRadii?.topTrailing
-        )
-    }
-
-    var effectiveWindowCornerRadiusBottomLeading: CGFloat {
-        effectiveCornerRadius(
-            userKey: Keys.windowCornerRadiusBottomLeading,
-            userValue: windowCornerRadiusBottomLeading,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.cornerRadii?.bottomLeading
-        )
-    }
-
-    var effectiveWindowCornerRadiusBottomTrailing: CGFloat {
-        effectiveCornerRadius(
-            userKey: Keys.windowCornerRadiusBottomTrailing,
-            userValue: windowCornerRadiusBottomTrailing,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.cornerRadii?.bottomTrailing
-        )
-    }
-
-    var effectiveWindowContentInsetTop: CGFloat {
-        appearanceOverride(
-            Keys.windowContentInsetTop,
-            raw: windowContentInsetTop,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.contentInsets?.top
-        )
-    }
-
-    var effectiveWindowContentInsetLeading: CGFloat {
-        appearanceOverride(
-            Keys.windowContentInsetLeading,
-            raw: windowContentInsetLeading,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.contentInsets?.leading
-        )
-    }
-
-    var effectiveWindowContentInsetBottom: CGFloat {
-        appearanceOverride(
-            Keys.windowContentInsetBottom,
-            raw: windowContentInsetBottom,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.contentInsets?.bottom
-        )
-    }
-
-    var effectiveWindowContentInsetTrailing: CGFloat {
-        appearanceOverride(
-            Keys.windowContentInsetTrailing,
-            raw: windowContentInsetTrailing,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.contentInsets?.trailing
-        )
-    }
-
-    var effectiveWindowClipShape: DockClipShape {
-        let themed = ThemeManager.shared.activeManifest?.appearance.window?.clipShape
-            .flatMap(DockClipShape.init(rawValue:))
-        return appearanceOverride(Keys.windowClipShape, raw: windowClipShape, themed: themed)
-    }
-
-    var effectiveWindowTintColor: NSColor {
-        if isAppearanceOverridden(Keys.windowTintColor), let user = windowTintColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.window?.tintColor,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return Self.defaultWindowTintColor
-    }
-
-    var effectiveWindowTintOpacity: CGFloat {
-        let raw = appearanceOverride(
-            Keys.windowTintOpacity,
-            raw: windowTintOpacity,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.tintOpacity
-        )
-        return min(max(raw, 0), 1)
-    }
-
-    var effectiveDisablesGlassLook: Bool {
-        appearanceOverride(
-            Keys.disablesGlassLook,
-            raw: disablesGlassLook,
-            themed: ThemeManager.shared.activeManifest?.appearance.disablesGlassLook
-        )
-    }
-
-    var effectiveWindowBackgroundImageURL: URL? {
-        if isAppearanceOverridden(Keys.windowBackgroundImagePath),
-           let path = windowBackgroundImagePath, !path.isEmpty,
-           FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
-
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.window?.backgroundImage,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-
-        return nil
-    }
-
-    var effectiveWindowBackgroundImageMode: DockBackgroundImageMode {
-        let themed = ThemeManager.shared.activeManifest?.appearance.window?.backgroundImageMode
-            .flatMap(DockBackgroundImageMode.init(rawValue:))
-        return appearanceOverride(Keys.windowBackgroundImageMode, raw: windowBackgroundImageMode, themed: themed)
-    }
-
-    /// Theme-aware border color. `nil` means no theme-supplied border
-    /// is set; callers should fall back to the default glass treatment.
-    var effectiveWindowBorderColor: NSColor? {
-        if isAppearanceOverridden(Keys.windowBorderColor), let user = windowBorderColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.window?.borderColor,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return nil
-    }
-
-    var effectiveWindowBorderWidth: CGFloat {
-        appearanceOverride(
-            Keys.windowBorderWidth,
-            raw: windowBorderWidth,
-            themed: ThemeManager.shared.activeManifest?.appearance.window?.borderWidth
-        )
-    }
-
-    /// Theme-aware icon shadow color. `nil` disables the shadow.
-    var effectiveIconShadowColor: NSColor? {
-        if isAppearanceOverridden(Keys.iconShadowColor), let user = iconShadowColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.iconShadow?.color,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return nil
-    }
-
-    var effectiveIconShadowRadius: CGFloat {
-        appearanceOverride(
-            Keys.iconShadowRadius,
-            raw: iconShadowRadius,
-            themed: ThemeManager.shared.activeManifest?.appearance.iconShadow?.radius
-        )
-    }
-
-    var effectiveIconShadowOpacity: CGFloat {
-        let raw = appearanceOverride(
-            Keys.iconShadowOpacity,
-            raw: iconShadowOpacity,
-            themed: ThemeManager.shared.activeManifest?.appearance.iconShadow?.opacity
-        )
-        return min(max(raw, 0), 1)
-    }
-
-    /// Theme-aware flat divider fill. `nil` means the divider should
-    /// fall back to SwiftUI's `.primary`.
-    var effectiveDividerColor: NSColor? {
-        if isAppearanceOverridden(Keys.dividerColor), let user = dividerColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.color,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return nil
-    }
-
-    var effectiveActiveIndicatorShape: DockTileIndicatorShape {
-        let themed = ThemeManager.shared.activeManifest?.appearance.indicators?.shape
-            .flatMap(DockTileIndicatorShape.init(rawValue:))
-        return appearanceOverride(Keys.activeIndicatorShape, raw: activeIndicatorShape, themed: themed)
-    }
-
-    var effectiveActiveIndicatorColor: NSColor {
-        if isAppearanceOverridden(Keys.activeIndicatorColor), let user = activeIndicatorColor {
-            return user.nsColor
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.indicators?.color,
-           let resolved = themed.nsColor {
-            return resolved
-        }
-        return .labelColor
-    }
-
-    var effectiveActiveIndicatorImageURL: URL? {
-        if isAppearanceOverridden(Keys.activeIndicatorImagePath),
-           let path = activeIndicatorImagePath, !path.isEmpty,
-           FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
-
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.indicators?.image,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-
-        return nil
-    }
-
-    var effectiveActiveIndicatorOffset: CGFloat {
-        appearanceOverride(
-            Keys.activeIndicatorOffset,
-            raw: activeIndicatorOffset,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.offset
-        )
-    }
-
-    var effectiveActiveIndicatorScale: CGFloat {
-        appearanceOverride(
-            Keys.activeIndicatorScale,
-            raw: activeIndicatorScale,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.scale
-        )
-    }
-
-    var effectiveMirrorsLeftDividerOnRight: Bool {
-        appearanceOverride(
-            Keys.mirrorsLeftDividerOnRight,
-            raw: mirrorsLeftDividerOnRight,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.mirrorLeftOnRight
-        )
-    }
-
-    var effectiveDividerPaddingFraction: CGFloat {
-        appearanceOverride(
-            Keys.dividerPaddingFraction,
-            raw: dividerPaddingFraction,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.paddingFraction
-        )
-    }
-
-    var effectiveDividerImageScale: CGFloat {
-        appearanceOverride(
-            Keys.dividerImageScale,
-            raw: dividerImageScale,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.imageScale
-        )
-    }
-
-    var effectiveDividerOffset: CGFloat {
-        appearanceOverride(
-            Keys.dividerOffset,
-            raw: dividerOffset,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.offset
-        )
-    }
-
-    var effectiveDividerOpacity: CGFloat {
-        appearanceOverride(
-            Keys.dividerOpacity,
-            raw: dividerOpacity,
-            themed: ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.opacity
-        )
-    }
-
-    var effectiveDividerImageURL: URL? {
-        if isAppearanceOverridden(Keys.dividerImagePath),
-           let url = Self.existingFileURL(at: dividerImagePath) {
-            return url
-        }
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.center,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-        return nil
-    }
-
-    var effectiveLeftDividerImageURL: URL? {
-        if isAppearanceOverridden(Keys.leftDividerImagePath),
-           let url = Self.existingFileURL(at: leftDividerImagePath) {
-            return url
-        }
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.left,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-        return effectiveDividerImageURL
-    }
-
-    var effectiveRightDividerImageURL: URL? {
-        if effectiveMirrorsLeftDividerOnRight {
-            return effectiveLeftDividerImageURL
-        }
-        if isAppearanceOverridden(Keys.rightDividerImagePath),
-           let url = Self.existingFileURL(at: rightDividerImagePath) {
-            return url
-        }
-        if let assetPath = ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.right,
-           let url = ThemeManager.shared.activeAssetURL(assetPath) {
-            return url
-        }
-        return effectiveDividerImageURL
-    }
-
-    // MARK: - Explicit appearance values (for theme export)
-    //
-    // Returns the color when it comes from a deliberate source ,
-    // either a user override on this preference or the active theme's
-    // manifest. Returns `nil` when the only value would be the
-    // built-in system fallback, because that isn't meaningfully
-    // portable to another machine.
-
-    var explicitWindowTintColor: ThemeColor? {
-        if isAppearanceOverridden(Keys.windowTintColor), let user = windowTintColor {
-            return ThemeColor(r: user.red, g: user.green, b: user.blue)
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.window?.tintColor {
-            return themed
-        }
-        return nil
-    }
-
-    var explicitActiveIndicatorColor: ThemeColor? {
-        if isAppearanceOverridden(Keys.activeIndicatorColor), let user = activeIndicatorColor {
-            return ThemeColor(r: user.red, g: user.green, b: user.blue)
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.indicators?.color {
-            return themed
-        }
-        return nil
-    }
-
-    var explicitWindowBorderColor: ThemeColor? {
-        if isAppearanceOverridden(Keys.windowBorderColor), let user = windowBorderColor {
-            return ThemeColor(r: user.red, g: user.green, b: user.blue)
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.window?.borderColor {
-            return themed
-        }
-        return nil
-    }
-
-    var explicitIconShadowColor: ThemeColor? {
-        if isAppearanceOverridden(Keys.iconShadowColor), let user = iconShadowColor {
-            return ThemeColor(r: user.red, g: user.green, b: user.blue)
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.iconShadow?.color {
-            return themed
-        }
-        return nil
-    }
-
-    var explicitDividerColor: ThemeColor? {
-        if isAppearanceOverridden(Keys.dividerColor), let user = dividerColor {
-            return ThemeColor(r: user.red, g: user.green, b: user.blue)
-        }
-        if let themed = ThemeManager.shared.activeManifest?.appearance.indicators?.divider?.color {
-            return themed
-        }
-        return nil
-    }
-
-    /// Resolves the divider image and mirroring flag for a given divider position class.
-    /// Returns `nil` when no custom image applies.
-    func resolvedDividerImage(forPositionClass positionClass: DockDividerPositionClass) -> (url: URL, mirrored: Bool)? {
-        switch positionClass {
-        case .left:
-            guard let url = effectiveLeftDividerImageURL else { return nil }
-            return (url, false)
-        case .right:
-            if effectiveMirrorsLeftDividerOnRight, let url = effectiveLeftDividerImageURL {
-                return (url, true)
-            }
-
-            guard let url = effectiveRightDividerImageURL else { return nil }
-            return (url, false)
-        case .center:
-            guard let url = effectiveDividerImageURL else { return nil }
-            return (url, false)
-        }
-    }
-
-    private static func existingFileURL(at path: String?) -> URL? {
-        guard let path, !path.isEmpty else { return nil }
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-        return URL(fileURLWithPath: path)
-    }
-
     func appIconOverride(forBundleIdentifier bundleIdentifier: String) -> AppIconOverride? {
         return appIconOverrides.first { $0.bundleIdentifier == bundleIdentifier }
     }
 
     func effectiveAppIconOverrideURL(forBundleIdentifier bundleIdentifier: String) -> URL? {
-        if let userURL = appIconOverride(forBundleIdentifier: bundleIdentifier)?.effectiveIconURL {
-            return userURL
-        }
-        // Theme-supplied icons are convention-based: `assets/<bundle-id>.png`
-        // inside the active theme bundle.
-        return ThemeManager.shared.activeAppIconURL(forBundleIdentifier: bundleIdentifier)
+        appIconOverride(forBundleIdentifier: bundleIdentifier)?.effectiveIconURL
     }
 
     func setAppIconOverride(bundleIdentifier: String, iconPath: String, paddingFraction: CGFloat? = nil) {
@@ -3482,21 +1676,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         return launchpadIconPaddingFraction ?? 0
     }
 
-    var effectiveStartMenuIconOverrideURL: URL? {
-        guard let path = startMenuIconPath, !path.isEmpty else {
-            return nil
-        }
-        guard FileManager.default.fileExists(atPath: path) else {
-            return nil
-        }
-        return URL(fileURLWithPath: path)
-    }
-
-    var effectiveStartMenuIconOverridePadding: CGFloat {
-        guard effectiveStartMenuIconOverrideURL != nil else { return 0 }
-        return startMenuIconPaddingFraction ?? 0
-    }
-
     func isAppHiddenInDocky(bundleIdentifier: String) -> Bool {
         // Docky reports itself as effectively hidden so any surface that
         // gates on this returns the right answer even though Docky never
@@ -3527,70 +1706,23 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    static var defaultWindowTintColor: NSColor {
-        NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: .black) ?? .windowBackgroundColor
-    }
-
     private enum Keys {
-        static let tileVerticalPadding = "docky.tileVerticalPadding"
-        static let tileSpacing = "docky.tileSpacing"
-        static let tileClipShape = "docky.tileClipShape"
-        static let tileIconPadding = "docky.tileIconPadding"
-        static let tileHoverOpacity = "docky.tileHoverOpacity"
-        static let tileHoverScale = "docky.tileHoverScale"
-        static let tileHoverBackgroundColor = "docky.tileHoverBackgroundColor"
-        static let tileHoverBackgroundImagePath = "docky.tileHoverBackgroundImagePath"
-        static let tileHoverBackgroundOpacity = "docky.tileHoverBackgroundOpacity"
-        static let tileHoverBackgroundCornerRadius = "docky.tileHoverBackgroundCornerRadius"
-        static let tileActiveBackgroundColor = "docky.tileActiveBackgroundColor"
-        static let tileActiveBackgroundImagePath = "docky.tileActiveBackgroundImagePath"
-        static let tileActiveBackgroundOpacity = "docky.tileActiveBackgroundOpacity"
-        static let tileActiveBackgroundCornerRadius = "docky.tileActiveBackgroundCornerRadius"
-        static let widget1xContentPadding = "docky.widget1xContentPadding"
-        static let widget1xCornerRadius = "docky.widget1xCornerRadius"
-        static let widget2xContentPadding = "docky.widget2xContentPadding"
-        static let widget2xCornerRadius = "docky.widget2xCornerRadius"
-        static let widget3xContentPadding = "docky.widget3xContentPadding"
-        static let widget3xCornerRadius = "docky.widget3xCornerRadius"
-        static let widget4xContentPadding = "docky.widget4xContentPadding"
-        static let widget4xCornerRadius = "docky.widget4xCornerRadius"
-        static let windowCornerRadius = "docky.windowCornerRadius"
-        static let windowCornerRadiusTopLeading = "docky.windowCornerRadiusTopLeading"
-        static let windowCornerRadiusTopTrailing = "docky.windowCornerRadiusTopTrailing"
-        static let windowCornerRadiusBottomLeading = "docky.windowCornerRadiusBottomLeading"
-        static let windowCornerRadiusBottomTrailing = "docky.windowCornerRadiusBottomTrailing"
-        static let windowContentInsetTop = "docky.windowContentInsetTop"
-        static let windowContentInsetLeading = "docky.windowContentInsetLeading"
-        static let windowContentInsetBottom = "docky.windowContentInsetBottom"
-        static let windowContentInsetTrailing = "docky.windowContentInsetTrailing"
-        static let windowClipShape = "docky.windowClipShape"
-        static let windowTintColor = "docky.windowTintColor"
-        static let windowTintOpacity = "docky.windowTintOpacity"
-        static let disablesGlassLook = "docky.disablesGlassLook"
-        static let windowBackgroundImagePath = "docky.windowBackgroundImagePath"
-        static let windowBackgroundImageMode = "docky.windowBackgroundImageMode"
         static let windowPosition = "docky.windowPosition"
         static let windowDisplayTarget = "docky.windowDisplayTarget"
         static let windowSpaceBehavior = "docky.windowSpaceBehavior"
         static let autohidesWindow = "docky.autohidesWindow"
         static let showsAppBadges = "docky.showsAppBadges"
-        static let dimsIdleAppIcons = "docky.dimsIdleAppIcons"
         static let allowsWidgetLinkInstalls = "docky.allowsWidgetLinkInstalls"
         static let folderBadgeMode = "docky.folderBadgeMode"
         static let folderBadgePreviewStyle = "docky.folderBadgePreviewStyle"
         static let opensAtLogin = "docky.opensAtLogin"
         static let autohideWindowDelay = "docky.autohideWindowDelay"
-        static let autohideAnimationDuration = "docky.autohideAnimationDuration"
         static let windowsTaskbarHeight = "docky.windowsTaskbarHeight"
         static let fullscreenRevealDelay = "docky.fullscreenRevealDelay"
         static let windowPreviewHoverDelay = "docky.windowPreviewHoverDelay"
-        static let windowPreviewLayout = "docky.windowPreviewLayout"
-        static let overflowBehavior = "docky.overflowBehavior"
-        static let windowAxisSizing = "docky.windowAxisSizing"
         static let enablesWidgetHoverPreview = "docky.enablesWidgetHoverPreview"
         static let widgetHoverPreviewSpans = "docky.widgetHoverPreviewSpans"
         static let widgetHoverPreviewDelay = "docky.widgetHoverGrowDelay"
-        static let showsActivePinnedSeparator = "docky.showsActivePinnedSeparator"
         static let showsRunningApps = "docky.showsRunningApps"
         static let showsMinimizedWindows = "docky.showsMinimizedWindows"
         static let enablesShelveMode = "docky.enablesShelveMode"
@@ -3600,35 +1732,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let hidesProfileStrip = "docky.hidesProfileStrip"
         static let appTileFrontmostClickBehavior = "docky.appTileFrontmostClickBehavior"
         static let fileBrowser = "docky.fileBrowser"
-        static let activeIndicatorShape = "docky.activeIndicatorShape"
-        static let activeIndicatorImagePath = "docky.activeIndicatorImagePath"
-        static let activeIndicatorColor = "docky.activeIndicatorColor"
-        static let dividerImagePath = "docky.dividerImagePath"
-        static let leftDividerImagePath = "docky.leftDividerImagePath"
-        static let rightDividerImagePath = "docky.rightDividerImagePath"
-        static let mirrorsLeftDividerOnRight = "docky.mirrorsLeftDividerOnRight"
-        static let activeIndicatorOffset = "docky.activeIndicatorOffset"
-        static let activeIndicatorScale = "docky.activeIndicatorScale"
-        static let dividerPaddingFraction = "docky.dividerPaddingFraction"
-        static let dividerImageScale = "docky.dividerImageScale"
-        static let dividerOffset = "docky.dividerOffset"
-        static let dividerOpacity = "docky.dividerOpacity"
-        static let dividerColor = "docky.dividerColor"
-        static let windowBorderColor = "docky.windowBorderColor"
-        static let windowBorderWidth = "docky.windowBorderWidth"
-        static let iconShadowColor = "docky.iconShadowColor"
-        static let iconShadowRadius = "docky.iconShadowRadius"
-        static let iconShadowOpacity = "docky.iconShadowOpacity"
         static let appIconOverrides = "docky.appIconOverrides"
         static let trashIconOverrides = "docky.trashIconOverrides"
         static let folderIconOverrides = "docky.folderIconOverrides"
         static let launchpadIconPath = "docky.launchpadIconPath"
         static let launchpadIconPaddingFraction = "docky.launchpadIconPaddingFraction"
-        static let startMenuIconPath = "docky.startMenuIconPath"
-        static let startMenuIconPaddingFraction = "docky.startMenuIconPaddingFraction"
         static let hiddenAppBundleIdentifiers = "docky.hiddenAppBundleIdentifiers"
         static let showsGroupedOpenedAppsInDock = "docky.showsGroupedOpenedAppsInDock"
-        static let showsGroupedOpenedAppsBackdrop = "docky.showsGroupedOpenedAppsBackdrop"
         static let enablesLaunchpadOverlay = "docky.enablesLaunchpadOverlay"
         static let enablesStartMenuOverlay = "docky.enablesStartMenuOverlay"
         static let opensStartMenuFromFinderTile = "docky.opensStartMenuFromFinderTile"
@@ -3649,7 +1759,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let showsWindowSwitcherFocusPreview = "docky.showsWindowSwitcherFocusPreview"
         static let windowSwitcherPreviewMode = "docky.windowSwitcherPreviewMode"
         static let windowSwitcherSpaceScope = "docky.windowSwitcherSpaceScope"
-        static let windowSwitcherLayout = "docky.windowSwitcherLayout"
         static let switcherMinimizeKeyCode = "docky.switcherMinimizeKeyCode"
         static let switcherCloseKeyCode = "docky.switcherCloseKeyCode"
         static let switcherZoomKeyCode = "docky.switcherZoomKeyCode"
@@ -3660,48 +1769,24 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let trailingItems = "docky.trailingItems"
         static let hasSeenDockEditorHint = "docky.hasSeenDockEditorHint"
         static let photoFrameBookmarks = "docky.photoFrameBookmarks"
-        static let userOverriddenAppearanceKeys = "docky.userOverriddenAppearanceKeys"
-        static let appearanceOverrideMigrationVersion = "docky.appearanceOverrideMigrationVersion"
     }
 
     private enum DefaultValues {
-        static let tileVerticalPadding: CGFloat = 8
-        static let tileSpacing: CGFloat = 0
-        static let tileClipShape: DockClipShape = .rounded
-        static let tileIconPadding: CGFloat = 0
-        static let tileHoverOptional: CGFloat? = nil
-        static let tileHoverBackgroundColor: DockColor? = nil
-        static let tileHoverBackgroundImagePath: String? = nil
-        static let windowCornerRadius: CGFloat = 24
-        static let windowCornerRadiusPerCorner: CGFloat? = nil
-        static let windowContentInset: CGFloat = 2
-        static let windowClipShape: DockClipShape = .rounded
-        static let windowTintColor: DockColor? = nil
-        static let windowTintOpacity: CGFloat = 0.22
-        static let disablesGlassLook = false
-        static let windowBackgroundImagePath: String? = nil
-        static let windowBackgroundImageMode: DockBackgroundImageMode = .fill
         static let windowPosition: DockWindowPosition = .system
         static let windowDisplayTarget: DockWindowDisplayTarget = .primaryDisplay
         static let windowSpaceBehavior: DockWindowSpaceBehavior = .allSpaces
         static let autohidesWindow = false
         static let showsAppBadges = true
-        static let dimsIdleAppIcons = false
         static let allowsWidgetLinkInstalls = false
         static let folderBadgeMode: FolderBadgeMode = .combined
         static let folderBadgePreviewStyle: FolderBadgePreviewStyle = .dot
         static let opensAtLogin = true
         static let autohideWindowDelay: TimeInterval = 0.5
-        static let autohideAnimationDuration: TimeInterval = 0.22
         static let fullscreenRevealDelay: TimeInterval = 0.5
         static let windowPreviewHoverDelay: TimeInterval = 1.0
-        static let windowPreviewLayout: WindowSwitcherLayout = .auto
-        static let overflowBehavior: DockOverflowBehavior = .rescale
-        static let windowAxisSizing: DockWindowAxisSizing = .fitContent
         static let enablesWidgetHoverPreview = true
         static let widgetHoverPreviewSpans: Set<TileSpan> = Set(TileSpan.allCases)
         static let widgetHoverPreviewDelay: TimeInterval = 1
-        static let showsActivePinnedSeparator = true
         static let showsRunningApps = true
         static let showsMinimizedWindows = true
         static let enablesShelveMode = false
@@ -3711,35 +1796,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let hidesProfileStrip = false
         static let appTileFrontmostClickBehavior: AppTileFrontmostClickBehavior = .none
         static let fileBrowser: FileBrowser = .finder
-        static let activeIndicatorShape: DockTileIndicatorShape = .dot
-        static let activeIndicatorImagePath: String? = nil
-        static let activeIndicatorColor: DockColor? = nil
-        static let dividerImagePath: String? = nil
-        static let leftDividerImagePath: String? = nil
-        static let rightDividerImagePath: String? = nil
-        static let mirrorsLeftDividerOnRight = false
-        static let activeIndicatorOffset: CGFloat = 0
-        static let activeIndicatorScale: CGFloat = 1
-        static let dividerPaddingFraction: CGFloat = 0.25
-        static let dividerImageScale: CGFloat = 1
-        static let dividerOffset: CGFloat = 0
-        static let dividerOpacity: CGFloat = 1
-        static let dividerColor: DockColor? = nil
-        static let windowBorderColor: DockColor? = nil
-        static let windowBorderWidth: CGFloat = 1
-        static let iconShadowColor: DockColor? = nil
-        static let iconShadowRadius: CGFloat = 4
-        static let iconShadowOpacity: CGFloat = 0.5
         static let appIconOverrides: [AppIconOverride] = []
         static let trashIconOverrides: [TrashIconOverride] = []
         static let folderIconOverrides: [FolderIconOverride] = []
         static let launchpadIconPath: String? = nil
         static let launchpadIconPaddingFraction: CGFloat? = nil
-        static let startMenuIconPath: String? = nil
-        static let startMenuIconPaddingFraction: CGFloat? = nil
         static let hiddenAppBundleIdentifiers: [String] = []
         static let showsGroupedOpenedAppsInDock = true
-        static let showsGroupedOpenedAppsBackdrop = true
         static let enablesLaunchpadOverlay = true
         static let enablesStartMenuOverlay = true
         static let opensStartMenuFromFinderTile = false
@@ -3764,7 +1827,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let showsWindowSwitcherFocusPreview = false
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
         static let windowSwitcherSpaceScope: WindowSwitcherSpaceScope = .allSpaces
-        static let windowSwitcherLayout: WindowSwitcherLayout = .auto
         static let switcherMinimizeKeyCode: UInt16 = 46
         static let switcherCloseKeyCode: UInt16 = 13
         static let switcherZoomKeyCode: UInt16 = 6
@@ -3779,65 +1841,22 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
     private init() {
         self.defaults = .standard
         DockLegacyPreferenceMigration.discardOverlapSettings(in: defaults)
-        let storedVerticalPadding = defaults.object(forKey: Keys.tileVerticalPadding) as? Double
-        let storedTileSpacing = defaults.object(forKey: Keys.tileSpacing) as? Double
-        let storedTileClipShape = defaults.string(forKey: Keys.tileClipShape)
-        let storedTileIconPadding = defaults.object(forKey: Keys.tileIconPadding) as? Double
-        let storedTileHoverOpacity = defaults.object(forKey: Keys.tileHoverOpacity) as? Double
-        let storedTileHoverScale = defaults.object(forKey: Keys.tileHoverScale) as? Double
-        let storedTileHoverBackgroundColor = defaults.data(forKey: Keys.tileHoverBackgroundColor)
-        let storedTileHoverBackgroundImagePath = defaults.string(forKey: Keys.tileHoverBackgroundImagePath)
-        let storedTileHoverBackgroundOpacity = defaults.object(forKey: Keys.tileHoverBackgroundOpacity) as? Double
-        let storedTileHoverBackgroundCornerRadius = defaults.object(forKey: Keys.tileHoverBackgroundCornerRadius) as? Double
-        let storedTileActiveBackgroundColor = defaults.data(forKey: Keys.tileActiveBackgroundColor)
-        let storedTileActiveBackgroundImagePath = defaults.string(forKey: Keys.tileActiveBackgroundImagePath)
-        let storedTileActiveBackgroundOpacity = defaults.object(forKey: Keys.tileActiveBackgroundOpacity) as? Double
-        let storedTileActiveBackgroundCornerRadius = defaults.object(forKey: Keys.tileActiveBackgroundCornerRadius) as? Double
-        let storedWidget1xContentPadding = defaults.object(forKey: Keys.widget1xContentPadding) as? Double
-        let storedWidget1xCornerRadius = defaults.object(forKey: Keys.widget1xCornerRadius) as? Double
-        let storedWidget2xContentPadding = defaults.object(forKey: Keys.widget2xContentPadding) as? Double
-        let storedWidget2xCornerRadius = defaults.object(forKey: Keys.widget2xCornerRadius) as? Double
-        let storedWidget3xContentPadding = defaults.object(forKey: Keys.widget3xContentPadding) as? Double
-        let storedWidget3xCornerRadius = defaults.object(forKey: Keys.widget3xCornerRadius) as? Double
-        let storedWidget4xContentPadding = defaults.object(forKey: Keys.widget4xContentPadding) as? Double
-        let storedWidget4xCornerRadius = defaults.object(forKey: Keys.widget4xCornerRadius) as? Double
-        let storedWindowCornerRadius = defaults.object(forKey: Keys.windowCornerRadius) as? Double
-        let storedWindowCornerRadiusTopLeading = defaults.object(forKey: Keys.windowCornerRadiusTopLeading) as? Double
-        let storedWindowCornerRadiusTopTrailing = defaults.object(forKey: Keys.windowCornerRadiusTopTrailing) as? Double
-        let storedWindowCornerRadiusBottomLeading = defaults.object(forKey: Keys.windowCornerRadiusBottomLeading) as? Double
-        let storedWindowCornerRadiusBottomTrailing = defaults.object(forKey: Keys.windowCornerRadiusBottomTrailing) as? Double
-        let storedWindowContentInsetTop = defaults.object(forKey: Keys.windowContentInsetTop) as? Double
-        let storedWindowContentInsetLeading = defaults.object(forKey: Keys.windowContentInsetLeading) as? Double
-        let storedWindowContentInsetBottom = defaults.object(forKey: Keys.windowContentInsetBottom) as? Double
-        let storedWindowContentInsetTrailing = defaults.object(forKey: Keys.windowContentInsetTrailing) as? Double
-        let storedWindowClipShape = defaults.string(forKey: Keys.windowClipShape)
-        let storedWindowTintColor = defaults.data(forKey: Keys.windowTintColor)
-        let storedWindowTintOpacity = defaults.object(forKey: Keys.windowTintOpacity) as? Double
-        let storedDisablesGlassLook = defaults.object(forKey: Keys.disablesGlassLook) as? Bool
-        let storedWindowBackgroundImagePath = defaults.string(forKey: Keys.windowBackgroundImagePath)
-        let storedWindowBackgroundImageMode = defaults.string(forKey: Keys.windowBackgroundImageMode)
         let storedWindowPosition = defaults.string(forKey: Keys.windowPosition)
         let storedWindowDisplayTarget = defaults.string(forKey: Keys.windowDisplayTarget)
         let storedWindowSpaceBehavior = defaults.string(forKey: Keys.windowSpaceBehavior)
         let storedAutohidesWindow = defaults.object(forKey: Keys.autohidesWindow) as? Bool
         let storedShowsAppBadges = defaults.object(forKey: Keys.showsAppBadges) as? Bool
-        let storedDimsIdleAppIcons = defaults.object(forKey: Keys.dimsIdleAppIcons) as? Bool
         let storedAllowsWidgetLinkInstalls = defaults.object(forKey: Keys.allowsWidgetLinkInstalls) as? Bool
         let storedFolderBadgeMode = defaults.string(forKey: Keys.folderBadgeMode)
         let storedFolderBadgePreviewStyle = defaults.string(forKey: Keys.folderBadgePreviewStyle)
         let storedOpensAtLogin = defaults.object(forKey: Keys.opensAtLogin) as? Bool
         let storedAutohideWindowDelay = defaults.object(forKey: Keys.autohideWindowDelay) as? Double
-        let storedAutohideAnimationDuration = defaults.object(forKey: Keys.autohideAnimationDuration) as? Double
         let storedWindowsTaskbarHeight = defaults.object(forKey: Keys.windowsTaskbarHeight) as? Double
         let storedFullscreenRevealDelay = defaults.object(forKey: Keys.fullscreenRevealDelay) as? Double
         let storedWindowPreviewHoverDelay = defaults.object(forKey: Keys.windowPreviewHoverDelay) as? Double
-        let storedWindowPreviewLayout = defaults.string(forKey: Keys.windowPreviewLayout)
-        let storedOverflowBehavior = defaults.string(forKey: Keys.overflowBehavior)
-        let storedWindowAxisSizing = defaults.string(forKey: Keys.windowAxisSizing)
         let storedEnablesWidgetHoverPreview = defaults.object(forKey: Keys.enablesWidgetHoverPreview) as? Bool
         let storedWidgetHoverPreviewSpans = defaults.array(forKey: Keys.widgetHoverPreviewSpans) as? [Int]
         let storedWidgetHoverPreviewDelay = defaults.object(forKey: Keys.widgetHoverPreviewDelay) as? Double
-        let storedShowsActivePinnedSeparator = defaults.object(forKey: Keys.showsActivePinnedSeparator) as? Bool
         let storedShowsRunningApps = defaults.object(forKey: Keys.showsRunningApps) as? Bool
         let storedShowsMinimizedWindows = defaults.object(forKey: Keys.showsMinimizedWindows) as? Bool
         let storedEnablesShelveMode = defaults.object(forKey: Keys.enablesShelveMode) as? Bool
@@ -3847,35 +1866,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedHidesProfileStrip = defaults.object(forKey: Keys.hidesProfileStrip) as? Bool
         let storedAppTileFrontmostClickBehavior = defaults.string(forKey: Keys.appTileFrontmostClickBehavior)
         let storedFileBrowser = defaults.string(forKey: Keys.fileBrowser)
-        let storedActiveIndicatorShape = defaults.string(forKey: Keys.activeIndicatorShape)
-        let storedActiveIndicatorImagePath = defaults.string(forKey: Keys.activeIndicatorImagePath)
-        let storedActiveIndicatorColor = defaults.data(forKey: Keys.activeIndicatorColor)
-        let storedDividerImagePath = defaults.string(forKey: Keys.dividerImagePath)
-        let storedLeftDividerImagePath = defaults.string(forKey: Keys.leftDividerImagePath)
-        let storedRightDividerImagePath = defaults.string(forKey: Keys.rightDividerImagePath)
-        let storedMirrorsLeftDividerOnRight = defaults.object(forKey: Keys.mirrorsLeftDividerOnRight) as? Bool
-        let storedActiveIndicatorOffset = defaults.object(forKey: Keys.activeIndicatorOffset) as? Double
-        let storedActiveIndicatorScale = defaults.object(forKey: Keys.activeIndicatorScale) as? Double
-        let storedDividerPaddingFraction = defaults.object(forKey: Keys.dividerPaddingFraction) as? Double
-        let storedDividerImageScale = defaults.object(forKey: Keys.dividerImageScale) as? Double
-        let storedDividerOffset = defaults.object(forKey: Keys.dividerOffset) as? Double
-        let storedDividerOpacity = defaults.object(forKey: Keys.dividerOpacity) as? Double
-        let storedDividerColor = defaults.data(forKey: Keys.dividerColor)
-        let storedWindowBorderColor = defaults.data(forKey: Keys.windowBorderColor)
-        let storedWindowBorderWidth = defaults.object(forKey: Keys.windowBorderWidth) as? Double
-        let storedIconShadowColor = defaults.data(forKey: Keys.iconShadowColor)
-        let storedIconShadowRadius = defaults.object(forKey: Keys.iconShadowRadius) as? Double
-        let storedIconShadowOpacity = defaults.object(forKey: Keys.iconShadowOpacity) as? Double
         let storedAppIconOverrides = defaults.data(forKey: Keys.appIconOverrides)
         let storedTrashIconOverrides = defaults.data(forKey: Keys.trashIconOverrides)
         let storedFolderIconOverrides = defaults.data(forKey: Keys.folderIconOverrides)
         let storedLaunchpadIconPath = defaults.string(forKey: Keys.launchpadIconPath)
         let storedLaunchpadIconPaddingFraction = defaults.object(forKey: Keys.launchpadIconPaddingFraction) as? Double
-        let storedStartMenuIconPath = defaults.string(forKey: Keys.startMenuIconPath)
-        let storedStartMenuIconPaddingFraction = defaults.object(forKey: Keys.startMenuIconPaddingFraction) as? Double
         let storedHiddenAppBundleIdentifiers = defaults.stringArray(forKey: Keys.hiddenAppBundleIdentifiers)
         let storedShowsGroupedOpenedAppsInDock = defaults.object(forKey: Keys.showsGroupedOpenedAppsInDock) as? Bool
-        let storedShowsGroupedOpenedAppsBackdrop = defaults.object(forKey: Keys.showsGroupedOpenedAppsBackdrop) as? Bool
         let storedEnablesLaunchpadOverlay = defaults.object(forKey: Keys.enablesLaunchpadOverlay) as? Bool
         let storedEnablesStartMenuOverlay = defaults.object(forKey: Keys.enablesStartMenuOverlay) as? Bool
         let storedOpensStartMenuFromFinderTile = defaults.object(forKey: Keys.opensStartMenuFromFinderTile) as? Bool
@@ -3896,7 +1893,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedShowsWindowSwitcherFocusPreview = defaults.object(forKey: Keys.showsWindowSwitcherFocusPreview) as? Bool
         let storedWindowSwitcherPreviewMode = defaults.string(forKey: Keys.windowSwitcherPreviewMode)
         let storedWindowSwitcherSpaceScope = defaults.string(forKey: Keys.windowSwitcherSpaceScope)
-        let storedWindowSwitcherLayout = defaults.string(forKey: Keys.windowSwitcherLayout)
         let storedSwitcherMinimizeKeyCode = defaults.object(forKey: Keys.switcherMinimizeKeyCode) as? Int
         let storedSwitcherCloseKeyCode = defaults.object(forKey: Keys.switcherCloseKeyCode) as? Int
         let storedSwitcherZoomKeyCode = defaults.object(forKey: Keys.switcherZoomKeyCode) as? Int
@@ -3909,49 +1905,11 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let initialPinnedAppBundleIdentifiers = storedPinnedAppBundleIdentifiers ?? DefaultValues.pinnedAppBundleIdentifiers
         let initialPinnedItems = Self.decodePinnedItems(from: storedPinnedItems)
             ?? initialPinnedAppBundleIdentifiers.map(PinnedTileItem.app(bundleIdentifier:))
-        self.tileVerticalPadding = storedVerticalPadding.map { CGFloat($0) } ?? DefaultValues.tileVerticalPadding
-        self.tileSpacing = storedTileSpacing.map { CGFloat($0) } ?? DefaultValues.tileSpacing
-        self.tileClipShape = (storedTileClipShape.flatMap(DockClipShape.init(rawValue:)) ?? DefaultValues.tileClipShape)
-        self.tileIconPadding = storedTileIconPadding.map { CGFloat($0) } ?? DefaultValues.tileIconPadding
-        self.tileHoverOpacity = storedTileHoverOpacity.map { CGFloat($0) }
-        self.tileHoverScale = storedTileHoverScale.map { CGFloat($0) }
-        self.tileHoverBackgroundColor = Self.decodeColor(from: storedTileHoverBackgroundColor)
-        self.tileHoverBackgroundImagePath = storedTileHoverBackgroundImagePath
-        self.tileHoverBackgroundOpacity = storedTileHoverBackgroundOpacity.map { CGFloat($0) }
-        self.tileHoverBackgroundCornerRadius = storedTileHoverBackgroundCornerRadius.map { CGFloat($0) }
-        self.tileActiveBackgroundColor = Self.decodeColor(from: storedTileActiveBackgroundColor)
-        self.tileActiveBackgroundImagePath = storedTileActiveBackgroundImagePath
-        self.tileActiveBackgroundOpacity = storedTileActiveBackgroundOpacity.map { CGFloat($0) }
-        self.tileActiveBackgroundCornerRadius = storedTileActiveBackgroundCornerRadius.map { CGFloat($0) }
-        self.widget1xContentPadding = storedWidget1xContentPadding.map { CGFloat($0) }
-        self.widget1xCornerRadius = storedWidget1xCornerRadius.map { CGFloat($0) }
-        self.widget2xContentPadding = storedWidget2xContentPadding.map { CGFloat($0) }
-        self.widget2xCornerRadius = storedWidget2xCornerRadius.map { CGFloat($0) }
-        self.widget3xContentPadding = storedWidget3xContentPadding.map { CGFloat($0) }
-        self.widget3xCornerRadius = storedWidget3xCornerRadius.map { CGFloat($0) }
-        self.widget4xContentPadding = storedWidget4xContentPadding.map { CGFloat($0) }
-        self.widget4xCornerRadius = storedWidget4xCornerRadius.map { CGFloat($0) }
-        self.windowCornerRadius = storedWindowCornerRadius.map { CGFloat($0) } ?? DefaultValues.windowCornerRadius
-        self.windowCornerRadiusTopLeading = storedWindowCornerRadiusTopLeading.map { CGFloat($0) }
-        self.windowCornerRadiusTopTrailing = storedWindowCornerRadiusTopTrailing.map { CGFloat($0) }
-        self.windowCornerRadiusBottomLeading = storedWindowCornerRadiusBottomLeading.map { CGFloat($0) }
-        self.windowCornerRadiusBottomTrailing = storedWindowCornerRadiusBottomTrailing.map { CGFloat($0) }
-        self.windowContentInsetTop = storedWindowContentInsetTop.map { CGFloat($0) } ?? DefaultValues.windowContentInset
-        self.windowContentInsetLeading = storedWindowContentInsetLeading.map { CGFloat($0) } ?? DefaultValues.windowContentInset
-        self.windowContentInsetBottom = storedWindowContentInsetBottom.map { CGFloat($0) } ?? DefaultValues.windowContentInset
-        self.windowContentInsetTrailing = storedWindowContentInsetTrailing.map { CGFloat($0) } ?? DefaultValues.windowContentInset
-        self.windowClipShape = (storedWindowClipShape.flatMap(DockClipShape.init(rawValue:)) ?? DefaultValues.windowClipShape)
-        self.windowTintColor = Self.decodeColor(from: storedWindowTintColor) ?? DefaultValues.windowTintColor
-        self.windowTintOpacity = storedWindowTintOpacity.map { CGFloat($0) } ?? DefaultValues.windowTintOpacity
-        self.disablesGlassLook = storedDisablesGlassLook ?? DefaultValues.disablesGlassLook
-        self.windowBackgroundImagePath = storedWindowBackgroundImagePath ?? DefaultValues.windowBackgroundImagePath
-        self.windowBackgroundImageMode = storedWindowBackgroundImageMode.flatMap(DockBackgroundImageMode.init(rawValue:)) ?? DefaultValues.windowBackgroundImageMode
         self.windowPosition = (storedWindowPosition.flatMap(DockWindowPosition.init(rawValue:)) ?? DefaultValues.windowPosition)
         self.windowDisplayTarget = (storedWindowDisplayTarget.flatMap(DockWindowDisplayTarget.init(rawValue:)) ?? DefaultValues.windowDisplayTarget)
         self.windowSpaceBehavior = (storedWindowSpaceBehavior.flatMap(DockWindowSpaceBehavior.init(rawValue:)) ?? DefaultValues.windowSpaceBehavior)
         self.autohidesWindow = storedAutohidesWindow ?? DefaultValues.autohidesWindow
         self.showsAppBadges = storedShowsAppBadges ?? DefaultValues.showsAppBadges
-        self.dimsIdleAppIcons = storedDimsIdleAppIcons ?? DefaultValues.dimsIdleAppIcons
         self.allowsWidgetLinkInstalls = storedAllowsWidgetLinkInstalls ?? DefaultValues.allowsWidgetLinkInstalls
         self.folderBadgeMode = storedFolderBadgeMode
             .flatMap(FolderBadgeMode.init(rawValue:))
@@ -3961,20 +1919,15 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
             ?? DefaultValues.folderBadgePreviewStyle
         self.opensAtLogin = storedOpensAtLogin ?? LaunchAtLoginService.shared.isEnabled
         self.autohideWindowDelay = max(storedAutohideWindowDelay ?? DefaultValues.autohideWindowDelay, 0)
-        self.autohideAnimationDuration = min(max(storedAutohideAnimationDuration ?? DefaultValues.autohideAnimationDuration, 0), 1)
         self.windowsTaskbarHeight = WindowsTaskbarMetrics.clampedHeight(
             storedWindowsTaskbarHeight.map { CGFloat($0) } ?? WindowsTaskbarMetrics.standardHeight)
         self.fullscreenRevealDelay = max(storedFullscreenRevealDelay ?? DefaultValues.fullscreenRevealDelay, 0)
         self.windowPreviewHoverDelay = max(storedWindowPreviewHoverDelay ?? DefaultValues.windowPreviewHoverDelay, 0)
-        self.windowPreviewLayout = storedWindowPreviewLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowPreviewLayout
-        self.overflowBehavior = (storedOverflowBehavior.flatMap(DockOverflowBehavior.init(rawValue:)) ?? DefaultValues.overflowBehavior)
-        self.windowAxisSizing = (storedWindowAxisSizing.flatMap(DockWindowAxisSizing.init(rawValue:)) ?? DefaultValues.windowAxisSizing)
         self.enablesWidgetHoverPreview = storedEnablesWidgetHoverPreview ?? DefaultValues.enablesWidgetHoverPreview
         self.widgetHoverPreviewSpans = storedWidgetHoverPreviewSpans
             .map { Set($0.compactMap(TileSpan.init(rawValue:))) }
             ?? DefaultValues.widgetHoverPreviewSpans
         self.widgetHoverPreviewDelay = max(storedWidgetHoverPreviewDelay ?? DefaultValues.widgetHoverPreviewDelay, 0)
-        self.showsActivePinnedSeparator = storedShowsActivePinnedSeparator ?? DefaultValues.showsActivePinnedSeparator
         self.showsRunningApps = storedShowsRunningApps ?? DefaultValues.showsRunningApps
         self.showsMinimizedWindows = storedShowsMinimizedWindows ?? DefaultValues.showsMinimizedWindows
         self.enablesShelveMode = storedEnablesShelveMode ?? DefaultValues.enablesShelveMode
@@ -3986,36 +1939,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
             .flatMap(AppTileFrontmostClickBehavior.init(rawValue:))
             ?? DefaultValues.appTileFrontmostClickBehavior
         self.fileBrowser = storedFileBrowser.flatMap(FileBrowser.init(rawValue:)) ?? DefaultValues.fileBrowser
-        self.activeIndicatorShape = (storedActiveIndicatorShape.flatMap(DockTileIndicatorShape.init(rawValue:)) ?? DefaultValues.activeIndicatorShape)
-        self.activeIndicatorImagePath = storedActiveIndicatorImagePath ?? DefaultValues.activeIndicatorImagePath
-        self.activeIndicatorColor = Self.decodeColor(from: storedActiveIndicatorColor) ?? DefaultValues.activeIndicatorColor
-        self.dividerImagePath = storedDividerImagePath ?? DefaultValues.dividerImagePath
-        self.leftDividerImagePath = storedLeftDividerImagePath ?? DefaultValues.leftDividerImagePath
-        self.rightDividerImagePath = storedRightDividerImagePath ?? DefaultValues.rightDividerImagePath
-        self.mirrorsLeftDividerOnRight = storedMirrorsLeftDividerOnRight ?? DefaultValues.mirrorsLeftDividerOnRight
-        self.activeIndicatorOffset = storedActiveIndicatorOffset.map { CGFloat($0) } ?? DefaultValues.activeIndicatorOffset
-        self.activeIndicatorScale = max(0.25, storedActiveIndicatorScale.map { CGFloat($0) } ?? DefaultValues.activeIndicatorScale)
-        self.dividerPaddingFraction = min(max(storedDividerPaddingFraction.map { CGFloat($0) } ?? DefaultValues.dividerPaddingFraction, 0), 0.5)
-        self.dividerImageScale = max(0.25, storedDividerImageScale.map { CGFloat($0) } ?? DefaultValues.dividerImageScale)
-        self.dividerOffset = storedDividerOffset.map { CGFloat($0) } ?? DefaultValues.dividerOffset
-        self.dividerOpacity = min(max(storedDividerOpacity.map { CGFloat($0) } ?? DefaultValues.dividerOpacity, 0), 1)
-        self.dividerColor = Self.decodeColor(from: storedDividerColor) ?? DefaultValues.dividerColor
-        self.windowBorderColor = Self.decodeColor(from: storedWindowBorderColor) ?? DefaultValues.windowBorderColor
-        self.windowBorderWidth = max(0, storedWindowBorderWidth.map { CGFloat($0) } ?? DefaultValues.windowBorderWidth)
-        self.iconShadowColor = Self.decodeColor(from: storedIconShadowColor) ?? DefaultValues.iconShadowColor
-        self.iconShadowRadius = max(0, storedIconShadowRadius.map { CGFloat($0) } ?? DefaultValues.iconShadowRadius)
-        self.iconShadowOpacity = min(max(storedIconShadowOpacity.map { CGFloat($0) } ?? DefaultValues.iconShadowOpacity, 0), 1)
         self.appIconOverrides = Self.decodeAppIconOverrides(from: storedAppIconOverrides) ?? DefaultValues.appIconOverrides
         self.trashIconOverrides = Self.decodeTrashIconOverrides(from: storedTrashIconOverrides) ?? DefaultValues.trashIconOverrides
         self.folderIconOverrides = Self.decodeFolderIconOverrides(from: storedFolderIconOverrides) ?? DefaultValues.folderIconOverrides
         self.launchpadIconPath = storedLaunchpadIconPath ?? DefaultValues.launchpadIconPath
         self.launchpadIconPaddingFraction = storedLaunchpadIconPaddingFraction.map { CGFloat($0) }
-        self.startMenuIconPath = storedStartMenuIconPath ?? DefaultValues.startMenuIconPath
-        self.startMenuIconPaddingFraction = storedStartMenuIconPaddingFraction.map { CGFloat($0) }
-            ?? DefaultValues.launchpadIconPaddingFraction
         self.hiddenAppBundleIdentifiers = Self.normalizedBundleIdentifiers(storedHiddenAppBundleIdentifiers ?? DefaultValues.hiddenAppBundleIdentifiers)
         self.showsGroupedOpenedAppsInDock = storedShowsGroupedOpenedAppsInDock ?? DefaultValues.showsGroupedOpenedAppsInDock
-        self.showsGroupedOpenedAppsBackdrop = storedShowsGroupedOpenedAppsBackdrop ?? DefaultValues.showsGroupedOpenedAppsBackdrop
         self.enablesLaunchpadOverlay = storedEnablesLaunchpadOverlay ?? DefaultValues.enablesLaunchpadOverlay
         self.enablesStartMenuOverlay = storedEnablesStartMenuOverlay ?? DefaultValues.enablesStartMenuOverlay
         self.opensStartMenuFromFinderTile = storedOpensStartMenuFromFinderTile ?? DefaultValues.opensStartMenuFromFinderTile
@@ -4056,7 +1986,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
         self.windowSwitcherSpaceScope = storedWindowSwitcherSpaceScope.flatMap(WindowSwitcherSpaceScope.init(rawValue:))
             ?? DefaultValues.windowSwitcherSpaceScope
-        self.windowSwitcherLayout = storedWindowSwitcherLayout.flatMap(WindowSwitcherLayout.init(rawValue:)) ?? DefaultValues.windowSwitcherLayout
         self.switcherMinimizeKeyCode = storedSwitcherMinimizeKeyCode.map(UInt16.init) ?? DefaultValues.switcherMinimizeKeyCode
         self.switcherCloseKeyCode = storedSwitcherCloseKeyCode.map(UInt16.init) ?? DefaultValues.switcherCloseKeyCode
         self.switcherZoomKeyCode = storedSwitcherZoomKeyCode.map(UInt16.init) ?? DefaultValues.switcherZoomKeyCode
@@ -4067,32 +1996,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.trailingItems = Self.decodeTrailingItems(from: storedTrailingItems) ?? DefaultValues.trailingItems
         self.hasSeenDockEditorHint = storedHasSeenDockEditorHint ?? DefaultValues.hasSeenDockEditorHint
         self.photoFrameBookmarks = (defaults.array(forKey: Keys.photoFrameBookmarks) as? [Data]) ?? []
-
-        // Load the user-override set, then run the one-shot migration
-        // that infers overrides from existing UserDefaults presence.
-        // After this runs once, the set is the authoritative source of
-        // truth, appearance setters maintain it from then on.
-        if let storedOverrideKeys = defaults.stringArray(forKey: Keys.userOverriddenAppearanceKeys) {
-            self.userOverriddenAppearanceKeys = Set(storedOverrideKeys)
-                .intersection(Self.appearanceKeys)
-        }
-
-        let migrationVersion = defaults.integer(forKey: Keys.appearanceOverrideMigrationVersion)
-        if migrationVersion < 1 {
-            // First launch with the override layer: treat any
-            // appearance key that exists in UserDefaults as a user
-            // override. Better to over-respect existing customizations
-            // than to let a theme silently replace them.
-            var seeded = self.userOverriddenAppearanceKeys
-            for key in Self.appearanceKeys {
-                if defaults.object(forKey: key) != nil {
-                    seeded.insert(key)
-                }
-            }
-            self.userOverriddenAppearanceKeys = seeded
-            persistUserOverriddenAppearanceKeys()
-            defaults.set(1, forKey: Keys.appearanceOverrideMigrationVersion)
-        }
     }
 
     func applySystemDockVisibilityPreference() {
@@ -4119,102 +2022,17 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         opensAtLogin = true
     }
 
-    /// Resets only the preferences exposed in Settings → Appearance
-    /// (General, Indicators, Tile Layout, Window Shape, Window
-    /// Background). App-icon overrides, behavior, widgets, launchpad,
-    /// window-management, and system-dock settings are untouched ,
-    /// callers that want a full wipe should call `resetToDefaults()`
-    /// instead.
+    /// Resets the preferences exposed in Settings → Appearance. App-icon
+    /// overrides, behavior, widgets, launchpad, window-management, and
+    /// system-dock settings are untouched; callers that want a full wipe
+    /// should call `resetToDefaults()` instead.
     func resetAppearanceToDefaults() {
-        // General
-        disablesGlassLook = DefaultValues.disablesGlassLook
-
-        // Indicators
-        activeIndicatorShape = DefaultValues.activeIndicatorShape
-        activeIndicatorImagePath = DefaultValues.activeIndicatorImagePath
-        activeIndicatorColor = DefaultValues.activeIndicatorColor
-        activeIndicatorOffset = DefaultValues.activeIndicatorOffset
-        activeIndicatorScale = DefaultValues.activeIndicatorScale
-        dividerImagePath = DefaultValues.dividerImagePath
-        leftDividerImagePath = DefaultValues.leftDividerImagePath
-        rightDividerImagePath = DefaultValues.rightDividerImagePath
-        mirrorsLeftDividerOnRight = DefaultValues.mirrorsLeftDividerOnRight
-        dividerPaddingFraction = DefaultValues.dividerPaddingFraction
-        dividerOffset = DefaultValues.dividerOffset
-        dividerImageScale = DefaultValues.dividerImageScale
-        dividerOpacity = DefaultValues.dividerOpacity
-        dividerColor = DefaultValues.dividerColor
-
-        // Tile Layout (system tile size + magnification live on
-        // DockSettingsService and aren't reset here)
-        tileClipShape = DefaultValues.tileClipShape
-        tileVerticalPadding = DefaultValues.tileVerticalPadding
-        tileSpacing = DefaultValues.tileSpacing
-        tileIconPadding = DefaultValues.tileIconPadding
         windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
-
-        // Tile Hover Effect
-        tileHoverOpacity = nil
-        tileHoverScale = nil
-        tileHoverBackgroundColor = nil
-        tileHoverBackgroundImagePath = nil
-        tileHoverBackgroundOpacity = nil
-        tileHoverBackgroundCornerRadius = nil
-
-        // Tile Active Background
-        tileActiveBackgroundColor = nil
-        tileActiveBackgroundImagePath = nil
-        tileActiveBackgroundOpacity = nil
-        tileActiveBackgroundCornerRadius = nil
-
-        // Per-span widget chrome overrides
-        widget1xContentPadding = nil
-        widget1xCornerRadius = nil
-        widget2xContentPadding = nil
-        widget2xCornerRadius = nil
-        widget3xContentPadding = nil
-        widget3xCornerRadius = nil
-        widget4xContentPadding = nil
-        widget4xCornerRadius = nil
-
-        // Icon Shadow (lives next to Tile Layout in the UI)
-        iconShadowColor = DefaultValues.iconShadowColor
-        iconShadowRadius = DefaultValues.iconShadowRadius
-        iconShadowOpacity = DefaultValues.iconShadowOpacity
-
-        // Window Shape
-        windowClipShape = DefaultValues.windowClipShape
-        windowCornerRadius = DefaultValues.windowCornerRadius
-        windowCornerRadiusTopLeading = nil
-        windowCornerRadiusTopTrailing = nil
-        windowCornerRadiusBottomLeading = nil
-        windowCornerRadiusBottomTrailing = nil
-        windowContentInsetTop = DefaultValues.windowContentInset
-        windowContentInsetLeading = DefaultValues.windowContentInset
-        windowContentInsetBottom = DefaultValues.windowContentInset
-        windowContentInsetTrailing = DefaultValues.windowContentInset
-        windowBorderColor = DefaultValues.windowBorderColor
-        windowBorderWidth = DefaultValues.windowBorderWidth
-
-        // Window Background
-        windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
-        windowBackgroundImageMode = DefaultValues.windowBackgroundImageMode
-        windowTintColor = DefaultValues.windowTintColor
-        windowTintOpacity = DefaultValues.windowTintOpacity
-
-        // Clear all override flags so the active theme (if any) takes
-        // over for these fields. The setters above re-mark whichever
-        // keys ended up with a non-default value, but for non-Optional
-        // fields setting back to the exact default doesn't trigger
-        // `didSet` (the guard short-circuits), so any pre-existing
-        // override flag would survive. Clearing them all here is the
-        // simplest way to honor "reset" semantically.
-        clearAllAppearanceOverrides()
     }
 
     /// Resets every preference surfaced in the Behavior settings panes
     /// (placement, visibility, app-tile click, app folders, widgets,
-    /// launch, system-dock). Leaves appearance, app icons, hidden apps,
+    /// launch). Leaves appearance, app icons, hidden apps,
     /// pinned tiles, and feature-specific surfaces (Launchpad / Window
     /// Manager / Actions) untouched. Mirrors `resetAppearanceToDefaults`.
     func resetBehaviorToDefaults() {
@@ -4222,17 +2040,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         windowPosition = DefaultValues.windowPosition
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
-        windowAxisSizing = DefaultValues.windowAxisSizing
-        overflowBehavior = DefaultValues.overflowBehavior
 
         // Visibility
         autohidesWindow = DefaultValues.autohidesWindow
         showsAppBadges = DefaultValues.showsAppBadges
-        dimsIdleAppIcons = DefaultValues.dimsIdleAppIcons
         folderBadgeMode = DefaultValues.folderBadgeMode
         folderBadgePreviewStyle = DefaultValues.folderBadgePreviewStyle
         autohideWindowDelay = DefaultValues.autohideWindowDelay
-        autohideAnimationDuration = DefaultValues.autohideAnimationDuration
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
         enablesShelveMode = DefaultValues.enablesShelveMode
         shelveHidesFinder = DefaultValues.shelveHidesFinder
@@ -4240,7 +2054,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         hidesRecentApps = DefaultValues.hidesRecentApps
         showsRunningApps = DefaultValues.showsRunningApps
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
-        showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
 
         // App-tile click
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
@@ -4250,61 +2063,33 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
 
         // App folders
         showsGroupedOpenedAppsInDock = DefaultValues.showsGroupedOpenedAppsInDock
-        showsGroupedOpenedAppsBackdrop = DefaultValues.showsGroupedOpenedAppsBackdrop
 
         // Widgets
         enablesWidgetHoverPreview = DefaultValues.enablesWidgetHoverPreview
         widgetHoverPreviewSpans = DefaultValues.widgetHoverPreviewSpans
         widgetHoverPreviewDelay = DefaultValues.widgetHoverPreviewDelay
         windowPreviewHoverDelay = DefaultValues.windowPreviewHoverDelay
-        windowPreviewLayout = DefaultValues.windowPreviewLayout
 
         // Launch
         opensAtLogin = DefaultValues.opensAtLogin
-
-        // System dock
-
-        // Same rationale as `resetAppearanceToDefaults`: setters guard
-        // against same-value writes, so any pre-existing override flag
-        // would survive without an explicit wipe. The behavior keys
-        // currently in `appearanceKeys` (windowAxisSizing, tileSize,
-        // largeSize, magnification) get their override status cleared
-        // alongside the rest, themes can drive these again.
-        clearAllAppearanceOverrides()
     }
 
     func resetToDefaults() {
-        tileVerticalPadding = DefaultValues.tileVerticalPadding
-        tileSpacing = DefaultValues.tileSpacing
-        tileClipShape = DefaultValues.tileClipShape
-        windowCornerRadius = DefaultValues.windowCornerRadius
-        windowClipShape = DefaultValues.windowClipShape
-        windowTintColor = DefaultValues.windowTintColor
-        windowTintOpacity = DefaultValues.windowTintOpacity
-        disablesGlassLook = DefaultValues.disablesGlassLook
-        windowBackgroundImagePath = DefaultValues.windowBackgroundImagePath
-        windowBackgroundImageMode = DefaultValues.windowBackgroundImageMode
         windowPosition = DefaultValues.windowPosition
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
         autohidesWindow = DefaultValues.autohidesWindow
         showsAppBadges = DefaultValues.showsAppBadges
-        dimsIdleAppIcons = DefaultValues.dimsIdleAppIcons
         folderBadgeMode = DefaultValues.folderBadgeMode
         folderBadgePreviewStyle = DefaultValues.folderBadgePreviewStyle
         opensAtLogin = DefaultValues.opensAtLogin
         autohideWindowDelay = DefaultValues.autohideWindowDelay
-        autohideAnimationDuration = DefaultValues.autohideAnimationDuration
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
         windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
         windowPreviewHoverDelay = DefaultValues.windowPreviewHoverDelay
-        windowPreviewLayout = DefaultValues.windowPreviewLayout
-        overflowBehavior = DefaultValues.overflowBehavior
-        windowAxisSizing = DefaultValues.windowAxisSizing
         enablesWidgetHoverPreview = DefaultValues.enablesWidgetHoverPreview
         widgetHoverPreviewSpans = DefaultValues.widgetHoverPreviewSpans
         widgetHoverPreviewDelay = DefaultValues.widgetHoverPreviewDelay
-        showsActivePinnedSeparator = DefaultValues.showsActivePinnedSeparator
         showsRunningApps = DefaultValues.showsRunningApps
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
         enablesShelveMode = DefaultValues.enablesShelveMode
@@ -4313,29 +2098,13 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         hidesRecentApps = DefaultValues.hidesRecentApps
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
         fileBrowser = DefaultValues.fileBrowser
-        activeIndicatorShape = DefaultValues.activeIndicatorShape
-        activeIndicatorImagePath = DefaultValues.activeIndicatorImagePath
-        activeIndicatorColor = DefaultValues.activeIndicatorColor
-        dividerImagePath = DefaultValues.dividerImagePath
-        leftDividerImagePath = DefaultValues.leftDividerImagePath
-        rightDividerImagePath = DefaultValues.rightDividerImagePath
-        mirrorsLeftDividerOnRight = DefaultValues.mirrorsLeftDividerOnRight
-        activeIndicatorOffset = DefaultValues.activeIndicatorOffset
-        activeIndicatorScale = DefaultValues.activeIndicatorScale
-        dividerPaddingFraction = DefaultValues.dividerPaddingFraction
-        dividerImageScale = DefaultValues.dividerImageScale
-        dividerOffset = DefaultValues.dividerOffset
-        dividerOpacity = DefaultValues.dividerOpacity
         appIconOverrides = DefaultValues.appIconOverrides
         trashIconOverrides = DefaultValues.trashIconOverrides
         folderIconOverrides = DefaultValues.folderIconOverrides
         launchpadIconPath = DefaultValues.launchpadIconPath
         launchpadIconPaddingFraction = DefaultValues.launchpadIconPaddingFraction
-        startMenuIconPath = DefaultValues.startMenuIconPath
-        startMenuIconPaddingFraction = DefaultValues.startMenuIconPaddingFraction
         hiddenAppBundleIdentifiers = DefaultValues.hiddenAppBundleIdentifiers
         showsGroupedOpenedAppsInDock = DefaultValues.showsGroupedOpenedAppsInDock
-        showsGroupedOpenedAppsBackdrop = DefaultValues.showsGroupedOpenedAppsBackdrop
         enablesLaunchpadOverlay = DefaultValues.enablesLaunchpadOverlay
         enablesStartMenuOverlay = DefaultValues.enablesStartMenuOverlay
         opensStartMenuFromFinderTile = DefaultValues.opensStartMenuFromFinderTile
@@ -4350,7 +2119,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         showsWindowSwitcherFocusPreview = DefaultValues.showsWindowSwitcherFocusPreview
         windowSwitcherPreviewMode = DefaultValues.windowSwitcherPreviewMode
         windowSwitcherSpaceScope = DefaultValues.windowSwitcherSpaceScope
-        windowSwitcherLayout = DefaultValues.windowSwitcherLayout
         switcherMinimizeKeyCode = DefaultValues.switcherMinimizeKeyCode
         switcherCloseKeyCode = DefaultValues.switcherCloseKeyCode
         switcherZoomKeyCode = DefaultValues.switcherZoomKeyCode
@@ -4359,6 +2127,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
     }
 
     private func syncSystemDockPositionIfNeeded() {
+        // Only move the hidden macOS Dock to an edge the taskbar actually uses.
+        guard windowPosition == effectiveWindowPosition else { return }
 
         let orientation: DockSettingsService.Orientation
         switch windowPosition {
@@ -4423,50 +2193,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         defaults.set(data, forKey: Keys.trailingItems)
     }
 
-    private func persistWindowTintColor(_ color: DockColor?) {
-        guard let color else {
-            defaults.removeObject(forKey: Keys.windowTintColor)
-            return
-        }
-
-        guard let data = try? encoder.encode(color) else {
-            defaults.removeObject(forKey: Keys.windowTintColor)
-            return
-        }
-
-        defaults.set(data, forKey: Keys.windowTintColor)
-    }
-
-    private func persistActiveIndicatorColor(_ color: DockColor?) {
-        guard let color else {
-            defaults.removeObject(forKey: Keys.activeIndicatorColor)
-            return
-        }
-
-        guard let data = try? encoder.encode(color) else {
-            defaults.removeObject(forKey: Keys.activeIndicatorColor)
-            return
-        }
-
-        defaults.set(data, forKey: Keys.activeIndicatorColor)
-    }
-
-    /// Generic persistence helper for `DockColor?` defaults. Used by
-    /// the newer optional-color fields (border, icon shadow, divider)
-    /// so each one doesn't need its own dedicated `persist…Color`
-    /// function.
-    private func persistOptionalColor(_ color: DockColor?, forKey key: String) {
-        guard let color else {
-            defaults.removeObject(forKey: key)
-            return
-        }
-        guard let data = try? encoder.encode(color) else {
-            defaults.removeObject(forKey: key)
-            return
-        }
-        defaults.set(data, forKey: key)
-    }
-
     private func persistAppIconOverrides(_ overrides: [AppIconOverride]) {
         guard let data = try? encoder.encode(overrides) else {
             defaults.removeObject(forKey: Keys.appIconOverrides)
@@ -4510,14 +2236,6 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
 
         defaults.set(data, forKey: Keys.launchpadShortcut)
-    }
-
-    private static func decodeColor(from data: Data?) -> DockColor? {
-        guard let data else {
-            return nil
-        }
-
-        return try? JSONDecoder().decode(DockColor.self, from: data)
     }
 
     private static func decodeWidgetPlacements(from data: Data?) -> [WidgetPlacement]? {

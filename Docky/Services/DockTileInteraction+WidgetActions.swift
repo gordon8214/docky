@@ -78,13 +78,8 @@ extension DockTileInteraction {
     }
 
     func widgetRemovalAction(for widget: WidgetTile, nonDockyTitle: String = "Remove Widget") -> ContextAction {
-        if tile.id.hasPrefix("theme:insert:"), let themeID = themeManager.activeThemeID {
-            return .action(nonDockyTitle) {
-                themeManager.removeLayoutInsertion(tileID: tile.id, themeID: themeID)
-            }
-        }
         if isDockyPinnedTile || isDockyTrailingTile {
-            return .action(String(localized: "Remove from Dock")) {
+            return .action(String(localized: "Remove from Taskbar")) {
                 removeDockyTile()
             }
         }
@@ -158,11 +153,11 @@ extension DockTileInteraction {
                 actions.append(.divider)
             }
             actions.append(
-                .action(String(localized: "Edit Dock...")) {
+                .action(String(localized: "Edit Taskbar...")) {
                     DockEditModeService.shared.enter()
                 })
             actions.append(
-                .action(String(localized: "Remove from Dock")) {
+                .action(String(localized: "Remove from Taskbar")) {
                     removeDockyTile()
                 })
         }
