@@ -90,8 +90,12 @@ every theme. `WindowSwitcherController` centers an acrylic panel
 `WindowSwitcherGeometry` gives every thumbnail one height (15% of the screen,
 96–160 points), takes each card's width from its window's aspect ratio, and wraps
 cards into centered rows at 85% of the screen width. Each card shows the app
-icon and window title above the thumbnail, a 3-point selection frame, and a
-close button on hover. Windows without a capture show their app icon.
+icon and window title above the thumbnail, a 3-point selection frame in the
+system accent color, and a close button on hover. Each thumbnail has a 1-point translucent border and a
+soft drop shadow. Windows without a capture show their app icon, with neither.
+The panel has a 1-point edge, stronger than taskbar popups, and a soft shadow.
+Both shadows go through `NSView.shadow`, because AppKit resets a backing
+layer's own shadow opacity.
 
 Pressing and releasing the shortcut within 120 ms switches to the previous window
 without showing the switcher. After that delay it appears at once and fades out

@@ -38,14 +38,19 @@ final class WindowSwitcherController: NSViewController {
         focusedImage.isHidden = true
         root.addSubview(focusedImage)
 
+        // AppKit owns a layer-backed view's shadow and resets the layer's
+        // shadow opacity, so the shadow goes through `NSView.shadow`.
         panelView.wantsLayer = true
-        panelView.layer?.shadowColor = NSColor.black.cgColor
-        panelView.layer?.shadowOpacity = 0.32
-        panelView.layer?.shadowRadius = 24
-        panelView.layer?.shadowOffset = CGSize(width: 0, height: -8)
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        shadow.shadowBlurRadius = 16
+        shadow.shadowOffset = CGSize(width: 0, height: -4)
+        panelView.shadow = shadow
         root.addSubview(panelView)
 
         chrome.tintAlpha = Self.tintAlpha
+        chrome.borderWidth = 1
+        chrome.borderAlpha = 0.25
         panelView.addSubview(chrome)
 
         scrollView.drawsBackground = false

@@ -131,12 +131,19 @@ final class WindowsTaskbarPopupChrome: NSView {
     var tintAlpha: CGFloat = 0.94 {
         didSet { updatePalette() }
     }
+    /// The edge line. The window switcher draws a stronger one than popups.
+    var borderWidth: CGFloat = 0.5 {
+        didSet { layer?.borderWidth = borderWidth }
+    }
+    var borderAlpha: CGFloat = 0.12 {
+        didSet { updatePalette() }
+    }
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
-        layer?.borderWidth = 0.5
+        layer?.borderWidth = borderWidth
         material.material = .hudWindow
         material.blendingMode = .behindWindow
         material.state = .active
@@ -164,7 +171,7 @@ final class WindowsTaskbarPopupChrome: NSView {
         let color = WindowsTaskbarStyle.background(effectiveAppearance)
         tint.backgroundColor = color.withAlphaComponent(opaque ? 1 : tintAlpha).cgColor
         layer?.borderColor =
-            WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(0.12).cgColor
+            WindowsTaskbarStyle.foreground(effectiveAppearance).withAlphaComponent(borderAlpha).cgColor
     }
 }
 

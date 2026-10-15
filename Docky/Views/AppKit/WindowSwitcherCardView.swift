@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import Combine
 
 /// What a switcher card shows. Plain values rather than `AppWindow`, so the
 /// UI regression can build cards without live AX elements.
@@ -25,6 +26,10 @@ final class WindowSwitcherCardView: NSView {
     static let selectionBorderWidth: CGFloat = 3
     static let cornerRadius: CGFloat = 8
     static let thumbnailCornerRadius: CGFloat = 4
+    static let thumbnailBorderWidth: CGFloat = 1
+    static let thumbnailShadowBlurRadius: CGFloat = 3
+    /// One point down; the shadow view isn't flipped.
+    static let thumbnailShadowOffset = CGSize(width: 0, height: -1)
     static let fallbackIconSize: CGFloat = 48
     static let closeButtonSize: CGFloat = 24
 
@@ -52,9 +57,14 @@ final class WindowSwitcherCardView: NSView {
     private let titleField = NSTextField(labelWithString: "")
     let closeButton = WindowSwitcherCloseButton()
     private let thumbnailContainer = NSView()
+    /// Casts the thumbnail's shadow into the card's padding. It sits beside
+    /// `thumbnailContainer` rather than inside it: AppKit masks views that have
+    /// a corner radius, so the container and `thumbnailView` would clip it.
+    private let thumbnailShadowView = NSView()
     private let thumbnailView = NSImageView()
     private let selectionLayer = CALayer()
     private var trackingArea: NSTrackingArea?
+    private var systemColorsObservation: AnyCancellable?
 
     var showsFallbackIcon: Bool { card.thumbnail == nil }
 
@@ -84,13 +94,14 @@ final class WindowSwitcherCardView: NSView {
         thumbnailView.layer?.cornerRadius = Self.thumbnailCornerRadius
         thumbnailView.layer?.masksToBounds = true
         thumbnailContainer.addSubview(thumbnailView)
+        thumbnailShadowView.wantsLayer = true
 
         selectionLayer.cornerRadius = Self.cornerRadius
         selectionLayer.borderWidth = Self.selectionBorderWidth
         selectionLayer.zPosition = 10
         layer?.addSublayer(selectionLayer)
 
-        for child in [iconView, titleField, thumbnailContainer, closeButton] {
+        for child in [iconView, titleField, thumbnailShadowView, thumbnailContainer, closeButton] {
             addSubview(child)
         }
 
@@ -98,6 +109,10 @@ final class WindowSwitcherCardView: NSView {
         setAccessibilityRole(.button)
         apply(card)
         updatePalette()
+        // Cards outlive one switcher session, so follow accent color changes.
+        systemColorsObservation = NotificationCenter.default.publisher(
+            for: NSColor.systemColorsDidChangeNotification
+        ).sink { [weak self] _ in self?.updatePalette() }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -145,13 +160,20 @@ final class WindowSwitcherCardView: NSView {
         } else {
             // Fit the view to the picture so its own corners are the rounded ones,
             // including portrait windows that don't fill the thumbnail's width.
-            thumbnailView.frame = Self.aspectFitRect(
-                for: card.thumbnail?.size ?? .zero, in: thumbnailContainer.bounds)
+            // Pixel-aligned so the hairline border stays sharp.
+            thumbnailView.frame = thumbnailContainer.backingAlignedRect(
+                Self.aspectFitRect(for: card.thumbnail?.size ?? .zero, in: thumbnailContainer.bounds),
+                options: .alignAllEdgesNearest)
         }
+        thumbnailShadowView.frame = convert(thumbnailView.frame, from: thumbnailContainer)
+        thumbnailShadowView.isHidden = showsFallbackIcon
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         selectionLayer.frame = bounds
+        thumbnailShadowView.layer?.shadowPath = CGPath(
+            roundedRect: thumbnailShadowView.bounds, cornerWidth: Self.thumbnailCornerRadius,
+            cornerHeight: Self.thumbnailCornerRadius, transform: nil)
         CATransaction.commit()
     }
 
@@ -182,13 +204,30 @@ final class WindowSwitcherCardView: NSView {
         layer?.backgroundColor = isHovered
             ? WindowsTaskbarStyle.highlight(appearance).cgColor
             : NSColor.clear.cgColor
-        selectionLayer.borderColor = isSelected
-            ? (dark ? NSColor.white : NSColor(calibratedWhite: 0.08, alpha: 1)).cgColor
-            : NSColor.clear.cgColor
+        // The system accent color, resolved for this card's appearance.
+        var accent = NSColor.controlAccentColor.cgColor
+        appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.cgColor }
+        selectionLayer.borderColor = isSelected ? accent : NSColor.clear.cgColor
         thumbnailContainer.layer?.backgroundColor = showsFallbackIcon
             ? WindowsTaskbarStyle.highlight(appearance).cgColor
             : NSColor.clear.cgColor
+        // A window edge and a soft shadow, but not for the fallback app icon.
+        thumbnailView.layer?.borderWidth = showsFallbackIcon ? 0 : Self.thumbnailBorderWidth
+        // A translucent mid gray, which shows against both light and dark
+        // window contents; black or white disappears on half of them.
+        thumbnailView.layer?.borderColor = (dark
+            ? NSColor(calibratedWhite: 0.65, alpha: 0.5)
+            : NSColor(calibratedWhite: 0.45, alpha: 0.55)).cgColor
         CATransaction.commit()
+
+        // AppKit owns a layer-backed view's shadow and resets the layer's
+        // shadow opacity, so the shadow goes through `NSView.shadow`. A black
+        // shadow barely shows on the dark panel, so it's stronger there.
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(dark ? 0.6 : 0.34)
+        shadow.shadowBlurRadius = Self.thumbnailShadowBlurRadius
+        shadow.shadowOffset = Self.thumbnailShadowOffset
+        thumbnailShadowView.shadow = shadow
     }
 
     // MARK: Mouse
