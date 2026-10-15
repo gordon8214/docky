@@ -160,7 +160,15 @@ enum ContextActionMenuPresenter {
                 typealias Fn = @convention(c) (NSMenu, Selector, NSRect, NSView?, NSRectEdge) -> Void
                 let imp = menu.method(for: selector)
                 let fn = unsafeBitCast(imp, to: Fn.self)
-                fn(menu, selector, anchorRect, view, preferredEdge)
+                // The SPI reads vertical edges top-down on screen whatever the view's flipping:
+                // `.minY` opens above the anchor. Callers pass screen-up `.maxY` for above.
+                let edge = fittingEdge(for: menu, anchorRect: anchorRect, in: view)
+                let topDownEdge: NSRectEdge = switch edge {
+                case .minY: .maxY
+                case .maxY: .minY
+                default: edge
+                }
+                fn(menu, selector, anchorRect, view, topDownEdge)
                 return
             }
 
@@ -179,6 +187,35 @@ enum ContextActionMenuPresenter {
                 anchor = NSPoint(x: anchorRect.midX - menu.size.width / 2, y: anchorRect.maxY)
             }
             menu.popUp(positioning: menu.items.last, at: anchor, in: view)
+        }
+
+        /// `preferredEdge`, or its opposite when the menu doesn't fit on the screen past the
+        /// preferred edge and the opposite side has more room. The SPI squashes the menu against
+        /// the screen edge instead of switching sides, which collapses it on a bar at that edge.
+        private func fittingEdge(for menu: NSMenu, anchorRect: NSRect, in view: NSView) -> NSRectEdge {
+            guard let window = view.window, let screen = window.screen ?? NSScreen.main else { return preferredEdge }
+            let anchor = window.convertToScreen(view.convert(anchorRect, to: nil))
+            let visible = screen.visibleFrame
+            func room(past edge: NSRectEdge) -> CGFloat {
+                switch edge {
+                case .minX: anchor.minX - visible.minX
+                case .maxX: visible.maxX - anchor.maxX
+                case .minY: anchor.minY - visible.minY
+                case .maxY: visible.maxY - anchor.maxY
+                @unknown default: .greatestFiniteMagnitude
+                }
+            }
+            let opposite: NSRectEdge
+            let needed: CGFloat
+            switch preferredEdge {
+            case .minX: opposite = .maxX; needed = menu.size.width
+            case .maxX: opposite = .minX; needed = menu.size.width
+            case .minY: opposite = .maxY; needed = menu.size.height
+            case .maxY: opposite = .minY; needed = menu.size.height
+            @unknown default: return preferredEdge
+            }
+            let preferredRoom = room(past: preferredEdge)
+            return preferredRoom < needed && room(past: opposite) > preferredRoom ? opposite : preferredEdge
         }
 
         private func beginAutohideInterruption(for view: NSView) {
