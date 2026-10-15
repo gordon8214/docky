@@ -217,22 +217,24 @@ final class WindowSwitcherService: ObservableObject {
     /// turns around, unless the shortcut itself holds ⇧.
     func beginKeyRepeat(for key: SelectionKey) {
         endKeyRepeat()
-        guard isPresented else { return }
+        guard isPresented, !isContextMenuPresented else { return }
 
         repeatingKey = key
         keyRepeatTask = Task { [weak self] in
-            var delay = NSEvent.keyRepeatDelay
+            // The floors keep a zero rate from `defaults write -g KeyRepeat`
+            // from spinning the main thread.
+            var delay = max(NSEvent.keyRepeatDelay, 0.1)
             while true {
                 do {
                     try await Task.sleep(for: .seconds(delay))
                 } catch {
                     return
                 }
-                guard let self, self.isPresented else { return }
-                if !self.isContextMenuPresented {
-                    self.moveSelection(delta: self.repeatDirection(for: key))
-                }
-                delay = NSEvent.keyRepeatInterval
+                // A sleep that finished just before `endKeyRepeat` canceled it
+                // still returns normally, and must not move once more.
+                guard !Task.isCancelled, let self, self.isPresented else { return }
+                self.moveSelection(delta: self.repeatDirection(for: key))
+                delay = max(NSEvent.keyRepeatInterval, 0.015)
             }
         }
     }
@@ -322,6 +324,9 @@ final class WindowSwitcherService: ObservableObject {
         isContextMenuPresented = isPresented
 
         if isPresented {
+            // Stopping here means a release that menu tracking keeps from
+            // arriving can't leave the repeat running after the menu closes.
+            endKeyRepeat()
             cancelFocusedPreview()
         }
 
@@ -776,6 +781,11 @@ final class WindowSwitcherService: ObservableObject {
                 return OSStatus(eventNotHandledErr)
             }
 
+            // Press and release both hop to the main actor the same way, so a
+            // quick tap's release always runs after its press has started the
+            // repeat. Handling either one synchronously, or running a nested
+            // event loop while handling the press, would let a release slip
+            // ahead and leave the repeat running.
             guard GetEventKind(event) == UInt32(kEventHotKeyPressed) else {
                 Task { @MainActor in
                     service.endKeyRepeat(for: key)

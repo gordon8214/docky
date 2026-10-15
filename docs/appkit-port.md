@@ -75,11 +75,14 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   key swallowing, the grave key moving the selection, its hotkeys being held
   only while the switcher is open, the quick-tap switch, holding the shortcut to
   repeat, and the ⌘Tab takeover. The repeat check posts real ⌃⌥⌘Tab key events
-  and holds them for about two seconds, so don't type while it runs. The ⌘Tab check
-  is skipped while another Docky is running, the grave key check with fewer than
-  two windows or an action key bound to that key, and the repeat check with fewer
-  than two windows or key repeat turned off. Temporarily changed switcher
-  preferences and the frontmost app are restored.
+  and holds them for a few seconds, longer with a slow key repeat setting, so
+  don't type while it runs. It releases them even when a check fails. The ⌘Tab
+  check is skipped while another Docky is running, the grave key check with
+  fewer than two windows or an action key bound to that key, and the repeat
+  check with fewer than two windows, a key repeat delay over 2 seconds or an
+  interval over 0.25 seconds. Temporarily changed switcher
+  preferences and the frontmost app are restored. The timeout's SIGTERM also
+  restores the preferences, and releases any keys still held, before exiting.
 
 The integration checks validate native controller layout and lifecycle. They do not
 replace interactive checks for drag sessions, auto-hide, VoiceOver, permission

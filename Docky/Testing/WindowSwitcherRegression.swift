@@ -3,6 +3,7 @@
     import Carbon
     import Combine
     import Darwin
+    import Synchronization
 
     /// Exercises real window metadata, native selection, capture cancellation,
     /// the key above Tab, the quick-tap path, holding the shortcut to repeat
@@ -43,6 +44,11 @@
                         "docky.windowSwitcherPreviewMode", "docky.windowSwitcherReplacesCommandTab",
                         "docky.windowSwitcherShortcut"]
             let stored = keys.map { UserDefaults.standard.object(forKey: $0) }
+            let termination = try restoringOnTermination(keys: keys, stored: stored)
+            defer {
+                termination.cancel()
+                signal(SIGTERM, SIG_DFL)
+            }
             let frontmost = NSWorkspace.shared.frontmostApplication
             preferences.replacesSystemCommandTab = false
             let service = WindowSwitcherService.shared
@@ -216,7 +222,8 @@
         /// after the system's key repeat delay until the key comes up. Real key
         /// events cover the Carbon hotkey's release, and ⌃⌥⌘Tab keeps a press
         /// the hotkey misses from typing into another app. The keys are down
-        /// for about two seconds, so typing then can flip or add moves.
+        /// for a few seconds, longer with a slow key repeat setting, so typing
+        /// then can flip or add moves.
         private static func checkKeyRepeat(_ service: WindowSwitcherService) async throws {
             let delay = NSEvent.keyRepeatDelay
             let interval = NSEvent.keyRepeatInterval
@@ -224,7 +231,7 @@
             let windowCount = service.windows.count
             service.dismiss()
             guard windowCount >= 2, delay <= 2, interval <= 0.25 else {
-                print("Skipped key repeat check: it needs two windows and key repeat turned on")
+                print("Skipped key repeat check: it needs two windows, a key repeat delay of at most 2s and an interval of at most 0.25s")
                 fflush(stdout)
                 return
             }
@@ -248,8 +255,10 @@
                     heldFlags.remove(flag)
                     postKey(keyCode, down: false, flags: heldFlags)
                 }
+                syntheticKeysAreDown.store(false, ordering: .relaxed)
             }
             defer { releaseKeys() }
+            syntheticKeysAreDown.store(true, ordering: .relaxed)
             for (keyCode, flag) in modifiers {
                 heldFlags.insert(flag)
                 postKey(keyCode, down: true, flags: heldFlags)
@@ -310,7 +319,43 @@
             fflush(stdout)
         }
 
-        private static func postKey(_ keyCode: Int, down: Bool, flags: CGEventFlags) {
+        /// Whether `checkKeyRepeat` may be holding synthetic keys down.
+        nonisolated private static let syntheticKeysAreDown = Atomic(false)
+
+        /// A timeout's SIGTERM skips every `defer`, which would leave the test's
+        /// preferences saved for the next launch and synthetic keys held down.
+        /// The handler runs off the main thread, which a timeout usually means
+        /// is stuck.
+        nonisolated private static func restoringOnTermination(
+            keys: [String], stored: [Any?]
+        ) throws -> DispatchSourceSignal {
+            let values = Dictionary(uniqueKeysWithValues: zip(keys, stored).compactMap { key, value in
+                value.map { (key, $0) }
+            })
+            let snapshot = try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0)
+            signal(SIGTERM, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+            source.setEventHandler {
+                if syntheticKeysAreDown.load(ordering: .relaxed) {
+                    for keyCode in [kVK_Tab, kVK_Command, kVK_Option, kVK_Control] {
+                        postKey(keyCode, down: false, flags: [])
+                    }
+                }
+                if let values = try? PropertyListSerialization.propertyList(from: snapshot, format: nil) as? [String: Any] {
+                    for key in keys {
+                        if let value = values[key] { UserDefaults.standard.set(value, forKey: key) } else {
+                            UserDefaults.standard.removeObject(forKey: key)
+                        }
+                    }
+                    UserDefaults.standard.synchronize()
+                }
+                exit(1)
+            }
+            source.resume()
+            return source
+        }
+
+        nonisolated private static func postKey(_ keyCode: Int, down: Bool, flags: CGEventFlags) {
             let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down)
             event?.flags = flags
             event?.post(tap: .cghidEventTap)
