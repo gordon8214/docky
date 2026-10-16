@@ -2,7 +2,7 @@
 //  LaunchpadInspectorWindowController.swift
 //  Docky
 //
-//  Floating utility panel that hosts `LaunchpadSettingsView` over the
+//  Floating utility panel that hosts the Launchpad settings pane over the
 //  Launchpad overlay so the user can tune grid columns, icon size, and
 //  transparency without dismissing the launchpad first. Edits flow
 //  through `DockyPreferences` and the launchpad re-renders against
@@ -23,7 +23,7 @@ final class LaunchpadInspectorWindowController: NSWindowController, NSWindowDele
     private var hasPositioned = false
 
     init() {
-        let hosting = NativeSettingsPaneController(id: "launchpad")
+        let hosting = NativeSettingsPaneController(pane: .launchpad, placement: .launchpadInspector)
         self.contentController = hosting
         let panel = LaunchpadInspectorPanel()
         panel.contentViewController = hosting
@@ -62,6 +62,9 @@ final class LaunchpadInspectorWindowController: NSWindowController, NSWindowDele
             window.orderFrontRegardless()
             window.makeKey()
         } else {
+            // End a sheet such as the background image's open panel first, so its
+            // caller finishes now instead of when the inspector next appears.
+            if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
             window.orderOut(nil)
         }
     }

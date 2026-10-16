@@ -1,99 +1,111 @@
 import AppKit
 
+/// Settings' split view: the list of panes in a sidebar, with the selected
+/// pane beside it. The window takes its title from the selected pane.
 final class NativeSettingsController: NSSplitViewController {
-    static let panes: [(id: String, title: String)] = [
-        ("profiles", "Profiles"), ("appearanceGeneral", "Appearance"), ("appIcons", "App Icons"),
-        ("behaviorGeneral", "Behavior — General"), ("behaviorPlacement", "Placement"),
-        ("behaviorVisibility", "Visibility"),
-        ("behaviorAppTileClick", "App Tile Click"), ("behaviorAppFolders", "App Folders"),
-        ("behaviorWidgets", "Widget Behavior"),
-        ("hiddenApps", "Hidden Apps"), ("launchpad", "Launchpad"), ("startMenu", "Start Menu"),
-        ("windowManagement", "Window Management"), ("actions", "Actions"), ("behaviorLaunch", "Launch"),
-        ("behaviorSystemDock", "System Dock"), ("menuExtras", "Menu Extras"),
-        ("permissions", "Permissions"), ("updates", "Updates")
-    ]
+    /// Remembers the last pane between openings. It isn't a `DockyPreferences`
+    /// key, so profiles don't mirror it.
+    static let selectedPaneKey = "DockySettingsSelectedPane"
+    var onNavigationChange: (() -> Void)?
+    private(set) var selectedPane: SettingsPane
+    private let defaults: UserDefaults
     private let sidebar = NativeSettingsSidebarController()
-    private var detail: NSSplitViewItem?
-    private var navigationHistory = SettingsNavigationHistory()
-    private var cache: [String: NSViewController] = [:]
+    private let detail = NativeSettingsDetailController()
+    private var history = SettingsNavigationHistory()
+    private var cache: [SettingsPane: NSViewController] = [:]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        selectedPane = defaults.string(forKey: Self.selectedPaneKey).flatMap(SettingsPane.init(rawValue:)) ?? .general
+        super.init(nibName: nil, bundle: nil)
+        title = selectedPane.title
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    var canGoBack: Bool { history.canMoveBack }
+    var canGoForward: Bool { history.canMoveForward }
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        let item = NSSplitViewItem(sidebarWithViewController: sidebar)
-        item.minimumThickness = 180
-        item.maximumThickness = 260
-        addSplitViewItem(item)
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.minimumThickness = 180
+        sidebarItem.maximumThickness = 260
+        sidebarItem.canCollapse = false
+        addSplitViewItem(sidebarItem)
+        let detailItem = NSSplitViewItem(viewController: detail)
+        detailItem.minimumThickness = 460
+        addSplitViewItem(detailItem)
         sidebar.onSelect = { [weak self] in self?.showPane($0) }
-        sidebar.onBack = { [weak self] in self?.navigate(-1) }
-        sidebar.onForward = { [weak self] in self?.navigate(1) }
-        showPane("profiles")
-    }
-    func showPane(_ id: String, addHistory: Bool = true) {
-        guard Self.panes.contains(where: { $0.id == id }) else { return }
-        if addHistory { navigationHistory.push(id) }
-        if let detail { removeSplitViewItem(detail) }
-        let controller =
-            cache[id]
-            ?? (id == "appIcons"
-                ? NativeIconSettingsController() : NativeSettingsPaneController(id: id))
-        cache[id] = controller
-        let item = NSSplitViewItem(viewController: controller)
-        item.minimumThickness = 460
-        addSplitViewItem(item)
-        detail = item
-        sidebar.select(id)
-    }
-    private func navigate(_ delta: Int) {
-        guard let paneID = navigationHistory.move(delta) else { return }
-        showPane(paneID, addHistory: false)
+        showPane(selectedPane)
     }
 
-}
-
-private final class NativeSettingsSidebarController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
-    private var selectingProgrammatically = false
-    private let table = NSTableView()
-    private let scroll = NSScrollView()
-    private let navigation = NSStackView()
-    var onSelect: ((String) -> Void)?
-    var onBack: (() -> Void)?
-    var onForward: (() -> Void)?
-    override func loadView() {
-        view = NSView()
-        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("pane")))
-        table.headerView = nil
-        table.rowHeight = 30
-        table.style = .sourceList
-        table.dataSource = self
-        table.delegate = self
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        navigation.orientation = .horizontal
-        navigation.addArrangedSubview(NativeActionButton("", symbol: "chevron.left") { [weak self] in self?.onBack?() })
-        navigation.addArrangedSubview(
-            NativeActionButton("", symbol: "chevron.right") { [weak self] in self?.onForward?() })
-        view.addSubview(scroll)
-        view.addSubview(navigation)
-    }
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        scroll.frame = CGRect(x: 0, y: 42, width: view.bounds.width, height: max(0, view.bounds.height - 42))
-        navigation.frame = CGRect(x: 12, y: 6, width: max(0, view.bounds.width - 24), height: 30)
-    }
-    func numberOfRows(in tableView: NSTableView) -> Int { NativeSettingsController.panes.count }
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        nativeLabel(NativeSettingsController.panes[row].title)
-    }
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !selectingProgrammatically, NativeSettingsController.panes.indices.contains(table.selectedRow) else {
+    func showPane(_ pane: SettingsPane, recordsHistory: Bool = true) {
+        guard endPaneEditing() else {
+            sidebar.select(selectedPane)
             return
         }
-        onSelect?(NativeSettingsController.panes[table.selectedRow].id)
+        if recordsHistory { history.push(pane.rawValue) }
+        selectedPane = pane
+        defaults.set(pane.rawValue, forKey: Self.selectedPaneKey)
+        detail.show(controller(for: pane))
+        title = pane.title
+        sidebar.select(pane)
+        onNavigationChange?()
     }
-    func select(_ id: String) {
-        guard let index = NativeSettingsController.panes.firstIndex(where: { $0.id == id }), table.selectedRow != index
+
+    func goBack() { navigate(-1) }
+    func goForward() { navigate(1) }
+
+    private func navigate(_ delta: Int) {
+        guard endPaneEditing(), let identifier = history.move(delta), let pane = SettingsPane(rawValue: identifier)
         else { return }
-        selectingProgrammatically = true
-        table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
-        selectingProgrammatically = false
+        showPane(pane, recordsHistory: false)
+    }
+
+    /// Moves focus out of the pane, which ends an edit in progress so a typed
+    /// number saves. Returns false, with a beep, when the field won't give up
+    /// focus because its text isn't a number.
+    private func endPaneEditing() -> Bool {
+        guard let window = view.window, let responder = window.firstResponder as? NSView,
+            responder.isDescendant(of: detail.view)
+        else { return true }
+        if window.makeFirstResponder(sidebar.tableView) { return true }
+        NSSound.beep()
+        return false
+    }
+
+    /// Panes are kept once built, so each keeps its scroll position.
+    private func controller(for pane: SettingsPane) -> NSViewController {
+        if let cached = cache[pane] { return cached }
+        let controller: NSViewController =
+            pane == .appIcons ? NativeIconSettingsController() : NativeSettingsPaneController(pane: pane)
+        cache[pane] = controller
+        return controller
+    }
+}
+
+/// Holds the selected pane, so the split view keeps the same two items.
+private final class NativeSettingsDetailController: NSViewController {
+    override func loadView() {
+        view = NSView(frame: CGRect(x: 0, y: 0, width: 600, height: 500))
+    }
+
+    func show(_ controller: NSViewController) {
+        for child in children where child !== controller {
+            child.view.removeFromSuperview()
+            child.removeFromParent()
+        }
+        guard controller.parent !== self else { return }
+        addChild(controller)
+        let pane = controller.view
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pane)
+        NSLayoutConstraint.activate([
+            pane.topAnchor.constraint(equalTo: view.topAnchor),
+            pane.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            pane.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pane.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 }

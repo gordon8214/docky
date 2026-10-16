@@ -7,11 +7,13 @@ import Synchronization
 @Observable
 private final class Model {
     var value = 0
+    var other = 0
 }
 
 @MainActor
 private final class Readings {
     var values: [Int] = []
+    var reads = 0
 }
 
 private final class TokenHolder: Sendable {
@@ -64,7 +66,40 @@ private enum ObservationBridgeRegression {
         model.value = 6
         await drainMainActor()
         precondition(releasedReadings.values == [5], "Releasing the token must cancel observation")
+        await checkValueObservation()
         print("Observation bridge regression checks passed")
+    }
+
+    /// `observeChanges(of:perform:)` tracks only `read`, skips equal values, and
+    /// doesn't track what `perform` reads.
+    @MainActor
+    private static func checkValueObservation() async {
+        let model = Model()
+        let readings = Readings()
+        let token = observeChanges(of: {
+            readings.reads += 1
+            return model.value / 2
+        }) { half in
+            _ = model.other
+            readings.values.append(half)
+        }
+        precondition(readings.values == [0], "Value observation must run immediately")
+        model.value = 1
+        await drainMainActor()
+        precondition(readings.values == [0], "An equal value must not call perform")
+        model.value = 2
+        await waitUntil { readings.values == [0, 1] }
+        let reads = readings.reads
+        model.other = 1
+        await drainMainActor()
+        // A tracked read would re-run `read`, even though the value stays equal.
+        precondition(readings.reads == reads, "Reads inside perform must not be tracked")
+        model.value = 4
+        await waitUntil { readings.values == [0, 1, 2] }
+        token.cancel()
+        model.value = 6
+        await drainMainActor()
+        precondition(readings.values == [0, 1, 2], "Cancellation must stop value observation")
     }
 
     @MainActor

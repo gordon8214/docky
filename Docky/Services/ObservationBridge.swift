@@ -15,6 +15,13 @@
 //  hopped to the main actor. The returned `AnyCancellable` stops
 //  re-running on cancel/deallocate.
 //
+//  `observeChanges(of:perform:)` tracks only `read`, and calls
+//  `perform` outside the tracking scope when the value changes. Use
+//  it when `perform` builds views or reads other observable state:
+//  nested `withObservationTracking` scopes merge their reads into
+//  the outer scope, so anything `perform` reads would otherwise
+//  re-run the whole observer.
+//
 //  Caveats vs. the Combine `.sink` pattern this replaces:
 //    • `onChange` from `withObservationTracking` only fires once per
 //      observation-window. We re-install on each change, so we don't
@@ -67,5 +74,61 @@ private final class ObserveBridgeState: Sendable {
                 self.install()
             }
         }
+    }
+}
+
+/// Calls `perform` with `read()` now, then again on the main actor whenever the
+/// value `read` returns changes. Only `read` is tracked, and equal values are
+/// skipped.
+@discardableResult
+@MainActor
+func observeChanges<Value: Equatable>(
+    of read: @escaping @MainActor () -> Value,
+    perform: @escaping @MainActor (Value) -> Void
+) -> sending AnyCancellable {
+    let cancellation = ObserveCancellation()
+    let state = ObserveValueState(read: read, perform: perform, cancellation: cancellation)
+    state.install()
+    // Capture only the flag: capturing the generic state would capture `Value`'s metatype.
+    return AnyCancellable { @Sendable in cancellation.isCancelled = true }
+}
+
+private final class ObserveCancellation: Sendable {
+    private let cancelled = Mutex(false)
+
+    var isCancelled: Bool {
+        get { cancelled.withLock { $0 } }
+        set { cancelled.withLock { $0 = newValue } }
+    }
+}
+
+@MainActor
+private final class ObserveValueState<Value: Equatable> {
+    private let read: @MainActor () -> Value
+    private let perform: @MainActor (Value) -> Void
+    private let cancellation: ObserveCancellation
+    private var last: Value?
+
+    init(
+        read: @escaping @MainActor () -> Value, perform: @escaping @MainActor (Value) -> Void,
+        cancellation: ObserveCancellation
+    ) {
+        self.read = read
+        self.perform = perform
+        self.cancellation = cancellation
+    }
+
+    func install() {
+        guard !cancellation.isCancelled else { return }
+        let value = withObservationTracking {
+            read()
+        } onChange: { [self] in
+            Task { @MainActor in
+                self.install()
+            }
+        }
+        if let last, last == value { return }
+        last = value
+        perform(value)
     }
 }

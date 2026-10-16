@@ -352,9 +352,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             appMenu?.insertItem(item, at: 1)
         }
 
+        installSettingsNavigationItems()
+
         #if DEBUG
         installDebugStatusItem()
         #endif
+    }
+
+    /// Adds Back (⌘[) and Forward (⌘]) to the top of the View menu. They have no
+    /// target, so they reach the Settings window controller through the key or
+    /// main window's responder chain, and are disabled while Settings is neither.
+    private func installSettingsNavigationItems() {
+        // Find the View menu by an item it holds; its title is localized.
+        let viewMenu = NSApp.mainMenu?.items.compactMap(\.submenu).first { menu in
+            menu.items.contains { $0.action == #selector(NSSplitViewController.toggleSidebar(_:)) }
+        }
+        guard let viewMenu,
+              !viewMenu.items.contains(where: { $0.action == #selector(SettingsWindowController.goBack(_:)) })
+        else { return }
+        let back = NSMenuItem(
+            title: String(localized: "Back"), action: #selector(SettingsWindowController.goBack(_:)), keyEquivalent: "[")
+        let forward = NSMenuItem(
+            title: String(localized: "Forward"), action: #selector(SettingsWindowController.goForward(_:)),
+            keyEquivalent: "]")
+        viewMenu.insertItem(back, at: 0)
+        viewMenu.insertItem(forward, at: 1)
+        viewMenu.insertItem(.separator(), at: 2)
     }
 
     #if DEBUG

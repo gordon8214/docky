@@ -15,6 +15,8 @@ final class NativeWidgetSettingsController: NSViewController, NSSearchFieldDeleg
     private let document = NativeScrollDocumentView()
     private var searchTask: Task<Void, Never>?
     private var subscriptions = Set<AnyCancellable>()
+    /// Targets for the calendar checkboxes, which are rebuilt when access changes.
+    private var calendarTargets: [NativeControlAction] = []
     var onDone: (() -> Void)?
     init(tileID: String, widget: WidgetTile) {
         self.tileID = tileID
@@ -77,6 +79,7 @@ final class NativeWidgetSettingsController: NSViewController, NSSearchFieldDeleg
             calendarSection.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
+        calendarTargets = []
         defer { self.view.needsLayout = true }
         let service = CalendarService.shared
         if service.permissionStatus != .granted {
@@ -95,15 +98,17 @@ final class NativeWidgetSettingsController: NSViewController, NSSearchFieldDeleg
                 TileStore.shared.widgetSettings(tileID: tileID)?.stringList("calendar.calendarIDs") ?? [])
             let button = NSButton(checkboxWithTitle: choice.title, target: nil, action: nil)
             button.state = selected.contains(choice.identifier) ? .on : .off
-            let row = NativeFormRow(title: "", control: button)
-            row.bind(button) { [weak self] in
-                guard let self else { return }
+            let target = NativeControlAction { [weak self, weak button] in
+                guard let self, let button else { return }
                 var ids = Set(
                     TileStore.shared.widgetSettings(tileID: self.tileID)?.stringList("calendar.calendarIDs") ?? [])
                 if button.state == .on { ids.insert(choice.identifier) } else { ids.remove(choice.identifier) }
                 self.set("calendar.calendarIDs", ids.isEmpty ? nil : .stringList(ids.sorted()))
             }
-            calendarSection.addArrangedSubview(row)
+            calendarTargets.append(target)
+            button.target = target
+            button.action = #selector(NativeControlAction.invoke(_:))
+            calendarSection.addArrangedSubview(button)
         }
         calendarSection.addArrangedSubview(
             nativeLabel(

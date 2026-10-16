@@ -178,8 +178,8 @@ is unchanged.
 
 The Debug AppKit UI harness checks negative/offset display geometry, popup edge
 clamping and transparent backdrop offsets, plus the native-only toggle. It verifies
-that the settings checkbox controls the shared saved preference, taskbar changes
-update that checkbox, and the off state clears hosts and occupies no extra space.
+that the Settings switch controls the shared saved preference, taskbar changes
+update that switch, and the off state clears hosts and occupies no extra space.
 The suite runs in about four to eight seconds, with a 30-second limit:
 
 ```sh

@@ -90,7 +90,7 @@ disappears, or Docky marks reservation ownership inactive after a backend
 failure. The existing independent watchdog preserves/restores Apple's original
 Dock preferences and restarts Dock after an unexpected owner exit. Docky
 reconnects after Apple Dock restarts. Backend and independent readback failures
-appear in Settings → Behavior → System Dock; an explicit retry is available. There is no Accessibility resize fallback.
+appear in Settings → General → System Dock; an explicit retry is available. There is no Accessibility resize fallback.
 
 ## Window list and thumbnails
 
@@ -176,7 +176,7 @@ scripts/test_appkit_compatibility.sh
 Sign local Release builds before launching them too. `CODE_SIGNING_ALLOWED=NO`
 leaves a linker signature with identifier `Docky`, which does not authenticate
 as `gt.quintero.Docky`. The Dock-side publisher rejects that build and releases
-the screen reservation. Settings → Behavior → System Dock displays the error.
+the screen reservation. Settings → General → System Dock displays the error.
 After signing, use Retry or relaunch Docky. Verify the bundle with
 `codesign --verify --deep --strict` before running it.
 

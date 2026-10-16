@@ -88,7 +88,9 @@ bridge and lifecycle tests.
 | `gtimeout 30 python3 scripts/test_dock_lifecycle.py` | Signed build. Kills Dock and the app to check reconnection and watchdog recovery, including handing ⌘Tab back to macOS |
 
 Add `--windows-taskbar-snapshots` to `--appkit-ui-regression` to also write
-light and dark renders to `/tmp/docky-windows-snapshots`. These suites don't
+light and dark renders to `/tmp/docky-windows-snapshots`, or
+`--settings-snapshots` for every Settings pane in `/tmp/docky-settings-snapshots`.
+Offscreen renders leave Settings' sidebar blank. These suites don't
 cover drag feel, auto-hide, VoiceOver, permission grants, or multi-display
 behavior. Check those in a running build.
 
@@ -178,6 +180,16 @@ when reopened.
 - The window switcher (`WindowSwitcherService` + `WindowSwitcherController`)
   looks and behaves like Windows 11 Alt+Tab. "Replace macOS ⌘Tab" turns off the
   system ⌘Tab through `SystemCommandTabService`. See `docs/appkit-port.md`.
+- Settings (`Docky/Views/SettingsWindow/`) is a macOS grouped form: a
+  `SettingsPane` sidebar, and panes that `NativeSettingsContent+<Pane>.swift`
+  builds from `NativeSettingsSection`s of rows (`NativeFormRow`, or
+  `NativeFormListRow` in lists). App Icons is its own master/detail controller,
+  `NativeIconSettingsController`. Make rows with the `NativePreferenceField`
+  factories, and show alerts, file choosers, and editors as sheets through the
+  context's `NativeSheetPresenter`. Lists observe their
+  items with `observeChanges(of:perform:)`, which tracks only what it reads, and
+  update their rows in place. A row's accessibility label is its title, which the
+  UI tests look up with `SettingsLookup`.
 - Large types are split into `Type+Concern.swift` extensions.
 
 ## Conventions

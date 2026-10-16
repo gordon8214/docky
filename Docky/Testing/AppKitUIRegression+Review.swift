@@ -133,7 +133,7 @@
             let preferences = DockyPreferences.shared
             let previous = preferences.hiddenAppBundleIdentifiers
             defer { preferences.hiddenAppBundleIdentifiers = previous }
-            let pane = NativeSettingsPaneController(id: "hiddenApps")
+            let pane = NativeSettingsPaneController(pane: .hiddenApps)
             _ = pane.view
             let identifier = "test.hidden.review." + UUID().uuidString
             preferences.hiddenAppBundleIdentifiers = previous + [identifier]

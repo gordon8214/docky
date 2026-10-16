@@ -4,8 +4,22 @@ This fork targets macOS 27 and renders app-owned UI with AppKit and Core Animati
 Its only appearance is a Windows 11–style taskbar (see below), drawn on a flipped
 canvas with stable tile views, explicit frames, and a native scroll view for
 overflowing app buttons. Native collection and table views power launchers,
-folder browsers, previews, and the editor. Settings uses a split-view sidebar and
-native controls.
+folder browsers, previews, and the editor.
+
+Settings follows macOS's grouped-form layout. A source-list sidebar lists 13
+panes, from General to Updates, and the window takes the selected pane's title,
+beside Back and Forward (⌘[ and ⌘]) in the toolbar. Each pane is a scrolling form
+of sections: a header, a rounded box of rows separated by hairlines, and a
+footer. Rows put a title, with an optional description, on the leading side and
+the control on the trailing side: switches, pop-up menus, sliders with their
+value, and number fields with steppers. Lists such as Profiles and Hidden Apps
+show one row per item, with an Add button below the box. Confirmations, file
+choosers, and the profile editor are sheets on the window. Settings reopens on
+the last pane (`DockySettingsSelectedPane`, outside the preference keys) and
+restores its frame. `NativeSettingsContent` builds each pane's sections from the
+rows in `NativePreferenceField`; App Icons is its own master/detail controller.
+The Launchpad inspector shows the Launchpad pane without Availability and the
+taskbar tile.
 
 Models, preference keys, profiles, custom icons, window-management services,
 private APIs, Sparkle, and the Dock watchdog retain their existing formats and
@@ -58,7 +72,8 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
 - `scripts/test_appkit_compatibility.sh`: compilation 45 seconds, runtime 15 seconds.
   Covers Settings history and legacy widget kind, span, and opaque-settings encoding.
 - `scripts/test_appkit_ui.sh`: a previously built Debug app, runtime 30 seconds;
-  normally under 15 seconds. Exercises every Settings pane twice, built-in and
+  normally under 15 seconds. Exercises every Settings pane twice (window title,
+  unchanged window size, unambiguous layout, Back and Forward), built-in and
   legacy widget spans, compact/expanded layout, canceled drag mouse-up, and observer
   release. Also covers isolated Launchpad folder mutations and drop indexes,
   grid keyboard navigation, dismissed folder callbacks, file context menus,
@@ -67,7 +82,10 @@ packaging. It checks project-owned binaries and excludes vendor frameworks.
   selection frame, hover close button, icon fallback, and header font and icon
   sizes, built from fixture windows.
   The test entry point bypasses normal startup and exits without installing
-  the app or requesting permissions.
+  the app or requesting permissions. Add `--settings-snapshots` to also write
+  every Settings pane, and the Launchpad inspector, in light and dark to
+  `/tmp/docky-settings-snapshots`. Offscreen captures leave the sidebar list
+  blank and can show placeholder icons, so check those in a running build.
 - `scripts/test_window_switcher.sh`: a signed Debug app, normally under 15 seconds,
   runtime budget 45 seconds. Requires an unlocked desktop with existing Accessibility
   and screen capture permissions. Checks the reveal delay, selection feedback in
@@ -186,7 +204,7 @@ draws them; saved ones still load but stay hidden.
 Right-clicking empty taskbar space opens a menu with Activity Monitor, menu
 extras, Settings, hiding, Edit Taskbar, Sync Dock, About, and Quit. The bar is 48
 points tall by default, with 40-point buttons, 24-point icons, and 44-point pitch.
-Dragging its top edge, or the Taskbar Size field in Settings, sets the height
+Dragging its top edge, or Settings → Taskbar → Taskbar Size, sets the height
 from 32 to 96 points (`windowsTaskbarHeight`), and `WindowsTaskbarMetrics`
 scales every button, icon, indicator, badge, and tray control with it. Native
 menu extras keep their menu-bar size, so their slots grow but never shrink. Battery

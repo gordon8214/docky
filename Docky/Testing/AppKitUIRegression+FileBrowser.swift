@@ -47,13 +47,11 @@
             // falling back to its first item. The popup reads which apps are
             // installed when it's built, so each state gets a fresh pane.
             preferences.fileBrowser = .betterFinder
-            let pane = NativeSettingsPaneController(id: "behaviorGeneral")
+            let pane = NativeSettingsPaneController(pane: .general)
             _ = pane.view
             let label = String(localized: "File Browser")
-            let popups = pane.stack.arrangedSubviews.compactMap { $0 as? NativeFormRow }
-                .flatMap(\.arrangedSubviews).compactMap { $0 as? NSPopUpButton }
-            guard let popup = popups.first(where: { $0.accessibilityLabel() == label }) else {
-                require(false, "Behavior — General has a File Browser popup")
+            guard let popup = SettingsLookup.control(NSPopUpButton.self, labeled: label, in: pane.view) else {
+                require(false, "General has a File Browser popup")
                 return
             }
             func waitForSelection(_ index: Int) async {

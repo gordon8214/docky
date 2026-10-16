@@ -33,19 +33,22 @@
             let previous = bridge.enabled
             defer { bridge.enabled = previous }
             bridge.enabled = false
-            precondition(NativeSettingsController.panes.contains { $0.id == "menuExtras" })
-            let rows = NativeSettingsFields.menuExtrasRows()
-            guard let row = rows.first as? NativeFormRow,
-                  let checkbox = row.arrangedSubviews.compactMap({ $0 as? NSButton }).first else {
+            precondition(SettingsPane.allCases.contains(.menuExtras))
+            let pane = NativeSettingsPaneController(pane: .menuExtras)
+            _ = pane.view
+            guard let toggle = SettingsLookup.control(NSSwitch.self, identifier: "nativeMenuExtras", in: pane.view)
+            else {
                 preconditionFailure("Menu Extras settings must expose the shared toggle")
             }
-            precondition(checkbox.state == .off)
-            checkbox.performClick(nil)
+            precondition(toggle.state == .off)
+            // `NSSwitch` isn't an `NSButton`, so switch it the way a click does.
+            toggle.state = .on
+            toggle.sendAction(toggle.action, to: toggle.target)
             precondition(bridge.enabled && UserDefaults.standard.bool(forKey: "nativeMenuExtras"))
             checkNativeOnlyStatusIcons()
             bridge.enabled = false
             await Task.yield()
-            precondition(checkbox.state == .off, "Taskbar changes must update the settings checkbox")
+            precondition(toggle.state == .off, "Taskbar changes must update the settings switch")
             let extras = WindowsMenuExtrasView()
             extras.refresh()
             precondition(extras.preferredWidth == 0, "Disabled extras must occupy no taskbar space")

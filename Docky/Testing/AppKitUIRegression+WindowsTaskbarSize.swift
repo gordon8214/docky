@@ -194,22 +194,82 @@
             precondition(titles.contains(settings), "Right-clicking the top edge opens the taskbar menu")
         }
         private static func checkWindowsTaskbarSizeSetting() {
-            let controller = NativeSettingsPaneController(id: "appearanceGeneral")
+            let controller = NativeSettingsPaneController(pane: .taskbar)
             _ = controller.view
-            let titles = controller.stack.arrangedSubviews.compactMap {
-                ($0 as? NativeFormRow)?.accessibilityLabel()
-            }
-            precondition(titles.contains(String(localized: "Taskbar Size")), "Appearance must offer the taskbar size")
             precondition(
-                controller.stack.arrangedSubviews.contains {
-                    ($0 as? NativeActionButton)?.title == String(localized: "Reset Appearance")
-                }, "Appearance must offer Reset Appearance")
+                SettingsLookup.row(String(localized: "Taskbar Size"), in: controller.view) != nil,
+                "Taskbar must offer the taskbar size")
+            precondition(
+                controller.view.regressionDescendants(NativeActionButton.self).contains {
+                    $0.title == String(localized: "Reset Taskbar Settings…")
+                }, "Taskbar must offer Reset Taskbar Settings")
             let prefs = DockyPreferences.shared
+            let snapshot = TaskbarPreferencesSnapshot()
             prefs.windowsTaskbarHeight = 72
-            prefs.resetAppearanceToDefaults()
-            precondition(
-                prefs.windowsTaskbarHeight == WindowsTaskbarMetrics.standardHeight,
-                "Reset Appearance restores the standard taskbar size")
+            prefs.resetTaskbarToDefaults()
+            let restored = prefs.windowsTaskbarHeight == WindowsTaskbarMetrics.standardHeight
+            snapshot.restore()
+            precondition(restored, "Reset Taskbar Settings restores the standard taskbar size")
+        }
+    }
+
+    /// `resetTaskbarToDefaults()` writes real preferences, and the installed app
+    /// shares this defaults domain, so the check puts back everything it resets.
+    @MainActor
+    private struct TaskbarPreferencesSnapshot {
+        private static let keys = [
+            "docky.windowsTaskbarHeight", "docky.windowPosition", "docky.windowDisplayTarget",
+            "docky.windowSpaceBehavior", "docky.autohidesWindow", "docky.autohideWindowDelay",
+            "docky.fullscreenRevealDelay", "docky.showsRunningApps", "docky.hidesRecentApps",
+            "docky.showsMinimizedWindows", "docky.showsAppBadges", "docky.appTileFrontmostClickBehavior",
+            "docky.showsGroupedOpenedAppsInDock", "docky.folderBadgeMode", "docky.folderBadgePreviewStyle",
+            "docky.enablesShelveMode", "docky.shelveHidesFinder", "docky.shelveHidesTrash"
+        ]
+        private let stored = Self.keys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        private let restoreValues: @MainActor () -> Void
+
+        init() {
+            let prefs = DockyPreferences.shared
+            restoreValues = { [
+                height = prefs.windowsTaskbarHeight, position = prefs.windowPosition,
+                display = prefs.windowDisplayTarget, spaces = prefs.windowSpaceBehavior,
+                autohides = prefs.autohidesWindow, autohideDelay = prefs.autohideWindowDelay,
+                revealDelay = prefs.fullscreenRevealDelay, running = prefs.showsRunningApps,
+                hidesRecent = prefs.hidesRecentApps, minimized = prefs.showsMinimizedWindows,
+                badges = prefs.showsAppBadges, click = prefs.appTileFrontmostClickBehavior,
+                grouped = prefs.showsGroupedOpenedAppsInDock, badgeMode = prefs.folderBadgeMode,
+                badgeStyle = prefs.folderBadgePreviewStyle, shelve = prefs.enablesShelveMode,
+                hidesFinder = prefs.shelveHidesFinder, hidesTrash = prefs.shelveHidesTrash
+            ] in
+                prefs.windowsTaskbarHeight = height
+                prefs.windowPosition = position
+                prefs.windowDisplayTarget = display
+                prefs.windowSpaceBehavior = spaces
+                prefs.autohidesWindow = autohides
+                prefs.autohideWindowDelay = autohideDelay
+                prefs.fullscreenRevealDelay = revealDelay
+                prefs.showsRunningApps = running
+                prefs.hidesRecentApps = hidesRecent
+                prefs.showsMinimizedWindows = minimized
+                prefs.showsAppBadges = badges
+                prefs.appTileFrontmostClickBehavior = click
+                prefs.showsGroupedOpenedAppsInDock = grouped
+                prefs.folderBadgeMode = badgeMode
+                prefs.folderBadgePreviewStyle = badgeStyle
+                prefs.enablesShelveMode = shelve
+                prefs.shelveHidesFinder = hidesFinder
+                prefs.shelveHidesTrash = hidesTrash
+            }
+        }
+
+        /// Restores the values, then the stored keys exactly, including keys that weren't set.
+        func restore() {
+            restoreValues()
+            for (key, value) in stored {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
         }
     }
 

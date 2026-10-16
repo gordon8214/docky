@@ -2070,56 +2070,38 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         opensAtLogin = true
     }
 
-    /// Resets the preferences exposed in Settings → Appearance. App-icon
-    /// overrides, behavior, widgets, launchpad, window-management, and
-    /// system-dock settings are untouched; callers that want a full wipe
-    /// should call `resetToDefaults()` instead.
-    func resetAppearanceToDefaults() {
+    /// Resets every setting in Settings' Taskbar pane: size, position,
+    /// auto-hide, apps, app folders, and shelve mode. Profiles, app icons,
+    /// hidden apps, and pinned tiles are untouched.
+    func resetTaskbarToDefaults() {
         windowsTaskbarHeight = WindowsTaskbarMetrics.standardHeight
-    }
 
-    /// Resets every preference surfaced in the Behavior settings panes
-    /// (placement, visibility, app-tile click, app folders, widgets,
-    /// launch). Leaves appearance, app icons, hidden apps,
-    /// pinned tiles, and feature-specific surfaces (Launchpad / Window
-    /// Manager / Actions) untouched. Mirrors `resetAppearanceToDefaults`.
-    func resetBehaviorToDefaults() {
-        // Placement
+        // Position
         windowPosition = DefaultValues.windowPosition
         windowDisplayTarget = DefaultValues.windowDisplayTarget
         windowSpaceBehavior = DefaultValues.windowSpaceBehavior
 
-        // Visibility
+        // Auto-hide
         autohidesWindow = DefaultValues.autohidesWindow
-        showsAppBadges = DefaultValues.showsAppBadges
-        folderBadgeMode = DefaultValues.folderBadgeMode
-        folderBadgePreviewStyle = DefaultValues.folderBadgePreviewStyle
         autohideWindowDelay = DefaultValues.autohideWindowDelay
         fullscreenRevealDelay = DefaultValues.fullscreenRevealDelay
-        enablesShelveMode = DefaultValues.enablesShelveMode
-        shelveHidesFinder = DefaultValues.shelveHidesFinder
-        shelveHidesTrash = DefaultValues.shelveHidesTrash
-        hidesRecentApps = DefaultValues.hidesRecentApps
+
+        // Apps
         showsRunningApps = DefaultValues.showsRunningApps
+        hidesRecentApps = DefaultValues.hidesRecentApps
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
-
-        // App-tile click
+        showsAppBadges = DefaultValues.showsAppBadges
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
-
-        // File browser
-        fileBrowser = DefaultValues.fileBrowser
 
         // App folders
         showsGroupedOpenedAppsInDock = DefaultValues.showsGroupedOpenedAppsInDock
+        folderBadgeMode = DefaultValues.folderBadgeMode
+        folderBadgePreviewStyle = DefaultValues.folderBadgePreviewStyle
 
-        // Widgets
-        enablesWidgetHoverPreview = DefaultValues.enablesWidgetHoverPreview
-        widgetHoverPreviewSpans = DefaultValues.widgetHoverPreviewSpans
-        widgetHoverPreviewDelay = DefaultValues.widgetHoverPreviewDelay
-        windowPreviewHoverDelay = DefaultValues.windowPreviewHoverDelay
-
-        // Launch
-        opensAtLogin = DefaultValues.opensAtLogin
+        // Shelve mode
+        enablesShelveMode = DefaultValues.enablesShelveMode
+        shelveHidesFinder = DefaultValues.shelveHidesFinder
+        shelveHidesTrash = DefaultValues.shelveHidesTrash
     }
 
     func resetToDefaults() {

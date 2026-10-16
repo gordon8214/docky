@@ -126,9 +126,11 @@
             // Start from the non-default value, which the popup can't show by
             // falling back to its first item.
             preferences.windowSwitcherSpaceScope = .activeSpace
-            let rows = NativeSettingsFields.windowManagementRows().compactMap { $0 as? NativeFormRow }
-            guard let row = rows.first(where: { $0.accessibilityLabel() == "Show Windows From" }),
-                  let popup = row.arrangedSubviews.compactMap({ $0 as? NSPopUpButton }).first else {
+            let pane = NativeSettingsPaneController(pane: .windowManagement)
+            _ = pane.view
+            guard let popup = SettingsLookup.control(
+                NSPopUpButton.self, inRow: String(localized: "Show Windows From"), in: pane.view)
+            else {
                 restore()
                 preconditionFailure("Window Management must offer the switcher's Space choice")
             }
@@ -160,10 +162,14 @@
             let preferences = DockyPreferences.shared
             let fontKey = "docky.windowSwitcherFontSize"
             let iconKey = "docky.windowSwitcherIconSize"
+            let enabledKey = "docky.enablesWindowSwitcher"
             let previousFontSize = preferences.windowSwitcherFontSize
             let previousIconSize = preferences.windowSwitcherIconSize
+            let previousEnabled = preferences.enablesWindowSwitcher
             let storedFontSize = UserDefaults.standard.object(forKey: fontKey)
             let storedIconSize = UserDefaults.standard.object(forKey: iconKey)
+            let storedEnabled = UserDefaults.standard.object(forKey: enabledKey)
+            let suite = RegressionDefaults("switcher-sizes")
             let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
             let controller = WindowSwitcherController()
             let window = NSWindow(contentRect: screen, styleMask: .borderless, backing: .buffered, defer: false)
@@ -175,7 +181,9 @@
                 window.close()
                 preferences.windowSwitcherFontSize = previousFontSize
                 preferences.windowSwitcherIconSize = previousIconSize
-                for (key, stored) in [(fontKey, storedFontSize), (iconKey, storedIconSize)] {
+                preferences.enablesWindowSwitcher = previousEnabled
+                suite.remove()
+                for (key, stored) in [(fontKey, storedFontSize), (iconKey, storedIconSize), (enabledKey, storedEnabled)] {
                     if let stored { UserDefaults.standard.set(stored, forKey: key) } else {
                         UserDefaults.standard.removeObject(forKey: key)
                     }
@@ -239,13 +247,19 @@
             require(controller.geometry?.headerHeight == WindowSwitcherGeometry.Metrics.headerHeight,
                     "Default sizes keep the 24-point header")
 
-            let rows = NativeSettingsFields.windowManagementRows().compactMap { $0 as? NativeFormRow }
-            func sizeField(_ title: String) -> NSTextField? {
-                rows.first { $0.accessibilityLabel() == title }?
-                    .arrangedSubviews.compactMap { $0 as? NSTextField }.first(where: \.isEditable)
+            // The size fields are disabled while the switcher is off.
+            preferences.enablesWindowSwitcher = true
+            let settings = SettingsWindowController(defaults: suite.defaults, autosavesFrame: false)
+            settings.showPane(.windowManagement)
+            guard let settingsWindow = settings.window, let contentView = settingsWindow.contentView else {
+                restore()
+                preconditionFailure("Settings needs a window for the size fields")
             }
-            guard let fontField = sizeField("Switcher Font Size"),
-                  let iconField = sizeField("Switcher Icon Size") else {
+            settingsWindow.layoutIfNeeded()
+            guard let fontField = SettingsLookup.editableField(
+                inRow: String(localized: "Switcher Font Size"), in: contentView),
+                  let iconField = SettingsLookup.editableField(
+                      inRow: String(localized: "Switcher Icon Size"), in: contentView) else {
                 restore()
                 preconditionFailure("Window Management must offer the switcher's font and icon sizes")
             }
@@ -261,19 +275,13 @@
             preferences.windowSwitcherIconSize = 20
             await Task.yield()
             require(iconField.doubleValue == 20, "Preference changes update the field")
+            iconField.doubleValue = 200
+            iconField.sendAction(iconField.action, to: iconField.target)
+            require(preferences.windowSwitcherIconSize == 48 && iconField.doubleValue == 48,
+                    "An out-of-range size clamps, and the field shows the clamped size")
 
             // Typed sizes save without Return: when the field loses focus,
             // and when Settings closes mid-edit.
-            let settings = SettingsWindowController()
-            guard let settingsWindow = settings.window, let contentView = settingsWindow.contentView,
-                  let iconRow = iconField.superview, let fontRow = fontField.superview else {
-                restore()
-                preconditionFailure("Settings needs a window for the size fields")
-            }
-            for (index, row) in [iconRow, fontRow].enumerated() {
-                row.frame = CGRect(x: 0, y: CGFloat(index) * 40, width: 420, height: 32)
-                contentView.addSubview(row)
-            }
             func type(_ text: String, into field: NSTextField) {
                 require(settingsWindow.makeFirstResponder(field), "The size field takes focus")
                 field.currentEditor()?.string = text

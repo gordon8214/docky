@@ -28,24 +28,79 @@
             exit(0)
         }
         private static func checkSettings() async {
-            let root = NativeSettingsController()
-            let window = NSWindow(contentViewController: root)
-            window.isReleasedWhenClosed = false
-            window.setContentSize(CGSize(width: 820, height: 540))
+            let suite = RegressionDefaults("settings")
+            defer { suite.remove() }
+            let settings = SettingsWindowController(defaults: suite.defaults, autosavesFrame: false)
+            guard let window = settings.window else { preconditionFailure("Settings needs a window") }
+            let root = settings.settings
+            precondition(root.selectedPane == .general, "Settings opens on General the first time")
+            window.layoutIfNeeded()
+            let size = window.frame.size
             for _ in 0..<2 {
-                for pane in NativeSettingsController.panes {
-                    print("Checking settings pane: \(pane.id)")
+                for pane in SettingsPane.allCases {
+                    print("Checking settings pane: \(pane.rawValue)")
                     fflush(stdout)
-                    root.showPane(pane.id)
+                    precondition(
+                        NSImage(systemSymbolName: pane.symbolName, accessibilityDescription: nil) != nil,
+                        "\(pane.rawValue) needs a symbol that exists")
+                    root.showPane(pane)
                     window.layoutIfNeeded()
                     await Task.yield()
                     precondition(root.splitViewItems.count == 2, "Every pane must retain its sidebar")
-                    precondition(root.splitViewItems.last?.viewController.view.bounds.width ?? 0 > 0)
+                    guard let detail = root.splitViewItems.last?.viewController.view, detail.bounds.width > 0 else {
+                        preconditionFailure("\(pane.rawValue) needs a visible detail")
+                    }
+                    precondition(window.title == pane.title, "The window is titled after \(pane.rawValue)")
+                    precondition(
+                        window.frame.size == size, "Showing \(pane.rawValue) resized Settings to \(window.frame.size)")
+                    precondition(
+                        suite.defaults.string(forKey: NativeSettingsController.selectedPaneKey) == pane.rawValue,
+                        "Settings remembers the last pane")
+                    SettingsLookup.assertUnambiguous(detail, pane.rawValue)
+                    for scroll in detail.regressionDescendants(NativeSettingsScrollView.self) {
+                        precondition(
+                            abs(scroll.form.frame.width - scroll.contentView.bounds.width) < 1,
+                            "\(pane.rawValue): the form fills the scroll view's width")
+                    }
                 }
             }
+            precondition(root.canGoBack && !root.canGoForward, "Visiting panes builds back history")
+            root.goBack()
+            precondition(root.selectedPane == SettingsPane.allCases[SettingsPane.allCases.count - 2])
+            precondition(root.canGoForward, "Going back allows going forward")
+            root.goForward()
+            precondition(root.selectedPane == SettingsPane.allCases.last)
+            let reopened = NativeSettingsController(defaults: suite.defaults)
+            precondition(reopened.selectedPane == SettingsPane.allCases.last, "Settings reopens on the last pane")
+            settings.close()
+            await checkLaunchpadInspectorPane()
+            captureSettingsSnapshots(suite: suite)
+        }
+
+        /// The inspector over Launchpad shows the grid's settings without Availability
+        /// or the taskbar tile, which the Settings pane has.
+        private static func checkLaunchpadInspectorPane() async {
+            let settingsPane = NativeSettingsPaneController(pane: .launchpad)
+            _ = settingsPane.view
+            let hiddenRows = [String(localized: "Enable Launchpad"), String(localized: "Launchpad Icon")]
+            for title in hiddenRows {
+                precondition(SettingsLookup.row(title, in: settingsPane.view) != nil, "Settings shows \(title)")
+            }
+            let pane = NativeSettingsPaneController(pane: .launchpad, placement: .launchpadInspector)
+            let window = NSWindow(contentViewController: pane)
+            window.isReleasedWhenClosed = false
+            window.setContentSize(CGSize(width: 380, height: 520))
+            window.layoutIfNeeded()
+            await Task.yield()
+            precondition(SettingsLookup.row(String(localized: "Grid Columns"), in: pane.view) != nil)
+            for title in hiddenRows {
+                precondition(SettingsLookup.row(title, in: pane.view) == nil, "The inspector leaves out \(title)")
+            }
+            SettingsLookup.assertUnambiguous(pane.view, "Launchpad inspector")
             window.contentViewController = nil
             window.close()
         }
+
         private static func checkWidgets() {
             let registrations =
                 WidgetCatalog.builtInRegistrations + [
