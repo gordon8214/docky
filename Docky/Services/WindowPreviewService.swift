@@ -48,7 +48,7 @@ final class WindowPreviewService: ObservableObject {
         var aggregated: [AppWindow] = []
         let registry = WindowRegistry.shared
         let includesMinimized = DockyPreferences.shared.includesMinimizedWindows
-        let spaceScope = DockyPreferences.shared.windowSwitcherSpaceScope
+        let spaceScope = DockyPreferences.shared.taskbarSpaceScope
         for bundleID in bundleIDs where !bundleID.isEmpty {
             for window in WorkspaceService.shared.appWindows(bundleIdentifier: bundleID)
             where spaceScope.includes(windowOnActiveSpace: window.isOnActiveSpace) {

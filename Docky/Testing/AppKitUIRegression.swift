@@ -11,7 +11,7 @@
             checkWidgets()
             await checkWindowsTaskbar()
             checkWindowSwitcher()
-            await checkSwitcherSpaceScope()
+            await checkSpaceScopes()
             await checkSwitcherHeaderSizes()
             await checkMenuExtras()
             checkMediaTimeline()

@@ -10,12 +10,22 @@ extension NativeSettingsContent {
                     String(localized: "Show Running Apps"),
                     description: String(localized: "Shows apps that are open but not pinned."),
                     \.showsRunningApps),
+                NativePreferenceField.choice(
+                    String(localized: "Show Apps From"),
+                    description: String(
+                        localized:
+                            "Active Space shows only apps with a window on a Space you're viewing, and lists only those Spaces' windows in previews and the overflow menu. Pinned apps always show. Needs Accessibility access."),
+                    \.taskbarSpaceScope, values: SpaceScope.allCases, name: \.title),
+                // Shows off under Active Space, which never keeps a quit app's button.
                 NativePreferenceField.toggle(
                     String(localized: "Show Recently Quit App"),
-                    description: String(
-                        localized: "If the most recently opened app quits, its button stays until another app opens."),
-                    get: { !preferences().hidesRecentApps }, set: { preferences().hidesRecentApps = !$0 }
-                ).enabled(when: { preferences().showsRunningApps }),
+                    get: { !preferences().hidesRecentApps && preferences().taskbarSpaceScope == .allSpaces },
+                    set: { preferences().hidesRecentApps = !$0 }
+                ).describing {
+                    preferences().taskbarSpaceScope == .activeSpace
+                        ? String(localized: "Off while Show Apps From is set to Active Space.")
+                        : String(localized: "If the most recently opened app quits, its button stays until another app opens.")
+                }.enabled(when: { preferences().showsRunningApps && preferences().taskbarSpaceScope == .allSpaces }),
                 NativePreferenceField.toggle(
                     String(localized: "Show Minimized Windows"),
                     description: String(localized: "Lists each minimized window in the taskbar's overflow menu."),

@@ -19,14 +19,18 @@ extension DockTileInteraction {
     }
 
     /// True when this tile represents the currently foreground app
-    /// (or any app inside a grouped folder is foreground).
+    /// (or any app inside a grouped folder is foreground). Like the running
+    /// indicator, it follows the taskbar's Space scope, so an app frontmost
+    /// with no window on a Space shown now isn't highlighted.
     var isFrontmostTile: Bool {
         switch tile.content {
         case .app(let app):
             return workspace.isFrontmost(bundleIdentifier: app.bundleIdentifier)
+                && workspace.isOpenOnTaskbar(bundleIdentifier: app.bundleIdentifier)
         case .appFolder(let folder):
             return folder.apps.contains { app in
                 workspace.isFrontmost(bundleIdentifier: app.bundleIdentifier)
+                    && workspace.isOpenOnTaskbar(bundleIdentifier: app.bundleIdentifier)
             }
         case .folder, .launchpad, .startMenu, .widget, .smartStack, .spacer, .flexibleSpacer, .divider, .trash,
             .minimizedWindow:
@@ -62,16 +66,18 @@ extension DockTileInteraction {
         }
     }
 
-    /// Whether the tile shows the running-app indicator.
+    /// Whether the tile shows the running-app indicator. Under the taskbar's
+    /// Active Space scope, only apps with a window on a Space shown now, and
+    /// hidden apps, do (see `WorkspaceService.isOpenOnTaskbar`).
     var showsRunningIndicator: Bool {
         switch tile.content {
         case .app(let app):
-            workspace.isRunning(bundleIdentifier: app.bundleIdentifier)
+            workspace.isOpenOnTaskbar(bundleIdentifier: app.bundleIdentifier)
         case .minimizedWindow:
             false
         case .appFolder(let folder):
             folder.apps.contains { app in
-                workspace.isRunning(bundleIdentifier: app.bundleIdentifier)
+                workspace.isOpenOnTaskbar(bundleIdentifier: app.bundleIdentifier)
             }
         case .launchpad, .startMenu, .widget, .smartStack, .folder, .spacer, .flexibleSpacer, .divider, .trash:
             false

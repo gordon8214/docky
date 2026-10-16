@@ -80,8 +80,11 @@ extension DockTileInteraction {
         }
 
         let workspace = WorkspaceService.shared
+        let spaceScope = preferences.taskbarSpaceScope
         let hasAnyWindow = bundleIDs.contains { id in
-            !workspace.appWindows(bundleIdentifier: id).isEmpty
+            workspace.appWindows(bundleIdentifier: id).contains {
+                spaceScope.includes(windowOnActiveSpace: $0.isOnActiveSpace)
+            }
         }
         guard hasAnyWindow else {
             WindowPreviewWindowController.shared.requestDismiss(sourceTileID: tile.id)

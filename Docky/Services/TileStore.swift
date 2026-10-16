@@ -83,6 +83,14 @@ final class TileStore: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.rebuildTiles() }
             .store(in: &cancellables)
+        WorkspaceService.shared.$bundleIdentifiersOpenOnActiveSpace
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Only the Active Space scope reads it; changing the scope rebuilds below.
+                guard DockyPreferences.shared.taskbarSpaceScope == .activeSpace else { return }
+                self?.rebuildTiles()
+            }
+            .store(in: &cancellables)
         // `DockyPreferences` is `@Observable`. We observe each
         // property bundle through `observeChanges` so the same change
         // signal fires only when the relevant property mutates.
@@ -126,6 +134,7 @@ final class TileStore: ObservableObject {
             _ = DockyPreferences.shared.shelveHidesFinder
             _ = DockyPreferences.shared.shelveHidesTrash
             _ = DockyPreferences.shared.hidesRecentApps
+            _ = DockyPreferences.shared.taskbarSpaceScope
             self?.rebuildTiles()
         }
         .store(in: &cancellables)
@@ -2194,9 +2203,17 @@ final class TileStore: ObservableObject {
         let shelveMode = preferences.enablesShelveMode
         let hidesFinder = shelveMode && preferences.shelveHidesFinder
         let hidesTrash = shelveMode && preferences.shelveHidesTrash
+        let spaceScope = preferences.taskbarSpaceScope
         let runningTiles: [Tile]
         if !preferences.showsRunningApps {
             runningTiles = []
+        } else if spaceScope == .activeSpace {
+            // `displayedRunning` keeps every running app, so switching Spaces
+            // never reorders buttons. This drops the ones with no window on a
+            // Space shown now, unless hidden, and the ghost of a quit app.
+            runningTiles = displayedRunning
+                .filter { WorkspaceService.shared.isOpenOnTaskbar(bundleIdentifier: $0.bundleIdentifier) }
+                .map(Self.tile(for:))
         } else if preferences.hidesRecentApps {
             // "Hide recent apps" only suppresses the non-running tail ,
             // currently running unpinned apps still belong in the dock.
@@ -2211,7 +2228,9 @@ final class TileStore: ObservableObject {
             runningTiles = displayedRunning.map(Self.tile(for:))
         }
         let minimizedWindowTiles = preferences.showsMinimizedWindows
-            ? WorkspaceService.shared.minimizedWindows.map(Self.tile(for:))
+            ? WorkspaceService.shared.minimizedWindows
+                .filter { spaceScope.includes(windowOnActiveSpace: $0.isOnActiveSpace) }
+                .map(Self.tile(for:))
             : []
         let leadingFinder: [Tile] = hidesFinder ? [] : [Self.finderTile()]
         var result: [Tile] = tilesWithWidgets(appendedTo: leadingFinder)
@@ -2284,12 +2303,12 @@ final class TileStore: ObservableObject {
             return []
         }
 
-        let runningBundleIdentifiers = WorkspaceService.shared.runningBundleIdentifiers
+        let workspace = WorkspaceService.shared
         let hiddenBundleIdentifiers = Set(preferences.hiddenAppBundleIdentifiers)
         var result: [Tile] = []
 
         for app in folder.apps
-        where runningBundleIdentifiers.contains(app.bundleIdentifier)
+        where workspace.isOpenOnTaskbar(bundleIdentifier: app.bundleIdentifier)
             && !hiddenBundleIdentifiers.contains(app.bundleIdentifier) {
             let tile = Tile(
                 id: "folder-running:\(folder.identifier):\(app.bundleIdentifier)",

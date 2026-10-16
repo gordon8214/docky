@@ -102,6 +102,12 @@ final class WindowRegistry: ObservableObject {
     /// otherwise (see `WindowRecencyOrder`).
     @Published private(set) var windows: [AppWindow] = []
 
+    /// Observed apps that were hidden when `windows` was listed; their windows
+    /// aren't listed. Set before `windows` in the same snapshot, so readers
+    /// never mix hidden state and windows from different moments. `nil` while
+    /// the registry lists no windows (no Accessibility or no SkyLight list).
+    @Published private(set) var hiddenBundleIdentifiers: Set<String>?
+
     /// Fires when a window's cached preview should be evicted and re-
     /// captured, even though the registry's `$windows` array hasn't
     /// changed shape. Emitted once a resize settles (aspect ratio changed)
@@ -139,7 +145,7 @@ final class WindowRegistry: ObservableObject {
     /// currently shown.
     func switchable(
         includeMinimized: Bool,
-        spaceScope: WindowSwitcherSpaceScope = .allSpaces
+        spaceScope: SpaceScope = .allSpaces
     ) -> [AppWindow] {
         windows.filter { window in
             guard spaceScope.includes(windowOnActiveSpace: window.isOnActiveSpace) else { return false }
@@ -505,6 +511,9 @@ final class WindowRegistry: ObservableObject {
         pendingResizeInvalidations.removeAll()
         pendingFrontWindow = nil
 
+        if hiddenBundleIdentifiers != nil {
+            hiddenBundleIdentifiers = nil
+        }
         if !windows.isEmpty {
             windows = []
         }
@@ -933,6 +942,12 @@ final class WindowRegistry: ObservableObject {
         }
         for pid in applicationObservers.keys where applications[pid] == nil {
             removeObserver(for: pid)
+        }
+        let hidden = Set(applications.filter { !listedPIDs.contains($0.key) }.map { pid, app in
+            app.bundleIdentifier ?? "pid:\(pid)"
+        })
+        if hidden != hiddenBundleIdentifiers {
+            hiddenBundleIdentifiers = hidden
         }
         applyOrdered(collected, focusedWindow: missedFocusWindow(in: collected, newlyObserved: newlyObserved))
 

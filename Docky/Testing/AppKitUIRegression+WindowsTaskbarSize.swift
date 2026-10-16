@@ -206,10 +206,13 @@
             let prefs = DockyPreferences.shared
             let snapshot = TaskbarPreferencesSnapshot()
             prefs.windowsTaskbarHeight = 72
+            prefs.taskbarSpaceScope = .activeSpace
             prefs.resetTaskbarToDefaults()
             let restored = prefs.windowsTaskbarHeight == WindowsTaskbarMetrics.standardHeight
+            let scopeRestored = prefs.taskbarSpaceScope == .allSpaces
             snapshot.restore()
             precondition(restored, "Reset Taskbar Settings restores the standard taskbar size")
+            precondition(scopeRestored, "Reset Taskbar Settings shows apps from all Spaces again")
         }
     }
 
@@ -221,7 +224,8 @@
             "docky.windowsTaskbarHeight", "docky.windowPosition", "docky.windowDisplayTarget",
             "docky.windowSpaceBehavior", "docky.autohidesWindow", "docky.autohideWindowDelay",
             "docky.fullscreenRevealDelay", "docky.showsRunningApps", "docky.hidesRecentApps",
-            "docky.showsMinimizedWindows", "docky.showsAppBadges", "docky.appTileFrontmostClickBehavior",
+            "docky.taskbarSpaceScope", "docky.showsMinimizedWindows", "docky.showsAppBadges",
+            "docky.appTileFrontmostClickBehavior",
             "docky.showsGroupedOpenedAppsInDock", "docky.folderBadgeMode", "docky.folderBadgePreviewStyle",
             "docky.enablesShelveMode", "docky.shelveHidesFinder", "docky.shelveHidesTrash"
         ]
@@ -235,8 +239,9 @@
                 display = prefs.windowDisplayTarget, spaces = prefs.windowSpaceBehavior,
                 autohides = prefs.autohidesWindow, autohideDelay = prefs.autohideWindowDelay,
                 revealDelay = prefs.fullscreenRevealDelay, running = prefs.showsRunningApps,
-                hidesRecent = prefs.hidesRecentApps, minimized = prefs.showsMinimizedWindows,
-                badges = prefs.showsAppBadges, click = prefs.appTileFrontmostClickBehavior,
+                hidesRecent = prefs.hidesRecentApps, spaceScope = prefs.taskbarSpaceScope,
+                minimized = prefs.showsMinimizedWindows, badges = prefs.showsAppBadges,
+                click = prefs.appTileFrontmostClickBehavior,
                 grouped = prefs.showsGroupedOpenedAppsInDock, badgeMode = prefs.folderBadgeMode,
                 badgeStyle = prefs.folderBadgePreviewStyle, shelve = prefs.enablesShelveMode,
                 hidesFinder = prefs.shelveHidesFinder, hidesTrash = prefs.shelveHidesTrash
@@ -250,6 +255,7 @@
                 prefs.fullscreenRevealDelay = revealDelay
                 prefs.showsRunningApps = running
                 prefs.hidesRecentApps = hidesRecent
+                prefs.taskbarSpaceScope = spaceScope
                 prefs.showsMinimizedWindows = minimized
                 prefs.showsAppBadges = badges
                 prefs.appTileFrontmostClickBehavior = click

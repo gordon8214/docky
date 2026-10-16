@@ -653,8 +653,8 @@ enum WindowSwitcherPreviewMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-/// Which Spaces the window switcher and hover window previews list windows from.
-enum WindowSwitcherSpaceScope: String, CaseIterable, Codable, Identifiable {
+/// Which Spaces a taskbar or switcher list draws from.
+enum SpaceScope: String, CaseIterable, Codable, Identifiable {
     case allSpaces
     case activeSpace
 
@@ -1028,6 +1028,16 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Whether the taskbar's app buttons, running underlines, minimized-window
+    /// tiles and hover window previews cover every Space or only the Spaces
+    /// currently shown. Pinned apps stay either way.
+    var taskbarSpaceScope: SpaceScope {
+        didSet {
+            guard taskbarSpaceScope != oldValue else { return }
+            defaults.set(taskbarSpaceScope.rawValue, forKey: Keys.taskbarSpaceScope)
+        }
+    }
+
     /// Hides the profile switcher strip even when more than one profile
     /// exists. When `false` (default), the strip still hides itself
     /// automatically while only the "Default" profile is around;
@@ -1376,9 +1386,9 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Whether the window switcher and hover window previews list windows
-    /// from every Space or only from the Spaces currently shown.
-    var windowSwitcherSpaceScope: WindowSwitcherSpaceScope {
+    /// Whether the window switcher lists windows from every Space or only
+    /// from the Spaces currently shown.
+    var windowSwitcherSpaceScope: SpaceScope {
         didSet {
             guard windowSwitcherSpaceScope != oldValue else { return }
             defaults.set(windowSwitcherSpaceScope.rawValue, forKey: Keys.windowSwitcherSpaceScope)
@@ -1769,6 +1779,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let shelveHidesFinder = "docky.shelveHidesFinder"
         static let shelveHidesTrash = "docky.shelveHidesTrash"
         static let hidesRecentApps = "docky.hidesRecentApps"
+        static let taskbarSpaceScope = "docky.taskbarSpaceScope"
         static let hidesProfileStrip = "docky.hidesProfileStrip"
         static let appTileFrontmostClickBehavior = "docky.appTileFrontmostClickBehavior"
         static let fileBrowser = "docky.fileBrowser"
@@ -1835,6 +1846,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let shelveHidesFinder = true
         static let shelveHidesTrash = true
         static let hidesRecentApps = false
+        static let taskbarSpaceScope: SpaceScope = .allSpaces
         static let hidesProfileStrip = false
         static let appTileFrontmostClickBehavior: AppTileFrontmostClickBehavior = .none
         static let fileBrowser: FileBrowser = .finder
@@ -1868,7 +1880,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         static let replacesSystemCommandTab = false
         static let showsWindowSwitcherFocusPreview = false
         static let windowSwitcherPreviewMode: WindowSwitcherPreviewMode = .inPlace
-        static let windowSwitcherSpaceScope: WindowSwitcherSpaceScope = .allSpaces
+        static let windowSwitcherSpaceScope: SpaceScope = .allSpaces
         static let switcherMinimizeKeyCode: UInt16 = 46
         static let switcherCloseKeyCode: UInt16 = 13
         static let switcherZoomKeyCode: UInt16 = 6
@@ -1905,6 +1917,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         let storedShelveHidesFinder = defaults.object(forKey: Keys.shelveHidesFinder) as? Bool
         let storedShelveHidesTrash = defaults.object(forKey: Keys.shelveHidesTrash) as? Bool
         let storedHidesRecentApps = defaults.object(forKey: Keys.hidesRecentApps) as? Bool
+        let storedTaskbarSpaceScope = defaults.string(forKey: Keys.taskbarSpaceScope)
         let storedHidesProfileStrip = defaults.object(forKey: Keys.hidesProfileStrip) as? Bool
         let storedAppTileFrontmostClickBehavior = defaults.string(forKey: Keys.appTileFrontmostClickBehavior)
         let storedFileBrowser = defaults.string(forKey: Keys.fileBrowser)
@@ -1978,6 +1991,8 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.shelveHidesFinder = storedShelveHidesFinder ?? DefaultValues.shelveHidesFinder
         self.shelveHidesTrash = storedShelveHidesTrash ?? DefaultValues.shelveHidesTrash
         self.hidesRecentApps = storedHidesRecentApps ?? DefaultValues.hidesRecentApps
+        self.taskbarSpaceScope = storedTaskbarSpaceScope.flatMap(SpaceScope.init(rawValue:))
+            ?? DefaultValues.taskbarSpaceScope
         self.hidesProfileStrip = storedHidesProfileStrip ?? DefaultValues.hidesProfileStrip
         self.appTileFrontmostClickBehavior = storedAppTileFrontmostClickBehavior
             .flatMap(AppTileFrontmostClickBehavior.init(rawValue:))
@@ -2028,7 +2043,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         self.replacesSystemCommandTab = storedReplacesSystemCommandTab ?? DefaultValues.replacesSystemCommandTab
         self.showsWindowSwitcherFocusPreview = storedShowsWindowSwitcherFocusPreview ?? DefaultValues.showsWindowSwitcherFocusPreview
         self.windowSwitcherPreviewMode = storedWindowSwitcherPreviewMode.flatMap(WindowSwitcherPreviewMode.init(rawValue:)) ?? DefaultValues.windowSwitcherPreviewMode
-        self.windowSwitcherSpaceScope = storedWindowSwitcherSpaceScope.flatMap(WindowSwitcherSpaceScope.init(rawValue:))
+        self.windowSwitcherSpaceScope = storedWindowSwitcherSpaceScope.flatMap(SpaceScope.init(rawValue:))
             ?? DefaultValues.windowSwitcherSpaceScope
         self.windowSwitcherFontSize = WindowSwitcherGeometry.clampedFontSize(
             storedWindowSwitcherFontSize.map { CGFloat($0) } ?? WindowSwitcherGeometry.Metrics.defaultFontSize)
@@ -2089,6 +2104,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         // Apps
         showsRunningApps = DefaultValues.showsRunningApps
         hidesRecentApps = DefaultValues.hidesRecentApps
+        taskbarSpaceScope = DefaultValues.taskbarSpaceScope
         showsMinimizedWindows = DefaultValues.showsMinimizedWindows
         showsAppBadges = DefaultValues.showsAppBadges
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
@@ -2126,6 +2142,7 @@ enum LaunchpadSortMode: String, CaseIterable, Codable, Identifiable {
         shelveHidesFinder = DefaultValues.shelveHidesFinder
         shelveHidesTrash = DefaultValues.shelveHidesTrash
         hidesRecentApps = DefaultValues.hidesRecentApps
+        taskbarSpaceScope = DefaultValues.taskbarSpaceScope
         appTileFrontmostClickBehavior = DefaultValues.appTileFrontmostClickBehavior
         fileBrowser = DefaultValues.fileBrowser
         appIconOverrides = DefaultValues.appIconOverrides

@@ -162,10 +162,22 @@ In Instant Focus mode, selecting a window on another Space doesn't focus it,
 because that would switch Spaces on every selection. The switcher stays visible
 while such a window is selected, and releasing the shortcut switches to it.
 
-The switcher and hover window previews list windows from every Space, including
-fullscreen Spaces. "Show Windows From" in Window Management limits both to the
-Spaces currently shown, like Windows 11's "Only on the desktop I'm using". The
-app-folder "Windows" submenu always lists every Space. Actions that change
+The switcher and the taskbar cover every Space, including fullscreen Spaces.
+Two settings limit them to the Spaces currently shown, like Windows 11's "Only
+on the desktop I'm using":
+
+- "Show Windows From" in Window Management covers the switcher.
+- "Show Apps From" in the Taskbar pane's Apps section covers the taskbar.
+  Unpinned apps, and the open apps grouped beside a folder, show only while
+  they have a window, minimized or not, on a Space currently shown. Pinned apps
+  stay, with the running underline and the active highlight only under the
+  same condition. Minimized-window tiles and hover previews keep only windows
+  on those Spaces. A quit app's button never stays, so "Show Recently Quit
+  App" is off. Under this scope, hidden apps always count as open, because the
+  window list doesn't include their windows. So does every app while the
+  registry lists no windows, such as without Accessibility.
+
+The app-folder "Windows" submenu always lists every Space. Actions that change
 several windows at once (cycling or minimizing from a frontmost app's tile, and
 tiling a folder's windows) act only on windows on the active Space.
 

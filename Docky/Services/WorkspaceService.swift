@@ -50,6 +50,12 @@ final class WorkspaceService: ObservableObject {
     /// activation (foreground), or `nil` when nothing is frontmost
     /// (rare, typically transient during space switches).
     @Published private(set) var frontmostBundleIdentifier: String?
+    /// Apps the taskbar's Active Space scope keeps, from one registry
+    /// snapshot: apps with a window, minimized or not, on a Space currently
+    /// shown on some display, and hidden apps, whose windows the registry
+    /// doesn't list. `nil` while the registry lists no windows, when the scope
+    /// keeps every running app.
+    @Published private(set) var bundleIdentifiersOpenOnActiveSpace: Set<String>?
 
     private var runningByBundleID: [String: RunningApp] = [:]
 
@@ -108,6 +114,7 @@ final class WorkspaceService: ObservableObject {
         subscribe()
         subscribeToPermissions()
         subscribeToRegistry()
+        subscribeToSpaceScopes()
     }
 
     isolated deinit {
@@ -127,6 +134,27 @@ final class WorkspaceService: ObservableObject {
 
     func isHidden(bundleIdentifier: String) -> Bool {
         runningByBundleID[bundleIdentifier]?.isHidden == true
+    }
+
+    /// Whether the taskbar treats the app as open: running, and under the
+    /// taskbar's Active Space scope, in `bundleIdentifiersOpenOnActiveSpace`.
+    func isOpenOnTaskbar(bundleIdentifier: String) -> Bool {
+        // Read before the guard, so an observer tracks the scope even while
+        // the app isn't running.
+        let scope = DockyPreferences.shared.taskbarSpaceScope
+        guard runningByBundleID[bundleIdentifier] != nil else { return false }
+        return Self.countsAsOpen(
+            bundleIdentifier: bundleIdentifier, scope: scope, openOnActiveSpace: bundleIdentifiersOpenOnActiveSpace)
+    }
+
+    /// Whether a running app counts as open under `scope`. Every app does
+    /// while there's no window list to filter by (`openOnActiveSpace` is nil).
+    nonisolated static func countsAsOpen(
+        bundleIdentifier: String,
+        scope: SpaceScope,
+        openOnActiveSpace: Set<String>?
+    ) -> Bool {
+        scope.includes(windowOnActiveSpace: openOnActiveSpace?.contains(bundleIdentifier) ?? true)
     }
 
     func minimizedWindowPreview(for window: AppWindow) -> NSImage? {
@@ -777,6 +805,13 @@ final class WorkspaceService: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Hiding or showing an app with no windows, or the registry starting
+        // or stopping without windows, changes only this.
+        WindowRegistry.shared.$hiddenBundleIdentifiers
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshOpenOnActiveSpace() }
+            .store(in: &cancellables)
+
         // Targeted preview invalidations from the registry: resize-aspect
         // changes and the outgoing window on focus switches. Fires more
         // often than the per-window TTL but only for the few windows
@@ -787,6 +822,16 @@ final class WorkspaceService: ObservableObject {
                 self?.invalidateAppWindowPreview(windowIdentifier: windowIdentifier)
             }
             .store(in: &cancellables)
+    }
+
+    /// Widening either Space scope lets queued thumbnails on other Spaces be
+    /// captured, so an idle capture worker restarts for them.
+    private func subscribeToSpaceScopes() {
+        let preferences = DockyPreferences.shared
+        observeChanges(of: { [preferences.windowSwitcherSpaceScope, preferences.taskbarSpaceScope] }) { [weak self] _ in
+            self?.startPreviewRefreshesIfNeeded()
+        }
+        .store(in: &cancellables)
     }
 
     /// Recaptures one window's thumbnail ahead of stale ones, keeping the
@@ -820,6 +865,7 @@ final class WorkspaceService: ObservableObject {
         if nextMinimized != minimizedWindows {
             minimizedWindows = nextMinimized
         }
+        refreshOpenOnActiveSpace()
         refreshMinimizedWindowPreviews(for: nextMinimized)
         // Source set deliberately includes minimized windows so a
         // previously-captured preview survives the minimize event.
@@ -828,6 +874,19 @@ final class WorkspaceService: ObservableObject {
         // switcher / hover popover can show a stale-but-useful thumbnail
         // instead of nothing.
         refreshAppWindowPreviews(for: registry.switchable(includeMinimized: true))
+    }
+
+    /// Reads the registry's hidden apps and window list together, so an app
+    /// that was just shown again keeps counting as hidden until the snapshot
+    /// that lists its windows.
+    private func refreshOpenOnActiveSpace() {
+        let registry = WindowRegistry.shared
+        let next = registry.hiddenBundleIdentifiers.map { hidden in
+            hidden.union(registry.windows.lazy.filter(\.isOnActiveSpace).map(\.bundleIdentifier))
+        }
+        if next != bundleIdentifiersOpenOnActiveSpace {
+            bundleIdentifiersOpenOnActiveSpace = next
+        }
     }
 
     private func refreshMinimizedWindowPreviews(for windows: [AppWindow]) {
@@ -961,12 +1020,15 @@ final class WorkspaceService: ObservableObject {
 
     /// Windows whose thumbnails may be captured now, in capture order:
     /// active-Space windows first, each group in MRU order. Windows on other
-    /// Spaces wait until they're shown when the switcher and previews only
-    /// list the active Space.
+    /// Spaces wait until they're shown when both the switcher and the
+    /// taskbar's previews only list the active Space.
     private func previewRefreshCandidates() -> [AppWindow] {
         let windows = WindowRegistry.shared.switchable(includeMinimized: true)
         let onActiveSpace = windows.filter(\.isOnActiveSpace)
-        guard DockyPreferences.shared.windowSwitcherSpaceScope == .allSpaces else { return onActiveSpace }
+        let preferences = DockyPreferences.shared
+        guard preferences.windowSwitcherSpaceScope == .allSpaces || preferences.taskbarSpaceScope == .allSpaces else {
+            return onActiveSpace
+        }
         return onActiveSpace + windows.filter { !$0.isOnActiveSpace }
     }
 

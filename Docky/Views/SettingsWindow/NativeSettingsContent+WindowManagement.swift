@@ -33,8 +33,11 @@ extension NativeSettingsContent {
                             : shortcutDescription
                     }.enabled(when: switcherOn),
                     NativePreferenceField.choice(
-                        String(localized: "Show Windows From"), \.windowSwitcherSpaceScope,
-                        values: WindowSwitcherSpaceScope.allCases, name: \.title
+                        String(localized: "Show Windows From"),
+                        description: String(
+                            localized:
+                                "Active Space lists only windows on a Space you're viewing. Hover previews follow Show Apps From in Taskbar."),
+                        \.windowSwitcherSpaceScope, values: SpaceScope.allCases, name: \.title
                     ).enabled(when: switcherOn),
                     NativePreferenceField.toggle(
                         String(localized: "Include Minimized Windows"),
